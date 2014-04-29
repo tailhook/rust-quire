@@ -2,6 +2,7 @@ use std::vec::Vec;
 use std::str::CharOffsets;
 
 use chars::is_indicator;
+use chars::is_whitespace;
 
 mod chars;
 
@@ -33,7 +34,7 @@ enum TokenType {
 }
 
 struct Pos {
-    //filename: &'pos str,
+    indent: uint,
     line: uint,
     line_offset: uint,
     offset: uint,
@@ -41,8 +42,6 @@ struct Pos {
 
 struct Token<'tok> {
     kind: TokenType,
-    //filename: &'tok str,
-    indent: uint,
     start: Pos,
     end: Pos,
     value: &'tok str,
@@ -53,7 +52,7 @@ struct Tokenizer<'a, 'b> {
     result: &'a mut Vec<Token<'b>>,
     data: &'b str,
     iter: CharOffsets<'b>,
-    cur: char,
+    cur: Option<char>,
 }
 
 impl<'a, 'b> Tokenizer<'a, 'b> {
@@ -65,23 +64,59 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             result: result,
             data: data,
             iter: data.char_indices(),
-            cur: '\0',
+            cur: None,
             position: Pos {
+                indent: 0,
                 offset: 0,
-                line: 0,
+                line: 1,
                 line_offset: 0,
                 },
         }
     }
 
     fn read_plain(&mut self, start: Pos) {
-
+        loop {
+            let prev = self.cur;
+            match self.next() {
+                Some(':') => {
+                    // may end plainstring if followed by WS
+                    }
+                Some('\n') | Some('\r') => {
+                    // may end plainstring if next block is not indented
+                    // as much
+                    if start.indent == 0 {
+                        continue;
+                    }
+                    let possible_end = self.position;
+                    loop {
+                        match self.next() {
+                            Some(' ') => continue,
+                            Some(_) | None => break,
+                        }
+                    }
+                    if self.position.indent <= start.indent {
+                        self.add_token(PlainString, start, possible_end);
+                        self.add_token(Indent, possible_end, self.position);
+                        return;
+                    }
+                }
+                Some('#') => {
+                    // ends plainstring only if follows space
+                    match prev {
+                        Some(' ') | Some('\t') => break,
+                        _ => continue,
+                    }
+                }
+                Some(_) => continue,
+                None => break,
+            }
+        }
+        self.add_token(PlainString, start, self.position);
     }
 
     fn add_token(&mut self, kind: TokenType, start: Pos, end: Pos) {
         self.result.push(Token {
             kind: kind,
-            indent: 0,
             start: start,
             end: end,
             value: self.data.slice(start.offset, end.offset),
@@ -90,17 +125,33 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
 
     #[inline]
     fn next(&mut self) -> Option<char> {
-        let ch: char;
-        match self.iter.next() {
+        let next = match self.iter.next() {
             None => {
                 return None;
             }
-            Some((index1, char1)) => {
-                self.position.offset += 1;
-                self.cur = char1;
-                return Some(char1);
+            Some((index, next)) => {
+                self.position.offset = self.data.len();
+                next
             }
+        };
+        let pos = &mut self.position;
+        match self.cur {
+            Some('\n') => {
+                pos.line += 1;
+                pos.line_offset = 0;
+                pos.indent = 0;
+            }
+            Some(' ') if pos.indent+1 == pos.line_offset => {
+                pos.indent += 1;
+            }
+            Some('\t') if pos.indent+1 == pos.line_offset => {
+                // TODO: Emit error somehow
+            }
+            Some(_) | None => {}
         }
+        pos.line_offset += 1;
+        self.cur = Some(next);
+        return self.cur;
     }
 
     fn tokenize(&mut self) {
@@ -126,6 +177,9 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             }
                         };
                     }
+                Some(' ') | Some('\t') => {
+                    // Just skipping it for now
+                }
                 Some(_) => { self.read_plain(start); }
                 None => break,
             }
@@ -166,4 +220,23 @@ fn test_list() {
     let tokens = tokenize("---");
     assert_eq!(simple_tokens(&tokens),
         ~[(DocumentStart, "---")]);
+}
+
+#[test]
+fn test_plain() {
+    let tokens = tokenize("a");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(PlainString, "a")]);
+    let tokens = tokenize("abc");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(PlainString, "abc")]);
+    let tokens = tokenize("abc\ndef");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(PlainString, "abc\ndef")]);
+    let tokens = tokenize("a#bc");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(PlainString, "a#bc")]);
+    let tokens = tokenize(" a\nbc");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(PlainString, "a"), (PlainString, "bc")]);
 }
