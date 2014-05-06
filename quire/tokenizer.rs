@@ -236,6 +236,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         };
                     }
                 Some((start, '?')) => { // key, plainstring
+                    // TODO(tailhook) in flow context space is not required
                     match self.iter.next() {
                         Some((cur, ' ')) | Some((cur, '\t'))
                         | Some((cur, '\r')) | Some((cur, '\n')) => {
@@ -254,6 +255,22 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         }
                     }
                 }
+                // TODO: ":"  // mapping value or plainstring
+                // TODO: "%"  // directive
+                // TODO: "@" "`"  // not allowed
+                // TODO: '"' // Quoted string
+                // TODO: "'" // Quoted string
+                // TODO: "#" // Comment
+                // TODO: "&" // Anchor
+                // TODO: "*" // Alias
+                // TODO: "!" // Tag
+                // TODO: "|" // BlockScalar
+                // TODO: ">" // Folded Scalar
+                // TODO: "," // Flow Entry
+                // TODO: "[" // Flow Seq Start
+                // TODO: "]" // Flow Seq End
+                // TODO: "{" // Flow Map Start
+                // TODO: "}" // Flow Map End
                 Some((start, ' ')) | Some((start, '\t'))
                 | Some((start, '\r')) | Some((start, '\n')) => {
                     // Just skipping it for now
