@@ -178,12 +178,13 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     ' ' | '\t' | '\n' | '\r' => {
                         // may end plainstring if next block is not indented
                         // as much
-                        let mut niter = self.skip_whitespace();
+                        let niter = self.skip_whitespace();
+                        self.iter = niter;
                         if niter.position.indent >= start.indent {
-                            self.iter = niter;
                             continue;
                         } else {
                             self.add_token(PlainString, start, pos);
+                            self.add_token(Whitespace, pos, niter.position);
                             return;
                         }
                     }
@@ -217,6 +218,13 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                                 _ => self.read_plain(start),
                             }
                         }
+                        Some((cur, ' ')) | Some((cur, '\t'))
+                        | Some((cur, '\r')) | Some((cur, '\n')) => {
+                            self.add_token(SequenceEntry, start, cur);
+                            self.iter = self.skip_whitespace();
+                            self.add_token(Whitespace, cur,
+                                self.iter.position);
+                        }
                         Some(_) => {
                             self.read_plain(start);
                         }
@@ -227,6 +235,25 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             }
                         };
                     }
+                Some((start, '?')) => { // key, plainstring
+                    match self.iter.next() {
+                        Some((cur, ' ')) | Some((cur, '\t'))
+                        | Some((cur, '\r')) | Some((cur, '\n')) => {
+                            self.add_token(MappingKey, start, cur);
+                            self.iter = self.skip_whitespace();
+                            self.add_token(Whitespace, cur,
+                                self.iter.position);
+                        }
+                        None => {
+                            self.add_token(MappingKey, start,
+                                self.iter.position);
+                            break;
+                        }
+                        Some(_) =>  {
+                            self.read_plain(start);
+                        }
+                    }
+                }
                 Some((start, ' ')) | Some((start, '\t'))
                 | Some((start, '\r')) | Some((start, '\n')) => {
                     // Just skipping it for now
@@ -273,6 +300,23 @@ fn test_list() {
     let tokens = tokenize("---");
     assert_eq!(simple_tokens(&tokens),
         ~[(DocumentStart, "---")]);
+    let tokens = tokenize("- something");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(SequenceEntry, "-"), (Whitespace, " "),
+            (PlainString, "something")]);
+}
+
+#[test]
+fn test_map_key() {
+    let tokens = tokenize("?");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(MappingKey, "?")]);
+    let tokens = tokenize("?something");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(PlainString, "?something")]);
+    let tokens = tokenize("? something");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(MappingKey, "?"), (Whitespace, " "), (PlainString, "something")]);
 }
 
 #[test]
@@ -294,3 +338,4 @@ fn test_plain() {
         ~[(Whitespace, " "), (PlainString, "a"),
           (Whitespace, "\n"), (PlainString, "bc")]);
 }
+
