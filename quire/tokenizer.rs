@@ -275,7 +275,17 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         }
                     }
                 }
-                // TODO: ":"  // mapping value or plainstring
+                Some((start, '%')) => {
+                    if start.line_offset != 0 {
+                        // TODO(tailhook) directive must be at the start of line
+                    }
+                    for (_, ch) in self.iter {
+                        if ch == '\r' || ch == '\n' {
+                            break;
+                        }
+                    }
+                    self.add_token(Directive, start, self.iter.position);
+                }
                 // TODO: "%"  // directive
                 // TODO: "@" "`"  // not allowed
                 // TODO: '"' // Quoted string
@@ -387,5 +397,22 @@ fn test_plain() {
     assert_eq!(simple_tokens(&tokens),
         ~[(Whitespace, " "), (PlainString, "a"),
           (Whitespace, "\n"), (PlainString, "bc")]);
+}
+
+#[test]
+fn test_directive() {
+    let tokens = tokenize("%");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(Directive, "%")]);
+    let tokens = tokenize("%something\n");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(Directive, "%something\n")]);
+    let tokens = tokenize("%abc\ndef");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(Directive, "%abc\n"), (PlainString, "def")]);
+    let tokens = tokenize("a%bc");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(PlainString, "a%bc")]);
+    // TODO(pc) add testcase with percent sign at start of token
 }
 
