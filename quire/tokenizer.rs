@@ -255,6 +255,26 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         }
                     }
                 }
+                Some((start, ':')) => { // key, plainstring
+                    // TODO(tailhook) in flow context space is not required
+                    match self.iter.next() {
+                        Some((cur, ' ')) | Some((cur, '\t'))
+                        | Some((cur, '\r')) | Some((cur, '\n')) => {
+                            self.add_token(MappingValue, start, cur);
+                            self.iter = self.skip_whitespace();
+                            self.add_token(Whitespace, cur,
+                                self.iter.position);
+                        }
+                        None => {
+                            self.add_token(MappingValue, start,
+                                self.iter.position);
+                            break;
+                        }
+                        Some(_) =>  {
+                            self.read_plain(start);
+                        }
+                    }
+                }
                 // TODO: ":"  // mapping value or plainstring
                 // TODO: "%"  // directive
                 // TODO: "@" "`"  // not allowed
@@ -334,6 +354,19 @@ fn test_map_key() {
     let tokens = tokenize("? something");
     assert_eq!(simple_tokens(&tokens),
         ~[(MappingKey, "?"), (Whitespace, " "), (PlainString, "something")]);
+}
+
+#[test]
+fn test_map_value() {
+    let tokens = tokenize(":");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(MappingValue, ":")]);
+    let tokens = tokenize(":something");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(PlainString, ":something")]);
+    let tokens = tokenize(": something");
+    assert_eq!(simple_tokens(&tokens),
+        ~[(MappingValue, ":"), (Whitespace, " "), (PlainString, "something")]);
 }
 
 #[test]
