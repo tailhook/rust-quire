@@ -117,9 +117,11 @@ impl<'a> Iterator<(Pos, char)> for YamlIter<'a> {
         let npos = &mut self.position;  // Store new position in self
         match self.chars.next() {
             None => {
+                self.value = None;
                 return None;
             }
             Some((_, value)) => {
+                self.value = Some(value);
                 npos.offset = match self.chars.peek() {
                     Some(&(off, _)) => off,
                     None => self.buf.len(),
@@ -333,8 +335,34 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         "Tab character may appear only in quoted string"));
                     break;
                 }
-                // TODO: '"' // Quoted string
-                // TODO: "'" // Quoted string
+                Some((start, '"')) => {
+                    let mut prev = '"';
+                    for (_, ch) in self.iter {
+                        if ch == '"' && prev != '\\' {
+                            break;
+                        }
+                        prev = ch;
+                    }
+                    if self.iter.value.is_none() {
+                        self.error = Some(TokenError::new(start,
+                            "Unclosed double-quoted string"));
+                        break;
+                    }
+                    self.add_token(DoubleString, start, self.iter.position);
+                }
+                Some((start, '\'')) => {
+                    for (_, ch) in self.iter {
+                        if ch == '\'' {
+                            break;
+                        }
+                    }
+                    if self.iter.value.is_none() {
+                        self.error = Some(TokenError::new(start,
+                            "Unclosed quoted string"));
+                        break;
+                    }
+                    self.add_token(SingleString, start, self.iter.position);
+                }
                 // TODO: "#" // Comment
                 // TODO: "&" // Anchor
                 // TODO: "*" // Alias
@@ -369,16 +397,25 @@ fn tokenize<'x, 'y>(data: &'x str) -> Result<Vec<Token<'x>>, TokenError> {
 }
 
 #[cfg(test)]
-fn simple_tokens<'a>(vec: &'a Vec<Token>) -> ~[(TokenType, &'a str)] {
-    return vec.iter().map(|&tok| {
-        return (tok.kind, tok.value);
-    }).collect();
+fn simple_tokens<'a>(res: Result<Vec<Token>, TokenError>)
+    -> ~[(TokenType, &'a str)]
+{
+    match res {
+        Ok(vec) => {
+            return vec.iter().map(|&tok| {
+                return (tok.kind, tok.value);
+            }).collect();
+        }
+        Err(value) => {
+            fail!("Error: {}", value);
+        }
+    }
 }
 
 #[test]
 fn test_tokenize() {
-    let tokens = tokenize("a:  b").unwrap();
-    let strings = simple_tokens(&tokens);
+    let tokens = tokenize("a:  b");
+    let strings = simple_tokens(tokens);
     assert_eq!(strings, ~[
         (PlainString, "a"),
         (MappingValue, ":"),
@@ -388,77 +425,77 @@ fn test_tokenize() {
 
 #[test]
 fn test_list() {
-    let tokens = tokenize("-").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("-");
+    assert_eq!(simple_tokens(tokens),
         ~[(SequenceEntry, "-")]);
-    let tokens = tokenize("---").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("---");
+    assert_eq!(simple_tokens(tokens),
         ~[(DocumentStart, "---")]);
-    let tokens = tokenize("- something").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("- something");
+    assert_eq!(simple_tokens(tokens),
         ~[(SequenceEntry, "-"), (Whitespace, " "),
             (PlainString, "something")]);
 }
 
 #[test]
 fn test_map_key() {
-    let tokens = tokenize("?").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("?");
+    assert_eq!(simple_tokens(tokens),
         ~[(MappingKey, "?")]);
-    let tokens = tokenize("?something").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("?something");
+    assert_eq!(simple_tokens(tokens),
         ~[(PlainString, "?something")]);
-    let tokens = tokenize("? something").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("? something");
+    assert_eq!(simple_tokens(tokens),
         ~[(MappingKey, "?"), (Whitespace, " "), (PlainString, "something")]);
 }
 
 #[test]
 fn test_map_value() {
-    let tokens = tokenize(":").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize(":");
+    assert_eq!(simple_tokens(tokens),
         ~[(MappingValue, ":")]);
-    let tokens = tokenize(":something").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize(":something");
+    assert_eq!(simple_tokens(tokens),
         ~[(PlainString, ":something")]);
-    let tokens = tokenize(": something").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize(": something");
+    assert_eq!(simple_tokens(tokens),
         ~[(MappingValue, ":"), (Whitespace, " "), (PlainString, "something")]);
 }
 
 #[test]
 fn test_plain() {
-    let tokens = tokenize("a").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("a");
+    assert_eq!(simple_tokens(tokens),
         ~[(PlainString, "a")]);
-    let tokens = tokenize("abc").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("abc");
+    assert_eq!(simple_tokens(tokens),
         ~[(PlainString, "abc")]);
-    let tokens = tokenize("abc\ndef").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("abc\ndef");
+    assert_eq!(simple_tokens(tokens),
         ~[(PlainString, "abc\ndef")]);
-    let tokens = tokenize("a#bc").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("a#bc");
+    assert_eq!(simple_tokens(tokens),
         ~[(PlainString, "a#bc")]);
-    let tokens = tokenize(" a\nbc").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize(" a\nbc");
+    assert_eq!(simple_tokens(tokens),
         ~[(Whitespace, " "), (PlainString, "a"),
           (Whitespace, "\n"), (PlainString, "bc")]);
 }
 
 #[test]
 fn test_directive() {
-    let tokens = tokenize("%").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("%");
+    assert_eq!(simple_tokens(tokens),
         ~[(Directive, "%")]);
-    let tokens = tokenize("%something\n").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("%something\n");
+    assert_eq!(simple_tokens(tokens),
         ~[(Directive, "%something\n")]);
-    let tokens = tokenize("%abc\ndef").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("%abc\ndef");
+    assert_eq!(simple_tokens(tokens),
         ~[(Directive, "%abc\n"), (PlainString, "def")]);
-    let tokens = tokenize("a%bc").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("a%bc");
+    assert_eq!(simple_tokens(tokens),
         ~[(PlainString, "a%bc")]);
     let err = tokenize(" %bc").err().unwrap();
     // TODO(pc) add testcase with percent sign at start of token
@@ -474,34 +511,66 @@ fn test_reserved() {
     let err = tokenize("a:\n  @").err().unwrap();
     assert_eq!(format!("{}", err), "2:3: "
         + "Characters '@' and '`' are not allowed");
-    let tokens = tokenize("a@").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("a@");
+    assert_eq!(simple_tokens(tokens),
         ~[(PlainString, "a@")]);
-    let tokens = tokenize("a\n@").unwrap();
-    assert_eq!(simple_tokens(&tokens),
+    let tokens = tokenize("a\n@");
+    assert_eq!(simple_tokens(tokens),
         ~[(PlainString, "a\n@")]);
 }
 
 #[test]
 fn test_bad_char() {
-    println!("bad_char");
     let err = tokenize("\x01").err().unwrap();
     assert_eq!(format!("{}", err), "1:1: "
         + "Unacceptable character");
-    println!("bad_char");
     let err = tokenize("\t").err().unwrap();
     assert_eq!(format!("{}", err), "1:1: "
         + "Tab character may appear only in quoted string");
-    println!("bad_char");
     let err = tokenize("a:\n  \tbc").err().unwrap();
     assert_eq!(format!("{}", err), "2:3: "
         + "Tab character may appear only in quoted string");
-    println!("bad_char");
     let err = tokenize("a\n\tb").err().unwrap();
     assert_eq!(format!("{}", err), "2:1: "
         + "Tab character may appear only in quoted string");
-    println!("bad_char");
     let err = tokenize("a\tb").err().unwrap();
     assert_eq!(format!("{}", err), "1:2: "
         + "Tab character may appear only in quoted string");
+}
+
+#[test]
+fn test_double_quoted() {
+    println!("TEST");
+    let tokens = tokenize("\"\"");
+    assert_eq!(simple_tokens(tokens),
+        ~[(DoubleString, "\"\"")]);
+    println!("TEST");
+    let tokens = tokenize("\"a\nb\"");
+    assert_eq!(simple_tokens(tokens),
+        ~[(DoubleString, "\"a\nb\"")]);
+    println!("TEST");
+    let tokens = tokenize("\"a\\\"\nb\"");
+    assert_eq!(simple_tokens(tokens),
+        ~[(DoubleString, "\"a\\\"\nb\"")]);
+    println!("TEST");
+    let err = tokenize("val: \"value\nof").err().unwrap();
+    assert_eq!(format!("{}", err), "1:6: "
+        + "Unclosed double-quoted string");
+}
+
+#[test]
+fn test_single_quoted() {
+    let tokens = tokenize("''");
+    assert_eq!(simple_tokens(tokens),
+        ~[(SingleString, "''")]);
+    let tokens = tokenize("'a\nb'");
+    assert_eq!(simple_tokens(tokens),
+        ~[(SingleString, "'a\nb'")]);
+    let tokens = tokenize("'a\\': 'b'");
+    assert_eq!(simple_tokens(tokens),
+        ~[(SingleString, "'a\\'"), (MappingValue, ":"),
+          (Whitespace, " "), (SingleString, "'b'")]);
+    let err = tokenize("val: 'value\nof").err().unwrap();
+    assert_eq!(format!("{}", err), "1:6: "
+        + "Unclosed quoted string");
 }
