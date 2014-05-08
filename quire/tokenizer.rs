@@ -433,14 +433,25 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     }
                     self.add_token(Alias, start, self.iter.position);
                 }
+                Some((start, ',')) => {
+                    self.add_token(FlowEntry, start, self.iter.position);
+                }
+                Some((start, '[')) => {
+                    self.add_token(FlowSeqStart, start, self.iter.position);
+                }
+                Some((start, ']')) => {
+                    self.add_token(FlowSeqEnd, start, self.iter.position);
+                }
+                Some((start, '{')) => {
+                    self.add_token(FlowMapStart, start, self.iter.position);
+                }
+                Some((start, '}')) => {
+                    self.add_token(FlowMapEnd, start, self.iter.position);
+                }
 
                 // TODO: "|" // BlockScalar
                 // TODO: ">" // Folded Scalar
-                // TODO: "," // Flow Entry
-                // TODO: "[" // Flow Seq Start
-                // TODO: "]" // Flow Seq End
-                // TODO: "{" // Flow Map Start
-                // TODO: "}" // Flow Map End
+
                 Some((start, ' '))
                 | Some((start, '\r')) | Some((start, '\n')) => {
                     self.iter = self.skip_whitespace();
