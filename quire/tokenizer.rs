@@ -213,12 +213,14 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         let niter = self.skip_whitespace();
                         self.iter = niter;
                         if niter.position.indent >= start.indent {
-                            continue;
-                        } else {
-                            self.add_token(PlainString, start, pos);
-                            self.add_token(Whitespace, pos, niter.position);
-                            return;
+                            match self.iter.chars.peek() {
+                                Some(&(_, '#')) => {}
+                                _ => { continue; }
+                            }
                         }
+                        self.add_token(PlainString, start, pos);
+                        self.add_token(Whitespace, pos, niter.position);
+                        return;
                     }
                     '\t' => {
                         self.error = Some(TokenError::new(pos,
@@ -363,7 +365,14 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     }
                     self.add_token(SingleString, start, self.iter.position);
                 }
-                // TODO: "#" // Comment
+                Some((start, '#')) => {
+                    for (_, ch) in self.iter {
+                        if ch == '\r' || ch == '\n' {
+                            break;
+                        }
+                    }
+                    self.add_token(Comment, start, self.iter.position);
+                }
                 // TODO: "&" // Anchor
                 // TODO: "*" // Alias
                 // TODO: "!" // Tag
@@ -540,19 +549,15 @@ fn test_bad_char() {
 
 #[test]
 fn test_double_quoted() {
-    println!("TEST");
     let tokens = tokenize("\"\"");
     assert_eq!(simple_tokens(tokens),
         ~[(DoubleString, "\"\"")]);
-    println!("TEST");
     let tokens = tokenize("\"a\nb\"");
     assert_eq!(simple_tokens(tokens),
         ~[(DoubleString, "\"a\nb\"")]);
-    println!("TEST");
     let tokens = tokenize("\"a\\\"\nb\"");
     assert_eq!(simple_tokens(tokens),
         ~[(DoubleString, "\"a\\\"\nb\"")]);
-    println!("TEST");
     let err = tokenize("val: \"value\nof").err().unwrap();
     assert_eq!(format!("{}", err), "1:6: "
         + "Unclosed double-quoted string");
@@ -573,4 +578,19 @@ fn test_single_quoted() {
     let err = tokenize("val: 'value\nof").err().unwrap();
     assert_eq!(format!("{}", err), "1:6: "
         + "Unclosed quoted string");
+}
+
+#[test]
+fn test_comment() {
+    assert_eq!(simple_tokens(tokenize("#")),
+        ~[(Comment, "#")]);
+    assert_eq!(simple_tokens(tokenize("#a")),
+        ~[(Comment, "#a")]);
+    assert_eq!(simple_tokens(tokenize("#a\nb")),
+        ~[(Comment, "#a\n"), (PlainString, "b")]);
+    assert_eq!(simple_tokens(tokenize("a #b\nc")),
+        ~[(PlainString, "a"), (Whitespace, " "),
+          (Comment, "#b\n"), (PlainString, "c")]);
+    assert_eq!(simple_tokens(tokenize("  #a\nb")),
+        ~[(Whitespace, "  "), (Comment, "#a\n"), (PlainString, "b")]);
 }
