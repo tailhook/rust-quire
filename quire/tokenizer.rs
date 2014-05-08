@@ -193,6 +193,10 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     }
 
     fn read_plain(&mut self, start: Pos) {
+        let mut minindent = start.indent;
+        if !start.line_start {
+            minindent += 1;
+        }
         loop {
             match self.iter.next() {
                 Some((pos, ch)) => match ch {
@@ -214,7 +218,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         // as much
                         let niter = self.skip_whitespace();
                         self.iter = niter;
-                        if niter.position.indent >= start.indent {
+                        if niter.position.indent >= minindent {
                             match self.iter.chars.peek() {
                                 Some(&(_, '#')) => {}
                                 _ => { continue; }
@@ -235,6 +239,37 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             }
         }
         self.add_token(PlainString, start, self.iter.position);
+    }
+
+    fn read_block(&mut self, tok: TokenType, start: Pos) {
+        // TODO(tailhook) we indent the same way as with plain scalars
+        //                by PyYaml sets indent to the one of the first line
+        //                of content, is it what's by spec?
+        let mut minindent = start.indent;
+        if !start.line_start {
+            minindent += 1;
+        }
+        loop {
+            match self.iter.next() {
+                Some((pos, ch)) => match ch {
+                    '\n' | '\r' => {
+                        // may end folded if next block is not indented
+                        // as much
+                        let niter = self.skip_whitespace();
+                        self.iter = niter;
+                        if niter.position.indent >= minindent {
+                            continue;
+                        }
+                        self.add_token(tok, start, pos);
+                        self.add_token(Whitespace, pos, niter.position);
+                        return;
+                    }
+                    _ => continue,
+                },
+                None => break,
+            }
+        }
+        self.add_token(tok, start, self.iter.position);
     }
 
     fn add_token(&mut self, kind: TokenType, start: Pos, end: Pos) {
@@ -448,10 +483,12 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 Some((start, '}')) => {
                     self.add_token(FlowMapEnd, start, self.iter.position);
                 }
-
-                // TODO: "|" // BlockScalar
-                // TODO: ">" // Folded Scalar
-
+                Some((start, '|')) => {
+                    self.read_block(Literal, start);
+                }
+                Some((start, '>')) => {
+                    self.read_block(Folded, start);
+                }
                 Some((start, ' '))
                 | Some((start, '\r')) | Some((start, '\n')) => {
                     self.iter = self.skip_whitespace();
@@ -559,6 +596,25 @@ fn test_plain() {
     assert_eq!(simple_tokens(tokens),
         ~[(Whitespace, " "), (PlainString, "a"),
           (Whitespace, "\n"), (PlainString, "bc")]);
+    let tokens = tokenize("a:\n a\n bc");
+    assert_eq!(simple_tokens(tokens),
+        ~[(PlainString, "a"), (MappingValue, ":"), (Whitespace, "\n "),
+            (PlainString, "a\n bc")]);
+    let tokens = tokenize("a: a\nbc");
+    assert_eq!(simple_tokens(tokens),
+        ~[(PlainString, "a"), (MappingValue, ":"), (Whitespace, " "),
+            (PlainString, "a"), (Whitespace, "\n"), (PlainString, "bc")]);
+}
+
+#[test]
+fn test_block() {
+    let tokens = tokenize("|\n a");
+    assert_eq!(simple_tokens(tokens),
+        ~[(Literal, "|\n a")]);
+    let tokens = tokenize("a: >\n b\nc");
+    assert_eq!(simple_tokens(tokens),
+        ~[(PlainString, "a"), (MappingValue, ":"), (Whitespace, " "),
+          (Folded, ">\n b"), (Whitespace, "\n"), (PlainString, "c")]);
 }
 
 #[test]
