@@ -8,6 +8,8 @@ use std::fmt::Formatter;
 use chars::is_indicator;
 use chars::is_whitespace;
 use chars::is_printable;
+use chars::is_tag_char;
+use chars::is_flow_indicator;
 
 mod chars;
 
@@ -246,7 +248,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
 
 
     fn tokenize(&mut self) -> Option<TokenError> {
-        loop {
+        'tokenloop: loop {
             match self.iter.next() {
                 Some((start, '-')) => { // list element, doc start, plainstring
                     match self.iter.next() {
@@ -373,9 +375,65 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     }
                     self.add_token(Comment, start, self.iter.position);
                 }
-                // TODO: "&" // Anchor
-                // TODO: "*" // Alias
-                // TODO: "!" // Tag
+                Some((start, '!')) => {
+                    loop {
+                        match self.iter.chars.peek() {
+                            Some(&(_, ch)) if is_whitespace(ch) => break,
+                            None => break,
+                            _ => {}
+                        }
+                        let (pos, ch) = self.iter.next().unwrap();
+                        if !is_tag_char(ch) {
+                            self.error = Some(TokenError::new(pos,
+                                "Bad char in tag name"));
+                            break 'tokenloop;
+                        }
+                    }
+                    self.add_token(Tag, start, self.iter.position);
+                }
+                Some((start, '&')) => {
+                    loop {
+                        match self.iter.chars.peek() {
+                            Some(&(_, ch)) if is_whitespace(ch) => break,
+                            None => break,
+                            _ => {}
+                        }
+                        let (pos, ch) = self.iter.next().unwrap();
+                        if is_flow_indicator(ch) {
+                            self.error = Some(TokenError::new(pos,
+                                "Bad char in anchor name"));
+                            break 'tokenloop;
+                        }
+                    }
+                    if self.iter.position.offset - start.offset < 2 {
+                        self.error = Some(TokenError::new(start,
+                           "Anchor name requires at least one character"));
+                        break;
+                    }
+                    self.add_token(Anchor, start, self.iter.position);
+                }
+                Some((start, '*')) => {
+                    loop {
+                        match self.iter.chars.peek() {
+                            Some(&(_, ch)) if is_whitespace(ch) => break,
+                            None => break,
+                            _ => {}
+                        }
+                        let (pos, ch) = self.iter.next().unwrap();
+                        if is_flow_indicator(ch) {
+                            self.error = Some(TokenError::new(pos,
+                                "Bad char in alias name"));
+                            break 'tokenloop;
+                        }
+                    }
+                    if self.iter.position.offset - start.offset < 2 {
+                        self.error = Some(TokenError::new(start,
+                            "Alias name requires at least one character"));
+                        break;
+                    }
+                    self.add_token(Alias, start, self.iter.position);
+                }
+
                 // TODO: "|" // BlockScalar
                 // TODO: ">" // Folded Scalar
                 // TODO: "," // Flow Entry
@@ -593,4 +651,43 @@ fn test_comment() {
           (Comment, "#b\n"), (PlainString, "c")]);
     assert_eq!(simple_tokens(tokenize("  #a\nb")),
         ~[(Whitespace, "  "), (Comment, "#a\n"), (PlainString, "b")]);
+}
+
+#[test]
+fn test_tag() {
+    assert_eq!(simple_tokens(tokenize("!")),
+        ~[(Tag, "!")]);
+    assert_eq!(simple_tokens(tokenize("!a b")),
+        ~[(Tag, "!a"), (Whitespace, " "), (PlainString, "b")]);
+    let err = tokenize("!a[]").err().unwrap();
+    assert_eq!(format!("{}", err), "1:3: "
+        + "Bad char in tag name");
+}
+
+#[test]
+fn test_anchor() {
+    assert_eq!(simple_tokens(tokenize("&abc")),
+        ~[(Anchor, "&abc")]);
+    assert_eq!(simple_tokens(tokenize("&a b")),
+        ~[(Anchor, "&a"), (Whitespace, " "), (PlainString, "b")]);
+    let err = tokenize("&a[]").err().unwrap();
+    assert_eq!(format!("{}", err), "1:3: "
+        + "Bad char in anchor name");
+    let err = tokenize("&").err().unwrap();
+    assert_eq!(format!("{}", err), "1:1: "
+        + "Anchor name requires at least one character");
+}
+
+#[test]
+fn test_alias() {
+    assert_eq!(simple_tokens(tokenize("*abc")),
+        ~[(Alias, "*abc")]);
+    assert_eq!(simple_tokens(tokenize("*a b")),
+        ~[(Alias, "*a"), (Whitespace, " "), (PlainString, "b")]);
+    let err = tokenize("*a[]").err().unwrap();
+    assert_eq!(format!("{}", err), "1:3: "
+        + "Bad char in alias name");
+    let err = tokenize("*").err().unwrap();
+    assert_eq!(format!("{}", err), "1:1: "
+        + "Alias name requires at least one character");
 }

@@ -29,7 +29,7 @@ pub fn is_linebreak(ch: char) -> bool {
 }
 
 pub fn is_whitespace(ch: char) -> bool {
-    return ch == '\x20' || ch == '\x09';
+    return ch == '\x20' || ch == '\x09' || ch == '\r' || ch == '\n';
 }
 
 pub fn is_dec_digit(ch: char) -> bool {
