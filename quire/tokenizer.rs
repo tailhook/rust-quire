@@ -4,14 +4,14 @@ use std::str::CharOffsets;
 use std::iter::Peekable;
 use std::fmt::Show;
 use std::fmt::Formatter;
+use std::fmt::FormatError;
+use std::vec::FromVec;
 
-use chars::is_indicator;
-use chars::is_whitespace;
-use chars::is_printable;
-use chars::is_tag_char;
-use chars::is_flow_indicator;
-
-mod chars;
+use super::chars::is_indicator;
+use super::chars::is_whitespace;
+use super::chars::is_printable;
+use super::chars::is_tag_char;
+use super::chars::is_flow_indicator;
 
 #[deriving(Eq, Show)]
 enum TokenType {
@@ -55,7 +55,7 @@ impl TokenError {
 }
 
 impl Show for TokenError {
-    fn fmt(&self, fmt:&mut Formatter) -> IoResult<()> {
+    fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
         try!(self.position.line.fmt(fmt));
         try!(':'.fmt(fmt));
         try!(self.position.line_offset.fmt(fmt));
@@ -512,14 +512,15 @@ fn tokenize<'x, 'y>(data: &'x str) -> Result<Vec<Token<'x>>, TokenError> {
 }
 
 #[cfg(test)]
-fn simple_tokens<'a>(res: Result<Vec<Token>, TokenError>)
-    -> ~[(TokenType, &'a str)]
+fn simple_tokens<'x>(res: Result<Vec<Token<'x>>, TokenError>)
+    -> ~[(TokenType, &'x str)]
 {
     match res {
         Ok(vec) => {
-            return vec.iter().map(|&tok| {
+            return FromVec::<(TokenType, &str)>::from_vec(vec.iter().map(
+            |&tok| {
                 return (tok.kind, tok.value);
-            }).collect();
+            }).collect());
         }
         Err(value) => {
             fail!("Error: {}", value);
