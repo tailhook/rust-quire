@@ -1,20 +1,18 @@
 use std::io::IoResult;
 use std::vec::Vec;
+use std::vec::FromVec;
 use std::str::CharOffsets;
 use std::iter::Peekable;
-use std::fmt::Show;
-use std::fmt::Formatter;
-use std::fmt::FormatError;
-use std::vec::FromVec;
 
 use super::chars::is_indicator;
 use super::chars::is_whitespace;
 use super::chars::is_printable;
 use super::chars::is_tag_char;
 use super::chars::is_flow_indicator;
+use super::errors::TokenError;
 
 #[deriving(Eq, Show)]
-enum TokenType {
+pub enum TokenType {
     DocumentStart,
     DocumentEnd,
     Indent,
@@ -40,44 +38,20 @@ enum TokenType {
     Reserved,  // '@' or '`'
 }
 
-struct TokenError {
-    position: Pos,
-    error: &'static str,
+
+pub struct Pos {
+    pub indent: uint,
+    pub line: uint,
+    pub line_start: bool,
+    pub line_offset: uint,
+    pub offset: uint,
 }
 
-impl TokenError {
-    fn new(pos: Pos, err: &'static str) -> TokenError {
-        return TokenError {
-            position: pos,
-            error: err,
-            };
-    }
-}
-
-impl Show for TokenError {
-    fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
-        try!(self.position.line.fmt(fmt));
-        try!(':'.fmt(fmt));
-        try!(self.position.line_offset.fmt(fmt));
-        try!(": ".fmt(fmt));
-        try!(self.error.fmt(fmt));
-        return Ok(());
-    }
-}
-
-struct Pos {
-    indent: uint,
-    line: uint,
-    line_start: bool,
-    line_offset: uint,
-    offset: uint,
-}
-
-struct Token<'tok> {
-    kind: TokenType,
-    start: Pos,
-    end: Pos,
-    value: &'tok str,
+pub struct Token<'tok> {
+    pub kind: TokenType,
+    pub start: Pos,
+    pub end: Pos,
+    pub value: &'tok str,
 }
 
 struct YamlIter<'a> {
@@ -502,7 +476,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     }
 }
 
-fn tokenize<'x, 'y>(data: &'x str) -> Result<Vec<Token<'x>>, TokenError> {
+pub fn tokenize<'x>(data: &'x str) -> Result<Vec<Token<'x>>, TokenError> {
     let mut result: Vec<Token<'x>> = Vec::new();
     //let iter = data.char_indices();
     return match Tokenizer::new(&mut result, data).tokenize() {
