@@ -40,7 +40,8 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             Some(&tok) => tok,
         };
         let res = match tok.kind {
-            T::PlainString => Scalar(None, None, tok),
+            T::PlainString | T::SingleString | T::DoubleString
+              => Scalar(None, None, tok),
             _ => return Err(ParserError::new(
                 tok.start, tok.end, "Unexpected token")),
         };
