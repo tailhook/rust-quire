@@ -15,6 +15,7 @@ pub enum TokenType {
     DocumentStart,
     DocumentEnd,
     Indent,
+    Unindent,
     Whitespace,
     PlainString,
     SingleString,
@@ -66,6 +67,7 @@ struct Tokenizer<'a, 'b> {
     data: &'b str,
     iter: YamlIter<'b>,
     error: Option<TokenError>,
+    indent_levels: Vec<uint>,
 }
 
 impl<'a> YamlIter<'a> {
@@ -144,6 +146,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             data: data,
             iter: YamlIter::new(data),
             error: None,
+            indent_levels: vec!(0),
         }
     }
 
@@ -249,6 +252,33 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     }
 
     fn add_token(&mut self, kind: TokenType, start: Pos, end: Pos) {
+        if(kind != Whitespace && kind != Comment) {
+            // always have "0" at bottom of the stack so just unwrap it
+            let cur = *self.indent_levels.last().unwrap();
+            if start.indent > cur {
+                self.result.push(Token {
+                    kind: Indent,
+                    start: start,
+                    end: start,
+                    value: self.data.slice(start.offset, start.offset),
+                    });
+                self.indent_levels.push(start.indent);
+            } else if start.indent < cur {
+                self.result.push(Token {
+                    kind: Unindent,
+                    start: start,
+                    end: start,
+                    value: self.data.slice(start.offset, start.offset),
+                    });
+                while *self.indent_levels.last().unwrap() > start.indent {
+                    self.indent_levels.pop();
+                }
+                if *self.indent_levels.last().unwrap() != start.indent {
+                    self.error = Some(TokenError::new(start,
+                        "Unindent doesn't match any outer indentation level"));
+                }
+            }
+        }
         self.result.push(Token {
             kind: kind,
             start: start,
@@ -259,7 +289,10 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
 
 
     fn tokenize(&mut self) -> Option<TokenError> {
-        'tokenloop: loop {
+        'tokenloop: loop  {
+            if !self.error.is_none() {
+                break;
+            }
             match self.iter.next() {
                 Some((start, '-')) => { // list element, doc start, plainstring
                     match self.iter.next() {
@@ -489,6 +522,17 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 None => break,
             }
         }
+        if self.indent_levels.len() > 1 {
+            let pos = self.iter.position;
+            for _ in range(0, (self.indent_levels.len()-1)) {
+                self.result.push(Token {
+                    kind: Unindent,
+                    start: pos,
+                    end: pos,
+                    value: self.data.slice(pos.offset, pos.offset),
+                    });
+            }
+        }
         return self.error.or(self.iter.error);
     }
 }
@@ -587,12 +631,12 @@ fn test_plain() {
         vec!((PlainString, "a#bc")));
     let tokens = tokenize(" a\nbc");
     assert_eq!(simple_tokens(tokens),
-        vec!((Whitespace, " "), (PlainString, "a"),
-             (Whitespace, "\n"), (PlainString, "bc")));
+        vec!((Whitespace, " "), (Indent, ""), (PlainString, "a"),
+             (Whitespace, "\n"), (Unindent, ""), (PlainString, "bc")));
     let tokens = tokenize("a:\n a\n bc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, "\n "),
-             (PlainString, "a\n bc")));
+             (Indent, ""), (PlainString, "a\n bc"), (Unindent, "")));
     let tokens = tokenize("a: a\nbc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, " "),
