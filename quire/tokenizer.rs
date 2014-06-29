@@ -12,6 +12,7 @@ use super::errors::TokenError;
 
 #[deriving(PartialEq, Show)]
 pub enum TokenType {
+    Eof,
     DocumentStart,
     DocumentEnd,
     Indent,
@@ -522,8 +523,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 None => break,
             }
         }
+        let pos = self.iter.position;
         if self.indent_levels.len() > 1 {
-            let pos = self.iter.position;
             for _ in range(0, (self.indent_levels.len()-1)) {
                 self.result.push(Token {
                     kind: Unindent,
@@ -533,6 +534,12 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     });
             }
         }
+        self.result.push(Token {
+            kind: Eof,
+            start: pos,
+            end: pos,
+            value: self.data.slice(pos.offset, pos.offset),
+            });
         return self.error.or(self.iter.error);
     }
 }
@@ -552,7 +559,8 @@ fn simple_tokens<'x>(res: Result<Vec<Token<'x>>, TokenError>)
 {
     match res {
         Ok(vec) => {
-            return vec.iter().map(
+            assert_eq!(vec.last().unwrap().kind, Eof);
+            return vec.slice(0, vec.len()-1).iter().map(
             |&tok| {
                 return (tok.kind, tok.value);
             }).collect();
