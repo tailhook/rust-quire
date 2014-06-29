@@ -1,6 +1,7 @@
 use std::from_str::FromStr;
 use std::string::String;
 
+use collections::treemap::TreeMap;
 use serialize::json::{ToJson, Json};
 use J = serialize::json;
 
@@ -10,99 +11,39 @@ use super::parser::{Map, List, Scalar, Null, Alias};
 use super::tokenizer;
 
 
-impl<'a> T::Token<'a> {
-    fn plain_value(&self) -> String {
-        let mut res = String::with_capacity(self.value.len());
-        match self.kind {
-            T::PlainString => { res.push_str(self.value); }
-            T::DoubleString => {
-                let mut iter = self.value.chars();
-                assert_eq!(iter.next(), Some('"'));
-                loop {
-                    match iter.next() {
-                        None => break,
-                        Some('\\') => {
-                            match iter.next() {
-                                None => res.push_char('\\'),  // fixme
-                                Some('0') => res.push_char('\0'),
-                                Some('a') => res.push_char('\x07'),
-                                Some('b') => res.push_char('\x08'),
-                                Some('t') | Some('\t') => res.push_char('\t'),
-                                Some('n') => res.push_char('\n'),
-                                Some('r') => res.push_char('\r'),
-                                Some('v') => res.push_char('\x0b'),
-                                Some('f') => res.push_char('\x0c'),
-                                Some('e') => res.push_char('\x1b'),
-                                Some(' ') => res.push_char(' '),
-                                Some('"') => res.push_char('"'),
-                                Some('/') => res.push_char('/'),
-                                Some('\\') => res.push_char('\\'),
-                                Some('N') => res.push_char('\x85'),
-                                Some('_') => res.push_char('\xa0'),
-                                Some('L') => res.push_char('\u2028'),
-                                Some('P') => res.push_char('\u2029'),
-                                Some('x') => {
-                                    unimplemented!();
-                                },
-                                Some('u') => {
-                                    unimplemented!();
-                                },
-                                Some('U') => {
-                                    unimplemented!();
-                                },
-                                Some(x) => {
-                                    res.push_char('\\');
-                                    res.push_char(x);
-                                }
-                            }
-                        }
-                        Some('"') => break,
-                        Some(x) => res.push_char(x),
-                    }
-                }
-            },
-            T::SingleString => {
-                let mut iter = self.value.chars();
-                assert_eq!(iter.next(), Some('\''));
-                loop {
-                    match iter.next() {
-                        None => break,
-                        Some('\'') => {
-                            match iter.next() {
-                                None => break,
-                                Some('\'') => res.push_char('\''),
-                                Some(x) => unreachable!(),
-                            }
-                        }
-                        Some(x) => res.push_char(x),
-                    }
-                }
-            }
-            _ => unreachable!(),
-        }
-        return res;
-    }
-}
-
 impl<'a> ToJson for Node<'a> {
     fn to_json(&self) -> Json {
         return match *self {
             Map(_, _, ref tm, _) => {
-                unimplemented!();
+                let mut ob = TreeMap::new();
+                for (k, v) in tm.iter() {
+                    match *k {
+                        Scalar(_, _, ref val, _) => {
+                            ob.insert(val.clone(), v.to_json());
+                        }
+                        // Unfortunately we don't have a way to report an
+                        // error, should we serialized key to string?
+                        _ => unimplemented!(),
+                    }
+                }
+                J::Object(box ob)
             },
             List(_, _, ref vec, _) => {
                 unimplemented!();
             },
             Null(_, _) => J::Null,
             Alias(_) => unimplemented!(),
-            Scalar(_, _, ref tok) => {
+            Scalar(_, _, ref val, ref tok) => {
                 if tok.kind == T::PlainString {
                     match FromStr::from_str(tok.value) {
                         Some(x) => return J::Number(x),
                         None => {}
                     }
+                    if val.as_slice() == "~" || val.as_slice() == "null" {
+                        return J::Null;
+                    }
                 }
-                return J::String(tok.plain_value());
+                J::String(val.clone())
             }
         };
     }
@@ -127,6 +68,16 @@ fn test_to_json_1() {
 }
 
 #[test]
+fn test_to_json_str_1_sq() {
+    assert_yaml_eq_json("'1'", "\"1\"");
+}
+
+#[test]
+fn test_to_json_str_1_dq() {
+    assert_yaml_eq_json("\"1\"", "\"1\"");
+}
+
+#[test]
 fn test_to_json_str() {
     assert_yaml_eq_json("test", "\"test\"");
 }
@@ -139,4 +90,45 @@ fn test_to_json_str_quoted() {
 #[test]
 fn test_to_json_str_apos() {
     assert_yaml_eq_json("'abc'", "\"abc\"");
+}
+
+#[test]
+fn test_to_json_map1() {
+    assert_yaml_eq_json("a: b", "{\"a\": \"b\"}");
+}
+
+#[test]
+fn test_to_json_map2() {
+    assert_yaml_eq_json("1: 2", "{\"1\": 2}");
+}
+
+#[test]
+fn test_to_json_map3() {
+    assert_yaml_eq_json("'a':", "{\"a\": null}");
+}
+
+#[test]
+fn test_to_json_map4() {
+    assert_yaml_eq_json("\"a\":  ", "{\"a\": null}");
+}
+
+#[test]
+fn test_to_json_map5() {
+    assert_yaml_eq_json("abc: ~", "{\"abc\": null}");
+}
+
+#[test]
+fn test_to_json_two_keys() {
+    assert_yaml_eq_json("a: 1\nb: 2", "{\"a\": 1, \"b\": 2}");
+}
+
+#[test]
+fn test_to_json_nested() {
+    assert_yaml_eq_json("a:\n b: 2", "{\"a\": {\"b\": 2}}");
+}
+
+#[test]
+fn test_to_json_nested_2() {
+    assert_yaml_eq_json("a:\n b: 2\n c: 3\nd: 4",
+        "{\"a\": {\"b\": 2, \"c\": 3}, \"d\": 4}");
 }

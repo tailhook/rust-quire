@@ -15,8 +15,9 @@ use T = super::tokenizer;
 type Aliases<'x> = TreeMap<&'x str, &'x Node<'x>>;
 
 pub struct TokenIter<'a> {
+    index: uint,
     peeked: RingBuf<&'a Token<'a>>,
-    iter: Items<'a, Token<'a>>,
+    tokens: &'a[Token<'a>],
     eof_token: &'a Token<'a>,
 }
 
@@ -25,47 +26,117 @@ impl<'a> TokenIter<'a> {
         let last = src.last().expect("Non-empty document expected");
         assert!(last.kind == T::Eof);
         return TokenIter {
+            index: 0,
             peeked: RingBuf::new(),
-            iter: src.iter(),
+            tokens: src.as_slice(),
             eof_token: last,
         };
     }
-    fn peek(&mut self, num: uint) -> &'a Token<'a> {
-        'peeking: loop {
-            if self.peeked.len() > num {
-                break;
-            }
-            for tok in self.iter {
-                if tok.kind == T::Whitespace || tok.kind == T::Comment {
-                    continue;
+    fn peek(&mut self, index: uint) -> &'a Token<'a> {
+        let mut num = index;
+        for idx in range(self.index, self.tokens.len()) {
+            let tok = self.tokens.get(idx).unwrap();
+            match tok.kind {
+                T::Whitespace | T::Comment => continue,
+                T::Eof => return self.eof_token,
+                _ => {
+                    if num == 0 {
+                        return tok;
+                    }
+                    num -= 1;
                 }
-                self.peeked.push_back(tok);
-                continue 'peeking;
             }
-            self.peeked.push_back(self.eof_token);
         }
-        return *self.peeked.get(num);
+        return self.eof_token;
     }
 
     fn next(&mut self) -> Option<&'a Token<'a>> {
-        if self.peeked.len() > 0 {
-            let res = self.peeked.pop_front().unwrap();
-            if res.kind == T::Eof {
-                return None;
+        loop {
+            let tok = match self.tokens.get(self.index) {
+                None => return None,
+                Some(tok) => tok,
+            };
+            self.index += 1;
+            match tok.kind {
+                T::Whitespace | T::Comment => continue,
+                T::Eof => return None,
+                _ => return Some(tok),
             }
-            return Some(res);
-        } else {
-            for tok in self.iter {
-                if tok.kind == T::Whitespace || tok.kind == T::Comment {
-                    continue;
-                }
-                if tok.kind == T::Eof  {
-                    return None;
-                }
-                return Some(tok);
-            }
-            return None;
         }
+    }
+}
+
+impl<'a> T::Token<'a> {
+    fn plain_value(&self) -> String {
+        let mut res = String::with_capacity(self.value.len());
+        match self.kind {
+            T::PlainString => { res.push_str(self.value); }
+            T::DoubleString => {
+                let mut iter = self.value.chars();
+                assert_eq!(iter.next(), Some('"'));
+                loop {
+                    match iter.next() {
+                        None => break,
+                        Some('\\') => {
+                            match iter.next() {
+                                None => res.push_char('\\'),  // fixme
+                                Some('0') => res.push_char('\0'),
+                                Some('a') => res.push_char('\x07'),
+                                Some('b') => res.push_char('\x08'),
+                                Some('t') | Some('\t') => res.push_char('\t'),
+                                Some('n') => res.push_char('\n'),
+                                Some('r') => res.push_char('\r'),
+                                Some('v') => res.push_char('\x0b'),
+                                Some('f') => res.push_char('\x0c'),
+                                Some('e') => res.push_char('\x1b'),
+                                Some(' ') => res.push_char(' '),
+                                Some('"') => res.push_char('"'),
+                                Some('/') => res.push_char('/'),
+                                Some('\\') => res.push_char('\\'),
+                                Some('N') => res.push_char('\x85'),
+                                Some('_') => res.push_char('\xa0'),
+                                Some('L') => res.push_char('\u2028'),
+                                Some('P') => res.push_char('\u2029'),
+                                Some('x') => {
+                                    unimplemented!();
+                                },
+                                Some('u') => {
+                                    unimplemented!();
+                                },
+                                Some('U') => {
+                                    unimplemented!();
+                                },
+                                Some(x) => {
+                                    res.push_char('\\');
+                                    res.push_char(x);
+                                }
+                            }
+                        }
+                        Some('"') => break,
+                        Some(x) => res.push_char(x),
+                    }
+                }
+            },
+            T::SingleString => {
+                let mut iter = self.value.chars();
+                assert_eq!(iter.next(), Some('\''));
+                loop {
+                    match iter.next() {
+                        None => break,
+                        Some('\'') => {
+                            match iter.next() {
+                                None => break,
+                                Some('\'') => res.push_char('\''),
+                                Some(x) => unreachable!(),
+                            }
+                        }
+                        Some(x) => res.push_char(x),
+                    }
+                }
+            }
+            _ => unreachable!(),
+        }
+        return res;
     }
 }
 
@@ -81,25 +152,138 @@ pub enum Node<'a> {
     Map(Option<&'a str>, Option<&'a str>,
         TreeMap<Node<'a>, Node<'a>>, &'a[Token<'a>]),
     List(Option<&'a str>, Option<&'a str>, Vec<Node<'a>>, &'a[Token<'a>]),
-    Scalar(Option<&'a str>, Option<&'a str>, &'a Token<'a>),
+    Scalar(Option<&'a str>, Option<&'a str>, String,
+        &'a Token<'a>),
     Null(Option<&'a str>, Option<&'a str>),
     Alias(&'a str),
+}
+
+
+
+impl<'a> PartialOrd for Node<'a> {
+    fn lt(&self, other: &Node) -> bool {
+        return self.cmp(other) == Less;
+    }
+}
+impl<'a> Ord for Node<'a> {
+    fn cmp(&self, other: &Node) -> Ordering {
+        return match (self, other) {
+            (&Scalar(_, _, ref a, _), &Scalar(_, _, ref b, _)) => a.cmp(b),
+            (&Null(_, _), &Scalar(_, _, _, _)) => Less,
+            (&Scalar(_, _, _, _), &Null(_, _)) => Greater,
+            (&Null(_, _), &Null(_, _)) => Equal,
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl<'a> Eq for Node<'a> {}
+impl<'a> PartialEq for Node<'a> {
+    fn eq(&self, other: &Node) -> bool {
+        return match (self, other) {
+            (&Scalar(_, _, ref a, _), &Scalar(_, _, ref b, _)) => a == b,
+            (&Null(_, _), &Scalar(_, _, _, _)) => false,
+            (&Scalar(_, _, _, _), &Null(_, _)) => false,
+            (&Null(_, _), &Null(_, _)) => true,
+            _ => unimplemented!(),
+        }
+    }
+}
+
+fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+    -> Result<Node<'x>, ParserError>
+{
+    let begin = tokiter.index;
+    let mut children = TreeMap::new();
+    loop {
+        // TODO(tailhook) implement complex keys
+        // TODO(tailhook) implement aliases and anchors
+        let ktoken = tokiter.peek(0);
+        let key = match ktoken.kind {
+            T::Eof => break,
+            T::Unindent => break,
+            T::PlainString | T::SingleString | T::DoubleString =>
+                Scalar(None, None, ktoken.plain_value(), ktoken),
+            _ => return Err(ParserError::new(
+                ktoken.start, ktoken.end, "Unexpected token")),
+        };
+        tokiter.next().unwrap();
+        let delim = tokiter.peek(0);
+        match delim.kind {
+            T::MappingValue => {}
+            T::Eof => return Err(ParserError::new(
+                delim.start, delim.end, "Unexpected end of file")),
+            _ => return Err(ParserError::new(
+                delim.start, delim.end, "Unexpected token")),
+        }
+        tokiter.next().unwrap();
+        let tok = tokiter.peek(0);
+        match tok.kind {
+            T::Indent => {
+                tokiter.next().unwrap();
+                let value = match parse_node(tokiter, aliases) {
+                    Ok(value) => value,
+                    Err(err) => return Err(err),
+                };
+                if !children.insert(key, value) {
+                    return Err(ParserError::new(
+                        ktoken.start, ktoken.end, "Duplicate key"));
+                }
+                let etok = tokiter.peek(0);
+                match etok.kind {
+                    T::Unindent => {}
+                    _ => return Err(ParserError::new(
+                        etok.start, etok.end, "Unexpected token")),
+                }
+                tokiter.next();
+            }
+            T::PlainString | T::SingleString | T::DoubleString => {
+                let value;
+                if ktoken.end.line == tok.start.line {
+                    value = match parse_node(tokiter, aliases) {
+                        Ok(value) => value,
+                        Err(err) => return Err(err),
+                    };
+                } else {
+                    value = Null(None, None);
+                }
+                if !children.insert(key, value) {
+                    return Err(ParserError::new(
+                        ktoken.start, ktoken.end, "Duplicate key"));
+                }
+            }
+            T::Eof | T::Unindent => {
+                children.insert(key, Null(None, None));
+                break;
+            }
+            _ => return Err(ParserError::new(
+                tok.start, tok.end, "Unexpected token")),
+        }
+    }
+    return Ok(Map(None, None, children,
+        tokiter.tokens.slice(begin, tokiter.index)));
 }
 
 fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     -> Result<Node<'x>, ParserError>
 {
-    loop {
-        let tok = tokiter.peek(0);
-        let res = match tok.kind {
-            T::PlainString | T::SingleString | T::DoubleString
-              => Scalar(None, None, tok),
-            _ => return Err(ParserError::new(
-                tok.start, tok.end, "Unexpected token")),
-        };
-        tokiter.next();
-        return Ok(res);
-    }
+    let tok = tokiter.peek(0);
+    match tok.kind {
+        T::PlainString | T::SingleString | T::DoubleString => {
+            if tok.start.line == tok.end.line {
+                // Only one-line scalars are allowed to be mapping keys
+                let val = tokiter.peek(1);
+                if (val.kind == T::MappingValue &&
+                    val.start.line == tok.end.line) {
+                    return parse_map(tokiter, aliases);
+                }
+            }
+            tokiter.next();
+            return Ok(Scalar(None, None, tok.plain_value(), tok));
+        }
+        _ => return Err(ParserError::new(
+            tok.start, tok.end, "Unexpected token")),
+    };
 }
 
 fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
