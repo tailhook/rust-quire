@@ -1,6 +1,5 @@
 use std::slice::Items;
 use std::iter::Peekable;
-use std::vec::FromVec;
 
 use collections::treemap::TreeMap;
 
@@ -17,7 +16,7 @@ type Aliases<'x> = TreeMap<&'x str, &'x Node<'x>>;
 pub struct Directive<'a>(&'a Token<'a>);
 
 pub struct Document<'a> {
-    pub directives: ~[Directive<'a>],
+    pub directives: Vec<Directive<'a>>,
     pub root: Node<'a>,
     pub aliases: TreeMap<&'a str, &'a Node<'a>>,
 }
@@ -51,14 +50,12 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 }
 
 fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
-    -> Result<(~[Directive], Node<'x>), ParserError>
+    -> Result<(Vec<Directive<'x>>, Node<'x>), ParserError>
 {
     let mut directives = Vec::new();
     loop {
         match tokiter.peek() {
-            None => return Ok(
-                (FromVec::<Directive>::from_vec(directives),
-                 Null(None, None))),
+            None => return Ok((directives, Null(None, None))),
             Some(tok) => {
                 match tok.kind {
                     T::Directive => directives.push(Directive(*tok)),
@@ -86,7 +83,7 @@ fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             }
         }
     }
-    return Ok((FromVec::<Directive>::from_vec(directives), res));
+    return Ok((directives, res));
 }
 
 

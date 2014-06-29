@@ -1,4 +1,5 @@
 use std::from_str::FromStr;
+use std::string::String;
 
 use serialize::json::{ToJson, Json};
 use J = serialize::json;
@@ -10,8 +11,8 @@ use super::tokenizer;
 
 
 impl<'a> T::Token<'a> {
-    fn plain_value(&self) -> StrBuf {
-        let mut res = StrBuf::with_capacity(self.value.len());
+    fn plain_value(&self) -> String {
+        let mut res = String::with_capacity(self.value.len());
         match self.kind {
             T::PlainString => { res.push_str(self.value); }
             T::DoubleString => {
