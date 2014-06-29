@@ -190,6 +190,58 @@ impl<'a> PartialEq for Node<'a> {
     }
 }
 
+fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+    -> Result<Node<'x>, ParserError>
+{
+    let begin = tokiter.index;
+    let mut children = Vec::new();
+    loop {
+        let marker = tokiter.peek(0);
+        match marker.kind {
+            T::Eof => break,
+            T::Unindent => break,
+            T::SequenceEntry => {}
+            _ => return Err(ParserError::new(
+                marker.start, marker.end, "Unexpected token")),
+        };
+        tokiter.next().unwrap();
+        let tok = tokiter.peek(0);
+        match tok.kind {
+            T::SequenceEntry if tok.start.indent == marker.start.indent => {
+                children.push(Null(None, None));
+            }
+            T::Eof | T::Unindent => {
+                children.push(Null(None, None));
+                break;
+            }
+            T::Indent => {
+                tokiter.next().unwrap();
+                let value = match parse_node(tokiter, aliases) {
+                    Ok(value) => value,
+                    Err(err) => return Err(err),
+                };
+                children.push(value);
+                let etok = tokiter.peek(0);
+                match etok.kind {
+                    T::Unindent => {}
+                    _ => return Err(ParserError::new(
+                        etok.start, etok.end, "Unexpected token")),
+                }
+                tokiter.next().unwrap();
+            }
+            _ => {
+                let value = match parse_node(tokiter, aliases) {
+                    Ok(value) => value,
+                    Err(err) => return Err(err),
+                };
+                children.push(value);
+            }
+        }
+    }
+    return Ok(List(None, None, children,
+        tokiter.tokens.slice(begin, tokiter.index)));
+}
+
 fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     -> Result<Node<'x>, ParserError>
 {
@@ -280,6 +332,9 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             }
             tokiter.next();
             return Ok(Scalar(None, None, tok.plain_value(), tok));
+        }
+        T::SequenceEntry => {
+            return parse_list(tokiter, aliases);
         }
         _ => return Err(ParserError::new(
             tok.start, tok.end, "Unexpected token")),

@@ -265,6 +265,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     });
                 self.indent_levels.push(start.indent);
             } else if start.indent < cur {
+                println!("Indent {}, cur {}", start.indent, cur);
                 self.result.push(Token {
                     kind: Unindent,
                     start: start,
@@ -308,6 +309,15 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         }
                         Some((cur, ' ')) | Some((cur, '\t'))
                         | Some((cur, '\r')) | Some((cur, '\n')) => {
+                            //  For handling nested maps and lists
+                            //  indentation must be adjusted to the level
+                            //  of the end of whitespace
+                            if self.iter.position.line == start.line {
+                                //  Line offset is human-readable so 1-based
+                                //  as opposed to indentation
+                                self.iter.position.indent =
+                                    self.iter.position.line_offset - 1;
+                            }
                             self.add_token(SequenceEntry, start, cur);
                             self.iter = self.skip_whitespace();
                             let end = self.iter.position;
@@ -316,7 +326,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         Some(_) => {
                             self.read_plain(start);
                         }
-                        None => { // list element at end of stream
+                        None => {
                             let end = self.iter.position;
                             self.add_token(SequenceEntry, start, end);
                             break;
@@ -525,7 +535,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
         }
         let pos = self.iter.position;
         if self.indent_levels.len() > 1 {
-            for _ in range(0, (self.indent_levels.len()-1)) {
+            for _ in range(0, self.indent_levels.len() - 1) {
                 self.result.push(Token {
                     kind: Unindent,
                     start: pos,
@@ -593,7 +603,25 @@ fn test_list() {
     let tokens = tokenize("- something");
     assert_eq!(simple_tokens(tokens),
         vec!((SequenceEntry, "-"), (Whitespace, " "),
-            (PlainString, "something")));
+             (Indent, ""), (PlainString, "something"), (Unindent, "")));
+    let tokens = tokenize("- -");
+    assert_eq!(simple_tokens(tokens),
+        vec!((SequenceEntry, "-"), (Whitespace, " "),
+             (Indent, ""), (SequenceEntry, "-"), (Unindent, "")));
+}
+
+#[test]
+fn test_list_map() {
+    let tokens = tokenize("- a: 1\n  b: 2");
+    assert_eq!(simple_tokens(tokens),
+        vec!((SequenceEntry, "-"), (Whitespace, " "),
+             (Indent, ""),
+             (PlainString, "a"), (MappingValue, ":"),
+             (Whitespace, " "), (PlainString, "1"),
+             (Whitespace, "\n  "),
+             (PlainString, "b"), (MappingValue, ":"),
+             (Whitespace, " "), (PlainString, "2"),
+             (Unindent, "")));
 }
 
 #[test]

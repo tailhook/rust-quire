@@ -28,9 +28,9 @@ impl<'a> ToJson for Node<'a> {
                 }
                 J::Object(box ob)
             },
-            List(_, _, ref vec, _) => {
-                unimplemented!();
-            },
+            List(_, _, ref lst, _) => {
+                J::List(lst.iter().map(|ref val| val.to_json()).collect())
+            }
             Null(_, _) => J::Null,
             Alias(_) => unimplemented!(),
             Scalar(_, _, ref val, ref tok) => {
@@ -69,22 +69,22 @@ fn test_to_json_1() {
 
 #[test]
 fn test_to_json_str_1_sq() {
-    assert_yaml_eq_json("'1'", "\"1\"");
+    assert_yaml_eq_json("'1'", r#""1""#);
 }
 
 #[test]
 fn test_to_json_str_1_dq() {
-    assert_yaml_eq_json("\"1\"", "\"1\"");
+    assert_yaml_eq_json(r#""1""#, r#""1""#);
 }
 
 #[test]
 fn test_to_json_str() {
-    assert_yaml_eq_json("test", "\"test\"");
+    assert_yaml_eq_json("test", r#""test""#);
 }
 
 #[test]
 fn test_to_json_str_quoted() {
-    assert_yaml_eq_json("\"abc\"", "\"abc\"");
+    assert_yaml_eq_json(r#""abc""#, r#""abc""#);
 }
 
 #[test]
@@ -131,4 +131,60 @@ fn test_to_json_nested() {
 fn test_to_json_nested_2() {
     assert_yaml_eq_json("a:\n b: 2\n c: 3\nd: 4",
         "{\"a\": {\"b\": 2, \"c\": 3}, \"d\": 4}");
+}
+
+
+#[test]
+fn test_to_json_list_1() {
+    assert_yaml_eq_json("-", "[null]");
+}
+
+#[test]
+fn test_to_json_list_2() {
+    assert_yaml_eq_json("- 1", "[1]");
+}
+
+#[test]
+fn test_to_json_list_3() {
+    assert_yaml_eq_json("- '1'", "[\"1\"]");
+}
+
+#[test]
+fn test_to_json_list_4() {
+    assert_yaml_eq_json("-\n-", "[null, null]");
+}
+
+#[test]
+fn test_to_json_list_5() {
+    assert_yaml_eq_json("- ab\n- cd", "[\"ab\", \"cd\"]");
+}
+
+#[test]
+fn test_to_json_list_6() {
+    assert_yaml_eq_json("-\n -", "[[null]]");
+}
+
+#[test]
+fn test_to_json_list_7() {
+    assert_yaml_eq_json("-\n- -", "[null, [null]]");
+}
+
+#[test]
+fn test_to_json_list_8() {
+    assert_yaml_eq_json("-\n - a\n - b", "[[\"a\", \"b\"]]");
+}
+
+#[test]
+fn test_to_json_list_map() {
+    assert_yaml_eq_json("- a:", r#"[{"a": null}]"#);
+}
+
+#[test]
+fn test_to_json_list_map2() {
+    assert_yaml_eq_json("- a: 1\n  b: 2", r#"[{"a": 1, "b": 2}]"#);
+}
+
+#[test]
+fn test_to_json_list_map3() {
+    assert_yaml_eq_json("- a: 1\n- b: 2", r#"[{"a": 1}, {"b": 2}]"#);
 }
