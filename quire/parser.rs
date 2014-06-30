@@ -198,11 +198,8 @@ fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     loop {
         let marker = tokiter.peek(0);
         match marker.kind {
-            T::Eof => break,
-            T::Unindent => break,
             T::SequenceEntry => {}
-            _ => return Err(ParserError::new(
-                marker.start, marker.end, "Unexpected token")),
+            _ => break,
         };
         tokiter.next().unwrap();
         let tok = tokiter.peek(0);
@@ -299,6 +296,18 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 } else {
                     value = Null(None, None);
                 }
+                if !children.insert(key, value) {
+                    return Err(ParserError::new(
+                        ktoken.start, ktoken.end, "Duplicate key"));
+                }
+            }
+            T::SequenceEntry if tok.start.line > delim.end.line => {
+                // Allow sequences on the same indentation level as a key in
+                // mapping
+                let value = match parse_list(tokiter, aliases) {
+                    Ok(value) => value,
+                    Err(err) => return Err(err),
+                };
                 if !children.insert(key, value) {
                     return Err(ParserError::new(
                         ktoken.start, ktoken.end, "Duplicate key"));

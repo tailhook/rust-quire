@@ -123,6 +123,12 @@ fn test_to_json_two_keys() {
 }
 
 #[test]
+fn test_to_json_two_nested() {
+    assert_yaml_eq_json("a:\n b:\n  c:\nd:",
+        r#"{"a": {"b": {"c": null}}, "d": null}"#);
+}
+
+#[test]
 fn test_to_json_nested() {
     assert_yaml_eq_json("a:\n b: 2", "{\"a\": {\"b\": 2}}");
 }
@@ -187,4 +193,14 @@ fn test_to_json_list_map2() {
 #[test]
 fn test_to_json_list_map3() {
     assert_yaml_eq_json("- a: 1\n- b: 2", r#"[{"a": 1}, {"b": 2}]"#);
+}
+
+#[test]
+fn test_to_json_map_list_1() {
+    assert_yaml_eq_json("a:\n-", r#"{"a": [null]}"#);
+}
+
+#[test]
+fn test_to_json_map_list_2() {
+    assert_yaml_eq_json("a:\n -", r#"{"a": [null]}"#);
 }

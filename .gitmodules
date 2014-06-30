@@ -1,0 +1,3 @@
+[submodule "rust-argparse"]
+	path = rust-argparse
+	url = https://github.com/tailhook/rust-argparse.git

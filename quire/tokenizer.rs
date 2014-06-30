@@ -265,14 +265,13 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     });
                 self.indent_levels.push(start.indent);
             } else if start.indent < cur {
-                println!("Indent {}, cur {}", start.indent, cur);
-                self.result.push(Token {
-                    kind: Unindent,
-                    start: start,
-                    end: start,
-                    value: self.data.slice(start.offset, start.offset),
-                    });
                 while *self.indent_levels.last().unwrap() > start.indent {
+                    self.result.push(Token {
+                        kind: Unindent,
+                        start: start,
+                        end: start,
+                        value: self.data.slice(start.offset, start.offset),
+                        });
                     self.indent_levels.pop();
                 }
                 if *self.indent_levels.last().unwrap() != start.indent {
@@ -830,4 +829,16 @@ fn test_alias() {
     let err = tokenize("*").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:1: \
         Alias name requires at least one character");
+}
+
+#[test]
+fn test_nested() {
+    assert_eq!(simple_tokens(tokenize("a:\n b:\n  c:\nd:")),
+        vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, "\n "),
+             (Indent, ""),
+             (PlainString, "b"), (MappingValue, ":"), (Whitespace, "\n  "),
+             (Indent, ""),
+             (PlainString, "c"), (MappingValue, ":"), (Whitespace, "\n"),
+             (Unindent, ""), (Unindent, ""),
+             (PlainString, "d"), (MappingValue, ":")));
 }
