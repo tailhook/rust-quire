@@ -196,7 +196,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         // as much
                         let niter = self.skip_whitespace();
                         self.iter = niter;
-                        if niter.position.indent >= minindent {
+                        if (pos.line == niter.position.line ||
+                            niter.position.indent >= minindent) {
                             match self.iter.chars.peek() {
                                 Some(&(_, '#')) => {}
                                 _ => { continue; }
@@ -676,6 +677,14 @@ fn test_plain() {
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, " "),
              (PlainString, "a"), (Whitespace, "\n"), (PlainString, "bc")));
+}
+
+#[test]
+fn test_plain_words() {
+    let tokens = tokenize("a: a b");
+    assert_eq!(simple_tokens(tokens),
+        vec!((PlainString, "a"), (MappingValue, ":"),
+             (Whitespace, " "), (PlainString, "a b")));
 }
 
 #[test]
