@@ -43,6 +43,7 @@ mod State {
 mod Line {
     pub enum State {
         Start,
+        AfterIndent,  // Like Start, but already indented
         AfterScalar,  // Means, insert newline unless you emitting comment
     }
 }
@@ -130,13 +131,17 @@ impl<'a> Context<'a> {
             L::Start => {
                 return Ok(());
             }
-            L::AfterScalar => {
+            L::AfterScalar | L::AfterIndent => {
                 self.line = L::Start;
                 return self.stream.write_char('\n');
             }
         }
     }
     fn ensure_indented(&mut self) -> IoResult<()> {
+        match self.line {
+            L::AfterIndent => return Ok(()),
+            _ => {}
+        }
         self.ensure_line_start();
         for i in range(0, self.cur_indent) {
             try!(self.stream.write_char(' '));
@@ -167,6 +172,16 @@ impl<'a> Context<'a> {
                 try!(self.stream.write_str(": "));
                 try!(self.emit_scalar(style, value));
                 S::MapKey }
+            (S::MapSimpleKeyValue, MapStart(tag, anchor)) => {
+                try!(self.stream.write_char(':'));
+                self.line = L::AfterScalar;
+                self.push_indent(S::MapKey);
+                S::MapKey }
+            (S::MapSimpleKeyValue, SeqStart(tag, anchor)) => {
+                try!(self.stream.write_char(':'));
+                self.line = L::AfterScalar;
+                self.push_indent(S::MapKey);
+                S::SeqItem }
             (S::MapKey, MapEnd) => {
                 let nstate = self.pop_indent();
                 match nstate {
@@ -182,6 +197,12 @@ impl<'a> Context<'a> {
                 try!(self.stream.write_str("- "));
                 try!(self.emit_scalar(style, value));
                 S::SeqItem }
+            (S::SeqItem, MapStart(tag, anchor)) => {
+                try!(self.ensure_indented());
+                try!(self.stream.write_str("- "));
+                self.line = L::AfterIndent;
+                self.push_indent(S::SeqItem);
+                S::MapKey }
             (S::SeqItem, SeqEnd) => {
                 let nstate = self.pop_indent();
                 match nstate {
@@ -296,6 +317,21 @@ fn yaml_map() {
 }
 
 #[test]
+fn yaml_map_map() {
+    assert_yaml_eq_yaml("a:\n b: c", "a:\n  b: c\n");
+}
+
+#[test]
 fn yaml_list() {
     assert_yaml_eq_yaml("- a\n- b", "- a\n- b\n");
+}
+
+#[test]
+fn yaml_map_list() {
+    assert_yaml_eq_yaml("a:\n- b\n- c", "a:\n- b\n- c\n");
+}
+
+#[test]
+fn yaml_list_map() {
+    assert_yaml_eq_yaml("- a: b\n  c: d", "- a: b\n  c: d\n");
 }
