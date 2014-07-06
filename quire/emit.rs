@@ -2,8 +2,12 @@ use std::io::IoResult;
 use std::str::from_utf8;
 #[cfg(test)] use std::io::MemWriter;
 
+use super::parser::Node;
+#[cfg(test)] use super::parser::parse;
+
 use S = self::State;
 use L = self::Line;
+use N = super::parser;  // Node enum constants
 
 type Tag<'a> = &'a str;
 type Anchor<'a> = &'a str;
@@ -110,18 +114,18 @@ impl<'a> Context<'a> {
         };
     }
 
-    pub fn push_indent(&mut self, state: S::Opcode) {
+    fn push_indent(&mut self, state: S::Opcode) {
         // TODO(tailhook) allow to custimize indent width at each nesting level
         self.stack.push(state);
         self.cur_indent = (self.stack.len() - 1) * 2;
     }
-    pub fn pop_indent(&mut self) -> State::Opcode {
+    fn pop_indent(&mut self) -> State::Opcode {
         let val = self.stack.pop().unwrap();
         self.cur_indent = (self.stack.len() - 1) * 2;
         return val;
     }
 
-    pub fn ensure_line_start(&mut self) -> IoResult<()> {
+    fn ensure_line_start(&mut self) -> IoResult<()> {
         match self.line {
             L::Start => {
                 return Ok(());
@@ -132,7 +136,7 @@ impl<'a> Context<'a> {
             }
         }
     }
-    pub fn ensure_indented(&mut self) -> IoResult<()> {
+    fn ensure_indented(&mut self) -> IoResult<()> {
         self.ensure_line_start();
         for i in range(0, self.cur_indent) {
             try!(self.stream.write_char(' '));
@@ -170,10 +174,59 @@ impl<'a> Context<'a> {
                     _ => {}
                 }
                 nstate }
+            (S::New, SeqStart(tag, anchor)) => {
+                self.push_indent(S::Fin);
+                S::SeqItem }
+            (S::SeqItem, Scalar(tag, anchor, style, value)) => {
+                try!(self.ensure_indented());
+                try!(self.stream.write_str("- "));
+                try!(self.emit_scalar(style, value));
+                S::SeqItem }
+            (S::SeqItem, SeqEnd) => {
+                let nstate = self.pop_indent();
+                match nstate {
+                    S::Fin => try!(self.ensure_line_start()),
+                    _ => {}
+                }
+                nstate }
             (_, _) => unimplemented!(),
         };
         return Ok(());
     }
+
+    pub fn emit_node(&mut self, node: &Node) -> IoResult<()> {
+        match node {
+            &N::Map(tag, anchor, ref map, _) => {
+                try!(self.emit(MapStart(tag, anchor)));
+                for (k, v) in map.iter() {
+                    try!(self.emit_node(k));
+                    try!(self.emit_node(v));
+                }
+                try!(self.emit(MapEnd));
+            }
+            &N::List(tag, anchor, ref items, _) => {
+                try!(self.emit(SeqStart(tag, anchor)));
+                for i in items.iter() {
+                    try!(self.emit_node(i));
+                }
+                try!(self.emit(SeqEnd));
+            },
+            &N::Scalar(ref tag, ref anchor, ref value, tok) => {
+                // TODO(tailhook) fix tag and anchor
+                try!(self.emit(Scalar(None, None, Auto, value.as_slice())));
+            }
+            &N::Null(tag, anchor) => { }
+            &N::Alias(name) => unimplemented!(),
+        }
+        return Ok(());
+    }
+}
+
+pub fn emit_parse_tree(tree: &Node, stream: &mut Writer)
+    -> IoResult<()>
+{
+    let mut ctx = Context::new(stream);
+    return ctx.emit_node(tree);
 }
 
 #[cfg(test)]
@@ -220,3 +273,29 @@ b: 2
 "#);
 }
 
+#[cfg(test)]
+fn assert_yaml_eq_yaml(source: &'static str, output: &'static str) {
+    let mut buf = MemWriter::new();
+    parse(source, |doc| {
+        let mut ctx = Context::new(&mut buf);
+        ctx.emit_node(&doc.root).unwrap();
+    }).unwrap();
+    let bytes = buf.unwrap();
+    let value = from_utf8(bytes.as_slice()).unwrap();
+    assert_eq!(value, output);
+}
+
+#[test]
+fn yaml_scalar() {
+    assert_yaml_eq_yaml("Hello", "Hello\n");
+}
+
+#[test]
+fn yaml_map() {
+    assert_yaml_eq_yaml("a: b\nc: d", "a: b\nc: d\n");
+}
+
+#[test]
+fn yaml_list() {
+    assert_yaml_eq_yaml("- a\n- b", "- a\n- b\n");
+}

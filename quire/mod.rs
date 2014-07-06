@@ -11,5 +11,5 @@ mod errors;
 mod tokenizer;
 mod parser;
 mod json;
-mod emit;
+pub mod emit;
 

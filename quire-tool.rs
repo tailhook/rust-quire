@@ -12,10 +12,12 @@ use serialize::json::ToJson;
 
 use argparse::{ArgumentParser, StoreConst, Store};
 use quire::parse;
+use quire::emit::emit_parse_tree;
 
 enum Action {
     NoAction,
     ToJson,
+    ToYaml,
 }
 
 
@@ -26,7 +28,10 @@ fn main() {
     let mut filename = Path::new("");
     ap.refer(&mut action)
         .add_option(["-J", "--to-json"], box StoreConst(ToJson),
-                    "Print parsed YAML as a JSON");
+                    "Print parsed YAML as a JSON")
+        .add_option(["-Y", "--to-yaml"], box StoreConst(ToYaml),
+                    "Print parsed YAML as a YAML
+                     (probably with some transormations)");
     ap.refer(&mut pretty)
         .add_option(["-p", "--pretty"], box StoreConst(true),
                     "Pretty print result");
@@ -50,14 +55,15 @@ fn main() {
         }
     }
 
+    let data = File::open(&filename).read_to_end()
+        .ok().expect("Can't read file");
+    let string = from_utf8(data.as_slice())
+        .expect("File is not utf-8 encoded");
+    let mut out = stdout();
+
     match action {
         NoAction => unreachable!(),
         ToJson => {
-            let data = File::open(&filename).read_to_end()
-                .ok().expect("Can't read file");
-            let string = from_utf8(data.as_slice())
-                .expect("File is not utf-8 encoded");
-            let mut out = stdout();
             match parse(string.as_slice(), |doc| { doc.to_json() })  {
                 Ok(json) => {
                     if pretty {
@@ -66,6 +72,25 @@ fn main() {
                         json.to_writer(&mut out).unwrap();
                     }
                 }
+                Err(e) => {
+                    (write!(stderr(),
+                        "Error parsing file {}: {}\n",
+                        filename.display(), e)
+                    ).ok().expect("Error formatting error");
+                }
+            }
+        }
+        ToYaml => {
+            match parse(string.as_slice(), |doc| {
+                match emit_parse_tree(&doc.root, &mut out) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        (write!(stderr(), "Error printing file: {}\n",e)
+                        ).ok().expect("Error formatting error");
+                    }
+                }
+            })  {
+                Ok(()) => {}
                 Err(e) => {
                     (write!(stderr(),
                         "Error parsing file {}: {}\n",
