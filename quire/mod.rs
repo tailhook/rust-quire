@@ -9,7 +9,7 @@ pub use parser::parse;
 mod chars;
 mod errors;
 mod tokenizer;
-mod parser;
+pub mod parser;
 mod json;
 pub mod emit;
 
