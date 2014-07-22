@@ -69,6 +69,7 @@ struct Tokenizer<'a, 'b> {
     iter: YamlIter<'b>,
     error: Option<TokenError>,
     indent_levels: Vec<uint>,
+    flow_level: uint,
 }
 
 impl<'a> YamlIter<'a> {
@@ -148,6 +149,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             iter: YamlIter::new(data),
             error: None,
             indent_levels: vec!(0),
+            flow_level: 0,
         }
     }
 
@@ -175,47 +177,68 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             minindent += 1;
         }
         loop {
-            match self.iter.next() {
-                Some((pos, ch)) => match ch {
+            match self.iter.chars.peek() {
+                Some(&(_, ch)) => match ch {
+                    '[' | ']' | '{' | '}' | ',' if self.flow_level > 0 => {
+                        let pos = self.iter.position;
+                        self.add_token(PlainString, start, pos);
+                        return;
+                    }
                     ':' => {
                         // may end plainstring if followed by WS
-                        match self.iter.chars.peek() {
-                            Some(&(_, nchar)) => match nchar {
-                                ' ' | '\t' | '\n' | '\r' => {}
-                                _ => continue,
-                            },
-                            None => {}
+                        let pos = self.iter.position;
+                        let mut niter = self.iter;
+                        niter.next();
+                        match niter.chars.peek().map(|&(_, x)| x) {
+                            None | Some(' ') | Some('\t')
+                            | Some('\n') | Some('\r') => {
+                                self.add_token(PlainString, start, pos);
+                                return;
+                            }
+                            _ => {}
                         }
-                        self.add_token(PlainString, start, pos);
-                        let end = self.iter.position;
-                        self.add_token(MappingValue, pos, end);
-                        return;
                     }
                     ' ' | '\n' | '\r' => {
                         // may end plainstring if next block is not indented
                         // as much
+                        let pos = self.iter.position;
                         let niter = self.skip_whitespace();
                         self.iter = niter;
                         if (pos.line == niter.position.line ||
                             niter.position.indent >= minindent) {
                             match self.iter.chars.peek() {
-                                Some(&(_, '#')) => {}
-                                _ => { continue; }
+                                Some(&(_, '\t')) => {
+                                    self.error = Some(
+                                        TokenError::new(self.iter.position,
+                                        "Tab character may appear only in \
+                                            quoted string"));
+                                    break;
+                                }
+                                Some(&(_, '#')) => {
+                                    self.add_token(PlainString, start, pos);
+                                    self.add_token(Whitespace, pos,
+                                        niter.position);
+                                    return;
+                                }
+                                _ => {}
                             }
+                        } else {
+                            self.add_token(PlainString, start, pos);
+                            self.add_token(Whitespace, pos,
+                                niter.position);
+                            return;
                         }
-                        self.add_token(PlainString, start, pos);
-                        self.add_token(Whitespace, pos, niter.position);
-                        return;
                     }
                     '\t' => {
-                        self.error = Some(TokenError::new(pos,
+                        self.error = Some(TokenError::new(self.iter.position,
                             "Tab character may appear only in quoted string"));
                         break;
                     }
-                    _ => continue,
+                    _ => {},
                 },
                 None => break,
             }
+            self.iter.next();
         }
         let end = self.iter.position;
         self.add_token(PlainString, start, end);
@@ -504,18 +527,26 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 Some((start, '[')) => {
                     let end = self.iter.position;
                     self.add_token(FlowSeqStart, start, end);
+                    self.flow_level += 1;
                 }
                 Some((start, ']')) => {
                     let end = self.iter.position;
                     self.add_token(FlowSeqEnd, start, end);
+                    if self.flow_level > 0 {
+                        self.flow_level -= 1;
+                    }
                 }
                 Some((start, '{')) => {
                     let end = self.iter.position;
                     self.add_token(FlowMapStart, start, end);
+                    self.flow_level += 1;
                 }
                 Some((start, '}')) => {
                     let end = self.iter.position;
                     self.add_token(FlowMapEnd, start, end);
+                    if self.flow_level > 0 {
+                        self.flow_level -= 1;
+                    }
                 }
                 Some((start, '|')) => {
                     self.read_block(Literal, start);
@@ -735,19 +766,31 @@ fn test_reserved() {
 }
 
 #[test]
-fn test_bad_char() {
+fn test_bad_char_ctl() {
     let err = tokenize("\x01").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:1: \
         Unacceptable character");
+}
+#[test]
+fn test_bad_char_tab() {
     let err = tokenize("\t").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:1: \
         Tab character may appear only in quoted string");
+}
+#[test]
+fn test_bad_char_tab2() {
     let err = tokenize("a:\n  \tbc").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "2:3: \
         Tab character may appear only in quoted string");
+}
+#[test]
+fn test_bad_char_tab3() {
     let err = tokenize("a\n\tb").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "2:1: \
         Tab character may appear only in quoted string");
+}
+#[test]
+fn test_bad_char_tab4() {
     let err = tokenize("a\tb").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:2: \
         Tab character may appear only in quoted string");
@@ -850,4 +893,15 @@ fn test_nested() {
              (PlainString, "c"), (MappingValue, ":"), (Whitespace, "\n"),
              (Unindent, ""), (Unindent, ""),
              (PlainString, "d"), (MappingValue, ":")));
+}
+
+#[test]
+fn test_flow_list() {
+    assert_eq!(simple_tokens(tokenize("[a, b]")),
+        vec!((FlowSeqStart, "["),
+             (PlainString, "a"),
+             (FlowEntry, ","),
+             (Whitespace, " "),
+             (PlainString, "b"),
+             (FlowSeqEnd, "]")));
 }
