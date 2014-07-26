@@ -1,5 +1,5 @@
 #![crate_id="quire#0.1"]
-#![crate_type="dylib"]
+#![crate_type="lib"]
 
 extern crate collections;
 extern crate serialize;
