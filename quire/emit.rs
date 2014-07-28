@@ -63,7 +63,7 @@ pub struct Context<'a> {
     cur_indent: uint,
     want_newline: bool,
     stream: &'a mut Writer,
-    stack: Vec<State::Opcode>,
+    stack: Vec<(State::Opcode, uint)>,
     state: State::Opcode,
     line: Line::State,
 }
@@ -115,14 +115,14 @@ impl<'a> Context<'a> {
         };
     }
 
-    fn push_indent(&mut self, state: S::Opcode) {
+    fn push_indent(&mut self, state: S::Opcode, value: uint) {
         // TODO(tailhook) allow to custimize indent width at each nesting level
-        self.stack.push(state);
-        self.cur_indent = (self.stack.len() - 1) * 2;
+        self.stack.push((state, self.cur_indent));
+        self.cur_indent += value;
     }
     fn pop_indent(&mut self) -> State::Opcode {
-        let val = self.stack.pop().unwrap();
-        self.cur_indent = (self.stack.len() - 1) * 2;
+        let (val, indent) = self.stack.pop().unwrap();
+        self.cur_indent = indent;
         return val;
     }
 
@@ -161,7 +161,7 @@ impl<'a> Context<'a> {
                 try!(self.ensure_line_start())
                 S::Fin }
             (S::New, MapStart(tag, anchor)) => {
-                self.push_indent(S::Fin);
+                self.push_indent(S::Fin, 0);
                 S::MapKey }
             (S::MapKey, Scalar(tag, anchor, style, value)) => {
                 try!(self.ensure_indented());
@@ -175,12 +175,12 @@ impl<'a> Context<'a> {
             (S::MapSimpleKeyValue, MapStart(tag, anchor)) => {
                 try!(self.stream.write_char(':'));
                 self.line = L::AfterScalar;
-                self.push_indent(S::MapKey);
+                self.push_indent(S::MapKey, 2);
                 S::MapKey }
             (S::MapSimpleKeyValue, SeqStart(tag, anchor)) => {
                 try!(self.stream.write_char(':'));
                 self.line = L::AfterScalar;
-                self.push_indent(S::MapKey);
+                self.push_indent(S::MapKey, 0);
                 S::SeqItem }
             (S::MapKey, MapEnd) => {
                 let nstate = self.pop_indent();
@@ -190,7 +190,7 @@ impl<'a> Context<'a> {
                 }
                 nstate }
             (S::New, SeqStart(tag, anchor)) => {
-                self.push_indent(S::Fin);
+                self.push_indent(S::Fin, 0);
                 S::SeqItem }
             (S::SeqItem, Scalar(tag, anchor, style, value)) => {
                 try!(self.ensure_indented());
@@ -201,7 +201,7 @@ impl<'a> Context<'a> {
                 try!(self.ensure_indented());
                 try!(self.stream.write_str("- "));
                 self.line = L::AfterIndent;
-                self.push_indent(S::SeqItem);
+                self.push_indent(S::SeqItem, 2);
                 S::MapKey }
             (S::SeqItem, SeqEnd) => {
                 let nstate = self.pop_indent();
