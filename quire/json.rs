@@ -204,3 +204,28 @@ fn test_to_json_map_list_1() {
 fn test_to_json_map_list_2() {
     assert_yaml_eq_json("a:\n -", r#"{"a": [null]}"#);
 }
+
+#[test]
+fn test_flow_list_1() {
+    assert_yaml_eq_json("[]", "[]");
+}
+
+#[test]
+fn test_flow_list_2() {
+    assert_yaml_eq_json(r#"[a]"#, r#"["a"]"#);
+}
+
+#[test]
+fn test_flow_list_3() {
+    assert_yaml_eq_json(r#"[a,]"#, r#"["a"]"#);
+}
+
+#[test]
+fn test_flow_list_4() {
+    assert_yaml_eq_json(r#"[a,b]"#, r#"["a", "b"]"#);
+}
+
+#[test]
+fn test_flow_list_5() {
+    assert_yaml_eq_json(r#"[[a],b]"#, r#"[["a"], "b"]"#);
+}

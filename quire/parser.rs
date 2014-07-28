@@ -325,6 +325,64 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         tokiter.tokens.slice(begin, tokiter.index)));
 }
 
+fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+    -> Result<Node<'x>, ParserError>
+{
+    let begin = tokiter.index;
+    let mut children = Vec::new();
+    tokiter.next();
+    loop {
+        let tok = tokiter.peek(0);
+        match tok.kind {
+            T::FlowSeqEnd => {
+                tokiter.next();
+                break;
+            }
+            _ => {
+                let value = match parse_flow_node(tokiter, aliases) {
+                    Ok(value) => value,
+                    Err(err) => return Err(err),
+                };
+                children.push(value);
+            }
+        }
+        let tok = tokiter.next().unwrap();
+        match tok.kind {
+            T::FlowSeqEnd => break,
+            T::FlowEntry => continue,
+            _ => return Err(ParserError::new(
+                tok.start, tok.end, "Unexpected token")),
+        }
+    }
+    return Ok(List(None, None, children,
+        tokiter.tokens.slice(begin, tokiter.index)));
+}
+
+fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+    -> Result<Node<'x>, ParserError>
+{
+    let tok = tokiter.peek(0);
+    match tok.kind {
+        T::PlainString | T::SingleString | T::DoubleString => {
+            if tok.start.line == tok.end.line {
+                // Only one-line scalars are allowed to be mapping keys
+                let val = tokiter.peek(1);
+                if (val.kind == T::MappingValue &&
+                    val.start.line == tok.end.line) {
+                    return parse_map(tokiter, aliases);
+                }
+            }
+            tokiter.next();
+            return Ok(Scalar(None, None, tok.plain_value(), tok));
+        }
+        T::FlowSeqStart => {
+            return parse_flow_list(tokiter, aliases);
+        }
+        _ => return Err(ParserError::new(
+            tok.start, tok.end, "Unexpected token")),
+    };
+}
+
 fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     -> Result<Node<'x>, ParserError>
 {
@@ -344,6 +402,9 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         }
         T::SequenceEntry => {
             return parse_list(tokiter, aliases);
+        }
+        T::FlowSeqStart => {
+            return parse_flow_list(tokiter, aliases);
         }
         _ => return Err(ParserError::new(
             tok.start, tok.end, "Unexpected token")),
