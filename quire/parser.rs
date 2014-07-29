@@ -358,6 +358,66 @@ fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         tokiter.tokens.slice(begin, tokiter.index)));
 }
 
+fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+    -> Result<Node<'x>, ParserError>
+{
+    let begin = tokiter.index;
+    let mut children = TreeMap::new();
+    tokiter.next();
+    loop {
+        // TODO(tailhook) implement complex keys
+        // TODO(tailhook) implement aliases and anchors
+        let ktoken = tokiter.next().unwrap();
+        let key = match ktoken.kind {
+            T::FlowMapEnd => break,
+            T::PlainString | T::SingleString | T::DoubleString =>
+                Scalar(None, None, ktoken.plain_value(), ktoken),
+            _ => return Err(ParserError::new(
+                ktoken.start, ktoken.end, "Unexpected token")),
+        };
+
+        let tok = tokiter.next().unwrap();
+        match tok.kind {
+            T::FlowMapEnd => {
+                // Value is null
+                if !children.insert(key, Null(None, None)) {
+                    return Err(ParserError::new(
+                        ktoken.start, ktoken.end, "Duplicate key"));
+                }
+                break;
+            }
+            T::FlowEntry => {
+                // Value is null
+                if !children.insert(key, Null(None, None)) {
+                    return Err(ParserError::new(
+                        ktoken.start, ktoken.end, "Duplicate key"));
+                }
+                continue;
+            }
+            T::MappingValue => {}
+            _ => return Err(ParserError::new(
+                tok.start, tok.end, "Unexpected token")),
+        }
+        let value = match parse_flow_node(tokiter, aliases) {
+            Ok(value) => value,
+            Err(err) => return Err(err),
+        };
+        if !children.insert(key, value) {
+            return Err(ParserError::new(
+                ktoken.start, ktoken.end, "Duplicate key"));
+        }
+        let tok = tokiter.next().unwrap();
+        match tok.kind {
+            T::FlowMapEnd => break,
+            T::FlowEntry => continue,
+            _ => return Err(ParserError::new(
+                tok.start, tok.end, "Unexpected token")),
+        }
+    }
+    return Ok(Map(None, None, children,
+        tokiter.tokens.slice(begin, tokiter.index)));
+}
+
 fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     -> Result<Node<'x>, ParserError>
 {
@@ -377,6 +437,9 @@ fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         }
         T::FlowSeqStart => {
             return parse_flow_list(tokiter, aliases);
+        }
+        T::FlowMapStart => {
+            return parse_flow_map(tokiter, aliases);
         }
         _ => return Err(ParserError::new(
             tok.start, tok.end, "Unexpected token")),
@@ -405,6 +468,9 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         }
         T::FlowSeqStart => {
             return parse_flow_list(tokiter, aliases);
+        }
+        T::FlowMapStart => {
+            return parse_flow_map(tokiter, aliases);
         }
         _ => return Err(ParserError::new(
             tok.start, tok.end, "Unexpected token")),

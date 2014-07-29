@@ -229,3 +229,33 @@ fn test_flow_list_4() {
 fn test_flow_list_5() {
     assert_yaml_eq_json(r#"[[a],b]"#, r#"[["a"], "b"]"#);
 }
+
+#[test]
+fn test_flow_map_1() {
+    assert_yaml_eq_json("{}", "{}");
+}
+
+#[test]
+fn test_flow_map_2() {
+    assert_yaml_eq_json(r#"{a: 1}"#, r#"{"a":1}"#);
+}
+
+#[test]
+fn test_flow_map_3() {
+    assert_yaml_eq_json(r#"{a: 1,}"#, r#"{"a":1}"#);
+}
+
+#[test]
+fn test_flow_map_4() {
+    assert_yaml_eq_json(r#"{a: 1,b: 2}"#, r#"{"a":1, "b":2}"#);
+}
+
+#[test]
+fn test_flow_map_5() {
+    assert_yaml_eq_json(r#"{a:{c: 1},b: 2}"#, r#"{"a":{"c":1}, "b": 2}"#);
+}
+
+#[test]
+fn test_flow_map_quotes_no_space() {
+    assert_yaml_eq_json(r#"{"a":1}"#, r#"{"a":1}"#);
+}

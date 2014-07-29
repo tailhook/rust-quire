@@ -185,13 +185,19 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         return;
                     }
                     ':' => {
-                        // may end plainstring if followed by WS
+                        // may end plainstring if followed by WS or flow marker
                         let pos = self.iter.position;
                         let mut niter = self.iter;
                         niter.next();
                         match niter.chars.peek().map(|&(_, x)| x) {
                             None | Some(' ') | Some('\t')
                             | Some('\n') | Some('\r') => {
+                                self.add_token(PlainString, start, pos);
+                                return;
+                            }
+                            Some('{') | Some('[') | Some(',')
+                            | Some('}') | Some(']')
+                            if self.flow_level > 0 => {
                                 self.add_token(PlainString, start, pos);
                                 return;
                             }
@@ -378,21 +384,39 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 }
                 Some((start, ':')) => { // key, plainstring
                     // TODO(tailhook) in flow context space is not required
-                    match self.iter.next() {
-                        Some((cur, ' ')) | Some((cur, '\t'))
-                        | Some((cur, '\r')) | Some((cur, '\n')) => {
-                            self.add_token(MappingValue, start, cur);
-                            self.iter = self.skip_whitespace();
-                            let end = self.iter.position;
-                            self.add_token(Whitespace, cur, end);
+                    if self.flow_level > 0 {
+                        match self.iter.chars.peek() {
+                            Some(&(_, ' ')) | Some(&(_, '\t'))
+                            | Some(&(_, '\r')) | Some(&(_, '\n'))
+                            | Some(&(_, '{')) | Some(&(_, '}'))
+                            | Some(&(_, '[')) | Some(&(_, ']'))
+                            | Some(&(_, ',')) => {
+                                let end = self.iter.position;
+                                self.add_token(MappingValue, start, end);
+                            }
+                            _ => {
+                                self.error = Some(TokenError::new(start,
+                                    "Either add a space or quote the colon"));
+                                break;
+                            }
                         }
-                        None => {
-                            let end = self.iter.position;
-                            self.add_token(MappingValue, start, end);
-                            break;
-                        }
-                        Some(_) =>  {
-                            self.read_plain(start);
+                    } else {
+                        match self.iter.next() {
+                            Some((cur, ' ')) | Some((cur, '\t'))
+                            | Some((cur, '\r')) | Some((cur, '\n')) => {
+                                self.add_token(MappingValue, start, cur);
+                                self.iter = self.skip_whitespace();
+                                let end = self.iter.position;
+                                self.add_token(Whitespace, cur, end);
+                            }
+                            None => {
+                                let end = self.iter.position;
+                                self.add_token(MappingValue, start, end);
+                                break;
+                            }
+                            Some(_) =>  {
+                                self.read_plain(start);
+                            }
                         }
                     }
                 }
@@ -435,6 +459,15 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     }
                     let end = self.iter.position;
                     self.add_token(DoubleString, start, end);
+                    // This is YAML 1.2 hack to be superset of json
+                    match self.iter.chars.peek() {
+                        Some(&(_, ':')) => {
+                            self.iter.next();
+                            let mvalend = self.iter.position;
+                            self.add_token(MappingValue, end, mvalend);
+                        }
+                        _ => {}
+                    }
                 }
                 Some((start, '\'')) => {
                     for (_, ch) in self.iter {
@@ -904,4 +937,31 @@ fn test_flow_list() {
              (Whitespace, " "),
              (PlainString, "b"),
              (FlowSeqEnd, "]")));
+}
+
+#[test]
+fn test_flow_map_json() {
+    assert_eq!(simple_tokens(tokenize(r#"{"a":1}"#)),
+        vec!((FlowMapStart, "{"),
+             (DoubleString, r#""a""#),
+             (MappingValue, ":"),
+             (PlainString, "1"),
+             (FlowMapEnd, "}")));
+}
+
+#[test]
+fn test_flow_map_map() {
+    assert_eq!(simple_tokens(tokenize(r#"{a:{}}"#)),
+        vec!((FlowMapStart, "{"),
+             (PlainString, "a"),
+             (MappingValue, ":"),
+             (FlowMapStart, "{"),
+             (FlowMapEnd, "}"),
+             (FlowMapEnd, "}")));
+}
+
+#[test]
+fn test_plain_scalar_braces() {
+    assert_eq!(simple_tokens(tokenize(r#"a:{}"#)),
+        vec!((PlainString, "a:{}")));
 }
