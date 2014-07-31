@@ -259,3 +259,8 @@ fn test_flow_map_5() {
 fn test_flow_map_quotes_no_space() {
     assert_yaml_eq_json(r#"{"a":1}"#, r#"{"a":1}"#);
 }
+
+#[test]
+fn test_combined() {
+    assert_yaml_eq_json("a: {}", r#"{"a":{}}"#);
+}

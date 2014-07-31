@@ -286,21 +286,6 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 }
                 tokiter.next();
             }
-            T::PlainString | T::SingleString | T::DoubleString => {
-                let value;
-                if ktoken.end.line == tok.start.line {
-                    value = match parse_node(tokiter, aliases) {
-                        Ok(value) => value,
-                        Err(err) => return Err(err),
-                    };
-                } else {
-                    value = Null(None, None);
-                }
-                if !children.insert(key, value) {
-                    return Err(ParserError::new(
-                        ktoken.start, ktoken.end, "Duplicate key"));
-                }
-            }
             T::SequenceEntry if tok.start.line > delim.end.line => {
                 // Allow sequences on the same indentation level as a key in
                 // mapping
@@ -317,8 +302,16 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 children.insert(key, Null(None, None));
                 break;
             }
-            _ => return Err(ParserError::new(
-                tok.start, tok.end, "Unexpected token")),
+            _ => {
+                let value = match parse_node(tokiter, aliases) {
+                    Ok(value) => value,
+                    Err(err) => return Err(err),
+                };
+                if !children.insert(key, value) {
+                    return Err(ParserError::new(
+                        ktoken.start, ktoken.end, "Duplicate key"));
+                }
+            }
         }
     }
     return Ok(Map(None, None, children,
