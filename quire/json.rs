@@ -319,3 +319,10 @@ fn test_nl2_quoted() {
 fn test_nl2_plain() {
     assert_yaml_eq_json("a   \n   \n b", r#""a\nb""#);
 }
+
+#[test]
+fn test_literal() {
+    assert_yaml_eq_json(
+        "a: |\n hello\n world\n",
+        r#"{"a": "hello\nworld\n"}"#);
+}

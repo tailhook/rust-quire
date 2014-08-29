@@ -196,6 +196,26 @@ impl<'a> T::Token<'a> {
                     }
                 }
             }
+            T::Literal => {
+                let mut lines = self.value.split('\n');
+                let fline = lines.next().unwrap();
+                if fline == "|" {
+                    let mut indent = 0;
+                    for line in lines {
+                        if indent == 0 {
+                            let trimmed = line.trim_left_chars(' ');
+                            indent = line.len() - trimmed.len();
+                        }
+                        res.push_str(line.slice(indent, line.len()));
+                        res.push_char('\n');
+                    }
+                } else {
+                    unimplemented!();
+                }
+            }
+            T::Folded => {
+                unimplemented!();
+            }
             _ => unreachable!(),
         }
         return res;
@@ -425,7 +445,8 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         let ktoken = tokiter.next().unwrap();
         let key = match ktoken.kind {
             T::FlowMapEnd => break,
-            T::PlainString | T::SingleString | T::DoubleString =>
+            T::PlainString | T::SingleString | T::DoubleString
+            | T::Literal | T::Folded =>
                 Scalar(None, None, ktoken.plain_value(), ktoken),
             _ => return Err(ParserError::new(
                 ktoken.start, ktoken.end, "Unexpected token")),
@@ -506,7 +527,8 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 {
     let tok = tokiter.peek(0);
     match tok.kind {
-        T::PlainString | T::SingleString | T::DoubleString => {
+        T::PlainString | T::SingleString | T::DoubleString
+        | T::Literal | T::Folded => {
             if tok.start.line == tok.end.line {
                 // Only one-line scalars are allowed to be mapping keys
                 let val = tokiter.peek(1);
