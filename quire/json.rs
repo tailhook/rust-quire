@@ -264,3 +264,58 @@ fn test_flow_map_quotes_no_space() {
 fn test_combined() {
     assert_yaml_eq_json("a: {}", r#"{"a":{}}"#);
 }
+
+#[test]
+fn test_nl_dquoted() {
+    assert_yaml_eq_json("\"a   \nb\"", r#""a b""#);
+}
+
+#[test]
+fn test_nl_quoted() {
+    assert_yaml_eq_json("'a   \nb'", r#""a b""#);
+}
+
+#[test]
+fn test_nl_plain() {
+    assert_yaml_eq_json("a   \nb", r#""a b""#);
+}
+
+#[test]
+fn test_nl2_dquoted() {
+    assert_yaml_eq_json("\"a   \n   \n b\"", r#""a\nb""#);
+}
+
+#[test]
+fn test_nl_slash_dquoted() {
+    assert_yaml_eq_json("\"a   \\\n   \n b\"", r#""a   \nb""#);
+}
+
+#[test]
+fn test_nl_slash_middle_dquoted() {
+    assert_yaml_eq_json("\"a   \\  \n   \n b\"", r#""a    \nb""#);
+}
+
+#[test]
+fn test_slash_dquoted() {
+    assert_yaml_eq_json("\"a   \\\n   b\"", r#""a   b""#);
+}
+
+#[test]
+fn test_slash_dquoted_nospace() {
+    assert_yaml_eq_json("\"a\\\n   b\"", r#""ab""#);
+}
+
+#[test]
+fn test_slash_middle_dquoted() {
+    assert_yaml_eq_json("\"a   \\  \nb\"", r#""a    b""#);
+}
+
+#[test]
+fn test_nl2_quoted() {
+    assert_yaml_eq_json("'a   \n   \n b'", r#""a\nb""#);
+}
+
+#[test]
+fn test_nl2_plain() {
+    assert_yaml_eq_json("a   \n   \n b", r#""a\nb""#);
+}

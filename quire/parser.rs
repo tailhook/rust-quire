@@ -1,5 +1,6 @@
 use std::slice::Items;
 use std::iter::Peekable;
+use std::str::Chars;
 
 use collections::treemap::TreeMap;
 use collections::ringbuf::RingBuf;
@@ -66,13 +67,58 @@ impl<'a> TokenIter<'a> {
     }
 }
 
+fn process_newline<'x>(iter: &mut Peekable<char, Chars<'x>>, res: &mut String,
+    cut_limit: uint)
+{
+    while res.len() > cut_limit {
+        match res.pop_char() {
+            None => break,
+            Some(' ') | Some('\t') => continue,
+            Some(x) => {
+                res.push_char(x);
+                break;
+            }
+        }
+    }
+    let mut need_space = res.len() > cut_limit;
+    loop {
+        match iter.peek() {
+            Some(&' ') => { }
+            Some(&'\n') => {
+                need_space = false;
+                res.push_char('\n');
+            }
+            Some(_) => break,
+            None => break,
+        };
+        iter.next();
+    }
+    if need_space {
+        res.push_char(' ');
+    }
+}
+
 impl<'a> T::Token<'a> {
     fn plain_value(&self) -> String {
         let mut res = String::with_capacity(self.value.len());
         match self.kind {
-            T::PlainString => { res.push_str(self.value); }
+            T::PlainString => {
+                let mut iter = self.value.chars().peekable();
+                loop {
+                    let ch = match iter.next() {
+                        None => break,
+                        Some(ch) => ch,
+                    };
+                    if ch == '\n' {
+                        process_newline(&mut iter, &mut res, 0);
+                    } else {
+                        res.push_char(ch);
+                    }
+                }
+            }
             T::DoubleString => {
-                let mut iter = self.value.chars();
+                let mut escaped_space = 0;
+                let mut iter = self.value.chars().peekable();
                 assert_eq!(iter.next(), Some('"'));
                 loop {
                     match iter.next() {
@@ -89,7 +135,10 @@ impl<'a> T::Token<'a> {
                                 Some('v') => res.push_char('\x0b'),
                                 Some('f') => res.push_char('\x0c'),
                                 Some('e') => res.push_char('\x1b'),
-                                Some(' ') => res.push_char(' '),
+                                Some(' ') => {
+                                    res.push_char(' ');
+                                    escaped_space = res.len();
+                                }
                                 Some('"') => res.push_char('"'),
                                 Some('/') => res.push_char('/'),
                                 Some('\\') => res.push_char('\\'),
@@ -106,19 +155,29 @@ impl<'a> T::Token<'a> {
                                 Some('U') => {
                                     unimplemented!();
                                 },
+                                Some('\n') => {
+                                    escaped_space = res.len();
+                                    process_newline(&mut iter, &mut res,
+                                        escaped_space);
+                                }
                                 Some(x) => {
                                     res.push_char('\\');
                                     res.push_char(x);
                                 }
                             }
+                            escaped_space = res.len();
                         }
                         Some('"') => break,
+                        Some('\n') => {
+                            process_newline(&mut iter, &mut res,
+                                escaped_space);
+                        }
                         Some(x) => res.push_char(x),
                     }
                 }
             },
             T::SingleString => {
-                let mut iter = self.value.chars();
+                let mut iter = self.value.chars().peekable();
                 assert_eq!(iter.next(), Some('\''));
                 loop {
                     match iter.next() {
@@ -129,6 +188,9 @@ impl<'a> T::Token<'a> {
                                 Some('\'') => res.push_char('\''),
                                 Some(x) => unreachable!(),
                             }
+                        }
+                        Some('\n') => {
+                            process_newline(&mut iter, &mut res, 0);
                         }
                         Some(x) => res.push_char(x),
                     }
