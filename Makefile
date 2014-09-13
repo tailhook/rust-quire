@@ -1,17 +1,17 @@
-LIBNAME := $(shell rustc --crate-file-name quire/mod.rs)
+LIBNAME := $(shell rustc --crate-file-name src/lib.rs)
 
 
 all: quire-lib quire_tool
 
 quire-lib: $(LIBNAME)
 
-$(LIBNAME): quire/mod.rs quire/*.rs
+$(LIBNAME): src/lib.rs src/*.rs
 	rustc -g -o $@ $<
 
 test: quire_test
 	./quire_test
 
-quire_test: quire/mod.rs quire/*.rs
+quire_test: src/lib.rs src/*.rs
 	rustc $< --test -g -o quire_test
 
 argparse:
