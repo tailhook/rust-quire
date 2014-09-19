@@ -26,23 +26,23 @@ impl Default for Options {
     }
 }
 
-enum ScalarKind {
+pub enum ScalarKind {
     Plain,
     Quoted,
 }
 
-enum NullKind {
+pub enum NullKind {
     Implicit,
     Explicit,
 }
 
-enum Tag {
+pub enum Tag {
     NonSpecific,
     LocalTag(String),
     GlobalTag(String),
 }
 
-enum Ast {
+pub enum Ast {
     Map(Pos, Tag, TreeMap<String, Ast>),
     List(Pos, Tag, Vec<Ast>),
     Scalar(Pos, Tag, ScalarKind, String),
@@ -50,9 +50,10 @@ enum Ast {
 }
 
 struct Context<'a> {
-    options: &'a Options,
-    document: &'a P::Document<'a>,
+    options: Options,
     warnings: Vec<Warning>,
+    directives: Vec<P::Directive<'a>>,
+    aliases: TreeMap<&'a str, &'a P::Node<'a>>,
 }
 
 fn pos_for_node<'x>(node: &P::Node<'x>) -> Pos {
@@ -216,13 +217,13 @@ impl<'a> Context<'a> {
 }
 
 
-fn process<'x>(opt: &'x Options, doc: &'x P::Document<'x>)
+pub fn process(opt: Options, doc: P::Document)
     -> (Ast, Vec<Warning>)
 {
-
     let mut ctx = Context {
         options: opt,
-        document: doc,
+        directives: doc.directives,
+        aliases: doc.aliases,
         warnings: Vec::new(),
     };
     let ast = ctx.process(&doc.root);

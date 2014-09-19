@@ -6,34 +6,25 @@ use serialize::json::{ToJson, Json};
 use J = serialize::json;
 
 use T = super::tokenizer;
-use super::parser::{Node, Document, Directive};
-use super::parser::{Map, List, Scalar, Null, Alias, Plain, Quoted};
+use A = super::ast;
 use super::tokenizer;
 
 
-impl<'a> ToJson for Node<'a> {
+impl ToJson for A::Ast {
     fn to_json(&self) -> Json {
         return match *self {
-            Map(_, _, _, ref tm) => {
+            A::Map(_, _, ref tm) => {
                 let mut ob = TreeMap::new();
                 for (k, v) in tm.iter() {
-                    match *k {
-                        Scalar(_, _, _, _, ref val) => {
-                            ob.insert(val.clone(), v.to_json());
-                        }
-                        // Unfortunately we don't have a way to report an
-                        // error, should we serialize key to string?
-                        _ => unimplemented!(),
-                    }
+                    ob.insert(k.clone(), v.to_json());
                 }
                 J::Object(box ob)
             },
-            List(_, _, _, ref lst) => {
+            A::List(_, _, ref lst) => {
                 J::List(lst.iter().map(|ref val| val.to_json()).collect())
             }
-            Null(_, _, _) => J::Null,
-            Alias(_, _) => unimplemented!(),
-            Scalar(_, _, _, Plain, ref val) => {
+            A::Null(_, _, _) => J::Null,
+            A::Scalar(_, _, A::Plain, ref val) => {
                 match FromStr::from_str(val.as_slice()) {
                     Some(x) => return J::Number(x),
                     None => {}
@@ -43,30 +34,27 @@ impl<'a> ToJson for Node<'a> {
                 }
                 J::String(val.clone())
             }
-            Scalar(_, _, _, Quoted, ref val) => {
+            A::Scalar(_, _, Quoted, ref val) => {
                 J::String(val.clone())
             }
         };
     }
 }
 
-impl<'a> ToJson for Document<'a> {
-    fn to_json(&self) -> Json {
-        return self.root.to_json();
-    }
-}
 
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
+    use std::default::Default;
     use serialize::json::ToJson;
     use J = serialize::json;
     use super::super::parser::parse;
+    use super::super::ast::process;
 
     fn assert_yaml_eq_json(a: &'static str, b: &'static str) {
-        let aj = parse(
-            Rc::new("<inline text>".to_string()),
-            a, |doc| { doc.to_json() }).unwrap();
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()), a,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let aj = ast.to_json();
         let bj = J::from_str(b).unwrap();
         assert_eq!(aj, bj);
     }
