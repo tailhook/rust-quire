@@ -2,15 +2,10 @@ use std::default::Default;
 use std::collections::TreeMap;
 
 use super::tokenizer::Pos;
+use E = super::errors;
 use P = super::parser;
 use T = super::tokenizer;
 
-enum Warning {
-    InvalidTag(Pos),
-    NonScalarKey(Pos),
-    UnsupportedTag(Pos),
-    WrongNodeToMerge(Pos),
-}
 
 struct Options {
     merges: bool,
@@ -49,12 +44,24 @@ pub enum Ast {
     Null(Pos, Tag, NullKind),
 }
 
+impl Ast {
+    fn pos(&self) -> Pos {
+        match *self {
+            Map(ref pos, _, _) => pos.clone(),
+            List(ref pos, _, _) => pos.clone(),
+            Scalar(ref pos, _, _, _) => pos.clone(),
+            Null(ref pos, _, _) => pos.clone(),
+        }
+    }
+}
+
 struct Context<'a> {
     options: Options,
-    warnings: Vec<Warning>,
+    warnings: Vec<E::Warning>,
     directives: Vec<P::Directive<'a>>,
     aliases: TreeMap<&'a str, &'a P::Node<'a>>,
 }
+
 
 fn pos_for_node<'x>(node: &P::Node<'x>) -> Pos {
     match *node {
@@ -129,7 +136,7 @@ impl<'a> Context<'a> {
                         }
                         ref node => {
                             self.warnings.push(
-                                NonScalarKey(pos_for_node(node)));
+                                E::NonScalarKey(pos_for_node(node)));
                             continue;
                         }
                     };
@@ -153,7 +160,7 @@ impl<'a> Context<'a> {
                 unimplemented!();
             }
             _ => {
-                self.warnings.push(WrongNodeToMerge(pos_for_node(node)));
+                self.warnings.push(E::WrongNodeToMerge(pos_for_node(node)));
             }
         }
     }
@@ -181,7 +188,7 @@ impl<'a> Context<'a> {
                 unimplemented!();
             }
             _ => {
-                self.warnings.push(WrongNodeToMerge(pos_for_node(node)));
+                self.warnings.push(E::WrongNodeToMerge(pos_for_node(node)));
             }
         }
     }
@@ -195,18 +202,18 @@ impl<'a> Context<'a> {
                 assert!(pieces.next().unwrap() == "");
                 match (pieces.next().unwrap(), pieces.next()) {
                     ("", None) => {
-                        self.warnings.push(InvalidTag(pos.clone()));
+                        self.warnings.push(E::InvalidTag(pos.clone()));
                         NonSpecific
                     }
                     (val, None) => {
                         LocalTag(val.slice_from(1).to_string())
                     }
                     ("", Some(val)) => {
-                        self.warnings.push(UnsupportedTag(pos.clone()));
+                        self.warnings.push(E::UnsupportedTag(pos.clone()));
                         NonSpecific
                     }
                     (_, Some(val)) => {
-                        self.warnings.push(UnsupportedTag(pos.clone()));
+                        self.warnings.push(E::UnsupportedTag(pos.clone()));
                         NonSpecific
                     }
                 }
@@ -218,7 +225,7 @@ impl<'a> Context<'a> {
 
 
 pub fn process(opt: Options, doc: P::Document)
-    -> (Ast, Vec<Warning>)
+    -> (Ast, Vec<E::Warning>)
 {
     let mut ctx = Context {
         options: opt,

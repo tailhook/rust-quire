@@ -4,6 +4,16 @@ use std::fmt::FormatError;
 
 use super::tokenizer::Pos;
 
+pub enum Warning {
+    //  AST transformation errors from ast.rs
+    InvalidTag(Pos),
+    NonScalarKey(Pos),
+    UnsupportedTag(Pos),
+    WrongNodeToMerge(Pos),
+    //  Decoder errors from decode.rs
+    UnexpectedNode(Pos, &'static str, String),
+    CantParseValue(Pos, String),
+}
 
 #[deriving(Clone)]
 pub struct TokenError {

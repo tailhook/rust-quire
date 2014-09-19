@@ -14,5 +14,5 @@ pub mod parser;
 pub mod json;
 pub mod emit;
 pub mod ast;
-//pub mod decode;
+pub mod decode;
 
