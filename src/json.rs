@@ -95,6 +95,17 @@ mod test {
     }
 
     #[test]
+    fn test_merge1() {
+        assert_yaml_eq_json("a: 1\n<<:\n b: 2", "{\"a\": 1, \"b\": 2}");
+    }
+
+    #[test]
+    fn test_no_merge1() {
+        assert_yaml_eq_json("a: 1\n'<<':\n b: 2",
+            "{\"a\": 1, \"<<\": {\"b\": 2}}");
+    }
+
+    #[test]
     fn test_to_json_map2() {
         assert_yaml_eq_json("1: 2", "{\"1\": 2}");
     }
