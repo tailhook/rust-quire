@@ -13,5 +13,6 @@ mod tokenizer;
 pub mod parser;
 //mod json;
 pub mod emit;
+pub mod ast;
 //pub mod decode;
 
