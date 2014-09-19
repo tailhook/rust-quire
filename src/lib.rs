@@ -11,7 +11,7 @@ mod chars;
 mod errors;
 mod tokenizer;
 pub mod parser;
-mod json;
+//mod json;
 pub mod emit;
 //pub mod decode;
 

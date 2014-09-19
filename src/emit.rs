@@ -219,7 +219,7 @@ impl<'a> Context<'a> {
 
     pub fn emit_node(&mut self, node: &Node) -> IoResult<()> {
         match node {
-            &N::Map(_, tag, anchor, ref map) => {
+            &N::Map(tag, anchor, ref map, _) => {
                 try!(self.emit(MapStart(tag, anchor)));
                 for (k, v) in map.iter() {
                     try!(self.emit_node(k));
@@ -227,19 +227,19 @@ impl<'a> Context<'a> {
                 }
                 try!(self.emit(MapEnd));
             }
-            &N::List(_, tag, anchor, ref items) => {
+            &N::List(tag, anchor, ref items, _) => {
                 try!(self.emit(SeqStart(tag, anchor)));
                 for i in items.iter() {
                     try!(self.emit_node(i));
                 }
                 try!(self.emit(SeqEnd));
             },
-            &N::Scalar(_, ref tag, ref anchor, _, ref value) => {
+            &N::Scalar(ref tag, ref anchor, ref value, _) => {
                 // TODO(tailhook) fix tag and anchor
                 try!(self.emit(Scalar(None, None, Auto, value.as_slice())));
             }
-            &N::Null(_, tag, anchor) => { }
-            &N::Alias(_, name) => unimplemented!(),
+            &N::ImplicitNull(tag, anchor, _) => { }
+            &N::Alias(name, _) => unimplemented!(),
         }
         return Ok(());
     }
