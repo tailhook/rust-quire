@@ -2,6 +2,7 @@ use std::io::IoResult;
 use std::vec::Vec;
 use std::str::CharOffsets;
 use std::iter::Peekable;
+use std::rc::Rc;
 
 use super::chars::is_indicator;
 use super::chars::is_whitespace;
@@ -40,7 +41,9 @@ pub enum TokenType {
 }
 
 
+#[deriving(Clone)]
 pub struct Pos {
+    pub filename: Rc<String>,
     pub indent: uint,
     pub line: uint,
     pub line_start: bool,
@@ -63,6 +66,19 @@ struct YamlIter<'a> {
     error: Option<TokenError>,
 }
 
+impl<'a> Clone for YamlIter<'a> {
+    #[inline]
+    fn clone(&self) -> YamlIter<'a> {
+        return YamlIter {
+            buf: self.buf,
+            chars: self.chars,
+            position: self.position.clone(),
+            value: self.value,
+            error: self.error.clone(),
+        }
+    }
+}
+
 struct Tokenizer<'a, 'b> {
     result: &'a mut Vec<Token<'b>>,
     data: &'b str,
@@ -73,11 +89,12 @@ struct Tokenizer<'a, 'b> {
 }
 
 impl<'a> YamlIter<'a> {
-    fn new<'x>(buf: &'x str) -> YamlIter<'x> {
+    fn new<'x>(filename: Rc<String>, buf: &'x str) -> YamlIter<'x> {
         return YamlIter {
             buf: buf,
             chars: buf.char_indices().peekable(),
             position: Pos {
+                filename: filename,
                 indent: 0,
                 offset: 0,
                 line: 1,
@@ -92,7 +109,7 @@ impl<'a> YamlIter<'a> {
 
 impl<'a> Iterator<(Pos, char)> for YamlIter<'a> {
     fn next(&mut self) -> Option<(Pos, char)> {
-        let pos = self.position;  // Current position is returned one
+        let pos = self.position.clone();  // Current position is returned one
         let npos = &mut self.position;  // Store new position in self
         match self.chars.next() {
             None => {
@@ -122,7 +139,7 @@ impl<'a> Iterator<(Pos, char)> for YamlIter<'a> {
 
                     }
                     ch if !is_printable(ch) => {
-                        self.error = Some(TokenError::new(*npos,
+                        self.error = Some(TokenError::new(npos.clone(),
                             "Unacceptable character"));
                         return None;
                     }
@@ -140,13 +157,14 @@ impl<'a> Iterator<(Pos, char)> for YamlIter<'a> {
 
 impl<'a, 'b> Tokenizer<'a, 'b> {
 
-    fn new<'x, 'y>(result: &'x mut Vec<Token<'y>>, data: &'y str)
+    fn new<'x, 'y>(result: &'x mut Vec<Token<'y>>,
+        name: Rc<String>, data: &'y str)
         -> Tokenizer<'x, 'y>
     {
         return Tokenizer {
             result: result,
             data: data,
-            iter: YamlIter::new(data),
+            iter: YamlIter::new(name, data),
             error: None,
             indent_levels: vec!(0),
             flow_level: 0,
@@ -154,7 +172,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     }
 
     fn skip_whitespace(&self) -> YamlIter<'b> {
-        let mut iter = self.iter;
+        let mut iter = self.iter.clone();
         loop {
             match iter.chars.peek() {
                 Some(&(_, ch)) => match ch {
@@ -180,14 +198,14 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             match self.iter.chars.peek() {
                 Some(&(_, ch)) => match ch {
                     '[' | ']' | '{' | '}' | ',' if self.flow_level > 0 => {
-                        let pos = self.iter.position;
+                        let pos = self.iter.position.clone();
                         self.add_token(PlainString, start, pos);
                         return;
                     }
                     ':' => {
                         // may end plainstring if followed by WS or flow marker
-                        let pos = self.iter.position;
-                        let mut niter = self.iter;
+                        let pos = self.iter.position.clone();
+                        let mut niter = self.iter.clone();
                         niter.next();
                         match niter.chars.peek().map(|&(_, x)| x) {
                             None | Some(' ') | Some('\t')
@@ -207,21 +225,23 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     ' ' | '\n' | '\r' => {
                         // may end plainstring if next block is not indented
                         // as much
-                        let pos = self.iter.position;
+                        let pos = self.iter.position.clone();
                         let niter = self.skip_whitespace();
-                        self.iter = niter;
+                        self.iter = niter.clone();
                         if (pos.line == niter.position.line ||
                             niter.position.indent >= minindent) {
                             match self.iter.chars.peek() {
                                 Some(&(_, '\t')) => {
                                     self.error = Some(
-                                        TokenError::new(self.iter.position,
+                                        TokenError::new(
+                                        self.iter.position.clone(),
                                         "Tab character may appear only in \
                                             quoted string"));
                                     break;
                                 }
                                 Some(&(_, '#')) => {
-                                    self.add_token(PlainString, start, pos);
+                                    self.add_token(PlainString,
+                                        start, pos.clone());
                                     self.add_token(Whitespace, pos,
                                         niter.position);
                                     return;
@@ -229,14 +249,15 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                                 _ => {}
                             }
                         } else {
-                            self.add_token(PlainString, start, pos);
+                            self.add_token(PlainString, start, pos.clone());
                             self.add_token(Whitespace, pos,
                                 niter.position);
                             return;
                         }
                     }
                     '\t' => {
-                        self.error = Some(TokenError::new(self.iter.position,
+                        self.error = Some(TokenError::new(
+                            self.iter.position.clone(),
                             "Tab character may appear only in quoted string"));
                         break;
                     }
@@ -246,7 +267,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             }
             self.iter.next();
         }
-        let end = self.iter.position;
+        let end = self.iter.position.clone();
         self.add_token(PlainString, start, end);
     }
 
@@ -265,12 +286,12 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         // may end folded if next block is not indented
                         // as much
                         let niter = self.skip_whitespace();
-                        self.iter = niter;
+                        self.iter = niter.clone();
                         if niter.position.indent >= minindent {
                             continue;
                         }
-                        self.add_token(tok, start, pos);
-                        self.add_token(Whitespace, pos, niter.position);
+                        self.add_token(tok, start, pos.clone());
+                        self.add_token(Whitespace, pos, niter.position.clone());
                         return;
                     }
                     _ => continue,
@@ -278,7 +299,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 None => break,
             }
         }
-        let end = self.iter.position;
+        let end = self.iter.position.clone();
         self.add_token(tok, start, end);
     }
 
@@ -289,8 +310,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             if start.indent > cur {
                 self.result.push(Token {
                     kind: Indent,
-                    start: start,
-                    end: start,
+                    start: start.clone(),
+                    end: start.clone(),
                     value: self.data.slice(start.offset, start.offset),
                     });
                 self.indent_levels.push(start.indent);
@@ -298,22 +319,22 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 while *self.indent_levels.last().unwrap() > start.indent {
                     self.result.push(Token {
                         kind: Unindent,
-                        start: start,
-                        end: start,
+                        start: start.clone(),
+                        end: start.clone(),
                         value: self.data.slice(start.offset, start.offset),
                         });
                     self.indent_levels.pop();
                 }
                 if *self.indent_levels.last().unwrap() != start.indent {
-                    self.error = Some(TokenError::new(start,
+                    self.error = Some(TokenError::new(start.clone(),
                         "Unindent doesn't match any outer indentation level"));
                 }
             }
         }
         self.result.push(Token {
             kind: kind,
-            start: start,
-            end: end,
+            start: start.clone(),
+            end: end.clone(),
             value: self.data.slice(start.offset, end.offset),
             });
     }
@@ -330,7 +351,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         Some((_, '-')) => { // maybe document end
                             match self.iter.next() {
                                 Some((_, '-')) => {
-                                    let end = self.iter.position;
+                                    let end = self.iter.position.clone();
                                     self.add_token(DocumentStart, start, end);
                                 }
                                 _ => self.read_plain(start),
@@ -347,16 +368,16 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                                 self.iter.position.indent =
                                     self.iter.position.line_offset - 1;
                             }
-                            self.add_token(SequenceEntry, start, cur);
+                            self.add_token(SequenceEntry, start, cur.clone());
                             self.iter = self.skip_whitespace();
-                            let end = self.iter.position;
+                            let end = self.iter.position.clone();
                             self.add_token(Whitespace, cur, end);
                         }
                         Some(_) => {
                             self.read_plain(start);
                         }
                         None => {
-                            let end = self.iter.position;
+                            let end = self.iter.position.clone();
                             self.add_token(SequenceEntry, start, end);
                             break;
                             }
@@ -367,13 +388,13 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     match self.iter.next() {
                         Some((cur, ' ')) | Some((cur, '\t'))
                         | Some((cur, '\r')) | Some((cur, '\n')) => {
-                            self.add_token(MappingKey, start, cur);
+                            self.add_token(MappingKey, start, cur.clone());
                             self.iter = self.skip_whitespace();
-                            let end = self.iter.position;
+                            let end = self.iter.position.clone();
                             self.add_token(Whitespace, cur, end);
                         }
                         None => {
-                            let end = self.iter.position;
+                            let end = self.iter.position.clone();
                             self.add_token(MappingKey, start, end);
                             break;
                         }
@@ -391,7 +412,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             | Some(&(_, '{')) | Some(&(_, '}'))
                             | Some(&(_, '[')) | Some(&(_, ']'))
                             | Some(&(_, ',')) => {
-                                let end = self.iter.position;
+                                let end = self.iter.position.clone();
                                 self.add_token(MappingValue, start, end);
                             }
                             _ => {
@@ -404,13 +425,14 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         match self.iter.next() {
                             Some((cur, ' ')) | Some((cur, '\t'))
                             | Some((cur, '\r')) | Some((cur, '\n')) => {
-                                self.add_token(MappingValue, start, cur);
+                                self.add_token(MappingValue,
+                                    start, cur.clone());
                                 self.iter = self.skip_whitespace();
-                                let end = self.iter.position;
+                                let end = self.iter.position.clone();
                                 self.add_token(Whitespace, cur, end);
                             }
                             None => {
-                                let end = self.iter.position;
+                                let end = self.iter.position.clone();
                                 self.add_token(MappingValue, start, end);
                                 break;
                             }
@@ -431,7 +453,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             break;
                         }
                     }
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(Directive, start, end);
                 }
                 Some((start, '@')) | Some((start, '`')) => {
@@ -457,13 +479,13 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             "Unclosed double-quoted string"));
                         break;
                     }
-                    let end = self.iter.position;
-                    self.add_token(DoubleString, start, end);
+                    let end = self.iter.position.clone();
+                    self.add_token(DoubleString, start, end.clone());
                     // This is YAML 1.2 hack to be superset of json
                     match self.iter.chars.peek() {
                         Some(&(_, ':')) => {
                             self.iter.next();
-                            let mvalend = self.iter.position;
+                            let mvalend = self.iter.position.clone();
                             self.add_token(MappingValue, end, mvalend);
                         }
                         _ => {}
@@ -480,7 +502,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             "Unclosed quoted string"));
                         break;
                     }
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(SingleString, start, end);
                 }
                 Some((start, '#')) => {
@@ -489,7 +511,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             break;
                         }
                     }
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(Comment, start, end);
                 }
                 Some((start, '!')) => {
@@ -506,7 +528,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             break 'tokenloop;
                         }
                     }
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(Tag, start, end);
                 }
                 Some((start, '&')) => {
@@ -528,7 +550,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                            "Anchor name requires at least one character"));
                         break;
                     }
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(Anchor, start, end);
                 }
                 Some((start, '*')) => {
@@ -550,32 +572,32 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             "Alias name requires at least one character"));
                         break;
                     }
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(Alias, start, end);
                 }
                 Some((start, ',')) => {
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(FlowEntry, start, end);
                 }
                 Some((start, '[')) => {
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(FlowSeqStart, start, end);
                     self.flow_level += 1;
                 }
                 Some((start, ']')) => {
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(FlowSeqEnd, start, end);
                     if self.flow_level > 0 {
                         self.flow_level -= 1;
                     }
                 }
                 Some((start, '{')) => {
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(FlowMapStart, start, end);
                     self.flow_level += 1;
                 }
                 Some((start, '}')) => {
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(FlowMapEnd, start, end);
                     if self.flow_level > 0 {
                         self.flow_level -= 1;
@@ -590,41 +612,49 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 Some((start, ' '))
                 | Some((start, '\r')) | Some((start, '\n')) => {
                     self.iter = self.skip_whitespace();
-                    let end = self.iter.position;
+                    let end = self.iter.position.clone();
                     self.add_token(Whitespace, start, end);
                 }
                 Some((start, _)) => { self.read_plain(start); }
                 None => break,
             }
         }
-        let pos = self.iter.position;
+        let pos = self.iter.position.clone();
         if self.indent_levels.len() > 1 {
             for _ in range(0, self.indent_levels.len() - 1) {
                 self.result.push(Token {
                     kind: Unindent,
-                    start: pos,
-                    end: pos,
+                    start: pos.clone(),
+                    end: pos.clone(),
                     value: self.data.slice(pos.offset, pos.offset),
                     });
             }
         }
         self.result.push(Token {
             kind: Eof,
-            start: pos,
-            end: pos,
+            start: pos.clone(),
+            end: pos.clone(),
             value: self.data.slice(pos.offset, pos.offset),
             });
-        return self.error.or(self.iter.error);
+        return self.error.clone().or(self.iter.error.clone());
     }
 }
 
-pub fn tokenize<'x>(data: &'x str) -> Result<Vec<Token<'x>>, TokenError> {
+pub fn tokenize<'x>(name: Rc<String>, data: &'x str)
+    -> Result<Vec<Token<'x>>, TokenError>
+{
     let mut result: Vec<Token<'x>> = Vec::new();
     //let iter = data.char_indices();
-    return match Tokenizer::new(&mut result, data).tokenize() {
+    return match Tokenizer::new(&mut result, name, data).tokenize() {
         Some(err) => Err(err),
         None => Ok(result),
     };
+}
+
+#[cfg(test)]
+pub fn test_tokenize<'x>(data: &'x str)
+    -> Result<Vec<Token<'x>>, TokenError> {
+    return tokenize(Rc::new("<inline_test>".to_string()), data);
 }
 
 #[cfg(test)]
@@ -635,7 +665,7 @@ fn simple_tokens<'x>(res: Result<Vec<Token<'x>>, TokenError>)
         Ok(vec) => {
             assert_eq!(vec.last().unwrap().kind, Eof);
             return vec.slice(0, vec.len()-1).iter().map(
-            |&tok| {
+            |ref tok| {
                 return (tok.kind, tok.value);
             }).collect();
         }
@@ -646,8 +676,8 @@ fn simple_tokens<'x>(res: Result<Vec<Token<'x>>, TokenError>)
 }
 
 #[test]
-fn test_tokenize() {
-    let tokens = tokenize("a:  b");
+fn test_tokenize_map() {
+    let tokens = test_tokenize("a:  b");
     let strings = simple_tokens(tokens);
     assert_eq!(strings, vec!(
         (PlainString, "a"),
@@ -658,17 +688,17 @@ fn test_tokenize() {
 
 #[test]
 fn test_list() {
-    let tokens = tokenize("-");
+    let tokens = test_tokenize("-");
     assert_eq!(simple_tokens(tokens),
         vec!((SequenceEntry, "-")));
-    let tokens = tokenize("---");
+    let tokens = test_tokenize("---");
     assert_eq!(simple_tokens(tokens),
         vec!((DocumentStart, "---")));
-    let tokens = tokenize("- something");
+    let tokens = test_tokenize("- something");
     assert_eq!(simple_tokens(tokens),
         vec!((SequenceEntry, "-"), (Whitespace, " "),
              (Indent, ""), (PlainString, "something"), (Unindent, "")));
-    let tokens = tokenize("- -");
+    let tokens = test_tokenize("- -");
     assert_eq!(simple_tokens(tokens),
         vec!((SequenceEntry, "-"), (Whitespace, " "),
              (Indent, ""), (SequenceEntry, "-"), (Unindent, "")));
@@ -676,7 +706,7 @@ fn test_list() {
 
 #[test]
 fn test_list_map() {
-    let tokens = tokenize("- a: 1\n  b: 2");
+    let tokens = test_tokenize("- a: 1\n  b: 2");
     assert_eq!(simple_tokens(tokens),
         vec!((SequenceEntry, "-"), (Whitespace, " "),
              (Indent, ""),
@@ -690,26 +720,26 @@ fn test_list_map() {
 
 #[test]
 fn test_map_key() {
-    let tokens = tokenize("?");
+    let tokens = test_tokenize("?");
     assert_eq!(simple_tokens(tokens),
         vec!((MappingKey, "?")));
-    let tokens = tokenize("?something");
+    let tokens = test_tokenize("?something");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "?something")));
-    let tokens = tokenize("? something");
+    let tokens = test_tokenize("? something");
     assert_eq!(simple_tokens(tokens),
         vec!((MappingKey, "?"), (Whitespace, " "), (PlainString, "something")));
 }
 
 #[test]
 fn test_map_value() {
-    let tokens = tokenize(":");
+    let tokens = test_tokenize(":");
     assert_eq!(simple_tokens(tokens),
         vec!((MappingValue, ":")));
-    let tokens = tokenize(":something");
+    let tokens = test_tokenize(":something");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, ":something")));
-    let tokens = tokenize(": something");
+    let tokens = test_tokenize(": something");
     assert_eq!(simple_tokens(tokens),
         vec!((MappingValue, ":"), (Whitespace, " "),
              (PlainString, "something")));
@@ -717,27 +747,27 @@ fn test_map_value() {
 
 #[test]
 fn test_plain() {
-    let tokens = tokenize("a");
+    let tokens = test_tokenize("a");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a")));
-    let tokens = tokenize("abc");
+    let tokens = test_tokenize("abc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "abc")));
-    let tokens = tokenize("abc\ndef");
+    let tokens = test_tokenize("abc\ndef");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "abc\ndef")));
-    let tokens = tokenize("a#bc");
+    let tokens = test_tokenize("a#bc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a#bc")));
-    let tokens = tokenize(" a\nbc");
+    let tokens = test_tokenize(" a\nbc");
     assert_eq!(simple_tokens(tokens),
         vec!((Whitespace, " "), (Indent, ""), (PlainString, "a"),
              (Whitespace, "\n"), (Unindent, ""), (PlainString, "bc")));
-    let tokens = tokenize("a:\n a\n bc");
+    let tokens = test_tokenize("a:\n a\n bc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, "\n "),
              (Indent, ""), (PlainString, "a\n bc"), (Unindent, "")));
-    let tokens = tokenize("a: a\nbc");
+    let tokens = test_tokenize("a: a\nbc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, " "),
              (PlainString, "a"), (Whitespace, "\n"), (PlainString, "bc")));
@@ -745,7 +775,7 @@ fn test_plain() {
 
 #[test]
 fn test_plain_words() {
-    let tokens = tokenize("a: a b");
+    let tokens = test_tokenize("a: a b");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"),
              (Whitespace, " "), (PlainString, "a b")));
@@ -753,10 +783,10 @@ fn test_plain_words() {
 
 #[test]
 fn test_block() {
-    let tokens = tokenize("|\n a");
+    let tokens = test_tokenize("|\n a");
     assert_eq!(simple_tokens(tokens),
         vec!((Literal, "|\n a")));
-    let tokens = tokenize("a: >\n b\nc");
+    let tokens = test_tokenize("a: >\n b\nc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, " "),
              (Folded, ">\n b"), (Whitespace, "\n"), (PlainString, "c")));
@@ -764,19 +794,19 @@ fn test_block() {
 
 #[test]
 fn test_directive() {
-    let tokens = tokenize("%");
+    let tokens = test_tokenize("%");
     assert_eq!(simple_tokens(tokens),
         vec!((Directive, "%")));
-    let tokens = tokenize("%something\n");
+    let tokens = test_tokenize("%something\n");
     assert_eq!(simple_tokens(tokens),
         vec!((Directive, "%something\n")));
-    let tokens = tokenize("%abc\ndef");
+    let tokens = test_tokenize("%abc\ndef");
     assert_eq!(simple_tokens(tokens),
         vec!((Directive, "%abc\n"), (PlainString, "def")));
-    let tokens = tokenize("a%bc");
+    let tokens = test_tokenize("a%bc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a%bc")));
-    let err = tokenize(" %bc").err().unwrap();
+    let err = test_tokenize(" %bc").err().unwrap();
     // TODO(pc) add testcase with percent sign at start of token
     assert_eq!(format!("{}", err).as_slice(), "1:2: \
         Directive must start at start of line");
@@ -784,141 +814,141 @@ fn test_directive() {
 
 #[test]
 fn test_reserved() {
-    let err = tokenize("@").err().unwrap();
+    let err = test_tokenize("@").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:1: \
         Characters '@' and '`' are not allowed");
-    let err = tokenize("a:\n  @").err().unwrap();
+    let err = test_tokenize("a:\n  @").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "2:3: \
         Characters '@' and '`' are not allowed");
-    let tokens = tokenize("a@");
+    let tokens = test_tokenize("a@");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a@")));
-    let tokens = tokenize("a\n@");
+    let tokens = test_tokenize("a\n@");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a\n@")));
 }
 
 #[test]
 fn test_bad_char_ctl() {
-    let err = tokenize("\x01").err().unwrap();
+    let err = test_tokenize("\x01").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:1: \
         Unacceptable character");
 }
 #[test]
 fn test_bad_char_tab() {
-    let err = tokenize("\t").err().unwrap();
+    let err = test_tokenize("\t").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:1: \
         Tab character may appear only in quoted string");
 }
 #[test]
 fn test_bad_char_tab2() {
-    let err = tokenize("a:\n  \tbc").err().unwrap();
+    let err = test_tokenize("a:\n  \tbc").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "2:3: \
         Tab character may appear only in quoted string");
 }
 #[test]
 fn test_bad_char_tab3() {
-    let err = tokenize("a\n\tb").err().unwrap();
+    let err = test_tokenize("a\n\tb").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "2:1: \
         Tab character may appear only in quoted string");
 }
 #[test]
 fn test_bad_char_tab4() {
-    let err = tokenize("a\tb").err().unwrap();
+    let err = test_tokenize("a\tb").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:2: \
         Tab character may appear only in quoted string");
 }
 
 #[test]
 fn test_double_quoted() {
-    let tokens = tokenize("\"\"");
+    let tokens = test_tokenize("\"\"");
     assert_eq!(simple_tokens(tokens),
         vec!((DoubleString, "\"\"")));
-    let tokens = tokenize("\"a\nb\"");
+    let tokens = test_tokenize("\"a\nb\"");
     assert_eq!(simple_tokens(tokens),
         vec!((DoubleString, "\"a\nb\"")));
-    let tokens = tokenize("\"a\\\"\nb\"");
+    let tokens = test_tokenize("\"a\\\"\nb\"");
     assert_eq!(simple_tokens(tokens),
         vec!((DoubleString, "\"a\\\"\nb\"")));
-    let err = tokenize("val: \"value\nof").err().unwrap();
+    let err = test_tokenize("val: \"value\nof").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:6: \
         Unclosed double-quoted string");
 }
 
 #[test]
 fn test_single_quoted() {
-    let tokens = tokenize("''");
+    let tokens = test_tokenize("''");
     assert_eq!(simple_tokens(tokens),
         vec!((SingleString, "''")));
-    let tokens = tokenize("'a\nb'");
+    let tokens = test_tokenize("'a\nb'");
     assert_eq!(simple_tokens(tokens),
         vec!((SingleString, "'a\nb'")));
-    let tokens = tokenize("'a\\': 'b'");
+    let tokens = test_tokenize("'a\\': 'b'");
     assert_eq!(simple_tokens(tokens),
         vec!((SingleString, "'a\\'"), (MappingValue, ":"),
              (Whitespace, " "), (SingleString, "'b'")));
-    let err = tokenize("val: 'value\nof").err().unwrap();
+    let err = test_tokenize("val: 'value\nof").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:6: \
         Unclosed quoted string");
 }
 
 #[test]
 fn test_comment() {
-    assert_eq!(simple_tokens(tokenize("#")),
+    assert_eq!(simple_tokens(test_tokenize("#")),
         vec!((Comment, "#")));
-    assert_eq!(simple_tokens(tokenize("#a")),
+    assert_eq!(simple_tokens(test_tokenize("#a")),
         vec!((Comment, "#a")));
-    assert_eq!(simple_tokens(tokenize("#a\nb")),
+    assert_eq!(simple_tokens(test_tokenize("#a\nb")),
         vec!((Comment, "#a\n"), (PlainString, "b")));
-    assert_eq!(simple_tokens(tokenize("a #b\nc")),
+    assert_eq!(simple_tokens(test_tokenize("a #b\nc")),
         vec!((PlainString, "a"), (Whitespace, " "),
           (Comment, "#b\n"), (PlainString, "c")));
-    assert_eq!(simple_tokens(tokenize("  #a\nb")),
+    assert_eq!(simple_tokens(test_tokenize("  #a\nb")),
         vec!((Whitespace, "  "), (Comment, "#a\n"), (PlainString, "b")));
 }
 
 #[test]
 fn test_tag() {
-    assert_eq!(simple_tokens(tokenize("!")),
+    assert_eq!(simple_tokens(test_tokenize("!")),
         vec!((Tag, "!")));
-    assert_eq!(simple_tokens(tokenize("!a b")),
+    assert_eq!(simple_tokens(test_tokenize("!a b")),
         vec!((Tag, "!a"), (Whitespace, " "), (PlainString, "b")));
-    let err = tokenize("!a[]").err().unwrap();
+    let err = test_tokenize("!a[]").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:3: \
         Bad char in tag name");
 }
 
 #[test]
 fn test_anchor() {
-    assert_eq!(simple_tokens(tokenize("&abc")),
+    assert_eq!(simple_tokens(test_tokenize("&abc")),
         vec!((Anchor, "&abc")));
-    assert_eq!(simple_tokens(tokenize("&a b")),
+    assert_eq!(simple_tokens(test_tokenize("&a b")),
         vec!((Anchor, "&a"), (Whitespace, " "), (PlainString, "b")));
-    let err = tokenize("&a[]").err().unwrap();
+    let err = test_tokenize("&a[]").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:3: \
         Bad char in anchor name");
-    let err = tokenize("&").err().unwrap();
+    let err = test_tokenize("&").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:1: \
         Anchor name requires at least one character");
 }
 
 #[test]
 fn test_alias() {
-    assert_eq!(simple_tokens(tokenize("*abc")),
+    assert_eq!(simple_tokens(test_tokenize("*abc")),
         vec!((Alias, "*abc")));
-    assert_eq!(simple_tokens(tokenize("*a b")),
+    assert_eq!(simple_tokens(test_tokenize("*a b")),
         vec!((Alias, "*a"), (Whitespace, " "), (PlainString, "b")));
-    let err = tokenize("*a[]").err().unwrap();
+    let err = test_tokenize("*a[]").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:3: \
         Bad char in alias name");
-    let err = tokenize("*").err().unwrap();
+    let err = test_tokenize("*").err().unwrap();
     assert_eq!(format!("{}", err).as_slice(), "1:1: \
         Alias name requires at least one character");
 }
 
 #[test]
 fn test_nested() {
-    assert_eq!(simple_tokens(tokenize("a:\n b:\n  c:\nd:")),
+    assert_eq!(simple_tokens(test_tokenize("a:\n b:\n  c:\nd:")),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, "\n "),
              (Indent, ""),
              (PlainString, "b"), (MappingValue, ":"), (Whitespace, "\n  "),
@@ -930,7 +960,7 @@ fn test_nested() {
 
 #[test]
 fn test_flow_list() {
-    assert_eq!(simple_tokens(tokenize("[a, b]")),
+    assert_eq!(simple_tokens(test_tokenize("[a, b]")),
         vec!((FlowSeqStart, "["),
              (PlainString, "a"),
              (FlowEntry, ","),
@@ -941,7 +971,7 @@ fn test_flow_list() {
 
 #[test]
 fn test_flow_map_json() {
-    assert_eq!(simple_tokens(tokenize(r#"{"a":1}"#)),
+    assert_eq!(simple_tokens(test_tokenize(r#"{"a":1}"#)),
         vec!((FlowMapStart, "{"),
              (DoubleString, r#""a""#),
              (MappingValue, ":"),
@@ -951,7 +981,7 @@ fn test_flow_map_json() {
 
 #[test]
 fn test_flow_map_map() {
-    assert_eq!(simple_tokens(tokenize(r#"{a:{}}"#)),
+    assert_eq!(simple_tokens(test_tokenize(r#"{a:{}}"#)),
         vec!((FlowMapStart, "{"),
              (PlainString, "a"),
              (MappingValue, ":"),
@@ -962,6 +992,6 @@ fn test_flow_map_map() {
 
 #[test]
 fn test_plain_scalar_braces() {
-    assert_eq!(simple_tokens(tokenize(r#"a:{}"#)),
+    assert_eq!(simple_tokens(test_tokenize(r#"a:{}"#)),
         vec!((PlainString, "a:{}")));
 }

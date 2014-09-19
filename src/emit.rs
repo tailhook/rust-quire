@@ -219,7 +219,7 @@ impl<'a> Context<'a> {
 
     pub fn emit_node(&mut self, node: &Node) -> IoResult<()> {
         match node {
-            &N::Map(tag, anchor, ref map, _) => {
+            &N::Map(_, tag, anchor, ref map) => {
                 try!(self.emit(MapStart(tag, anchor)));
                 for (k, v) in map.iter() {
                     try!(self.emit_node(k));
@@ -227,19 +227,19 @@ impl<'a> Context<'a> {
                 }
                 try!(self.emit(MapEnd));
             }
-            &N::List(tag, anchor, ref items, _) => {
+            &N::List(_, tag, anchor, ref items) => {
                 try!(self.emit(SeqStart(tag, anchor)));
                 for i in items.iter() {
                     try!(self.emit_node(i));
                 }
                 try!(self.emit(SeqEnd));
             },
-            &N::Scalar(ref tag, ref anchor, ref value, tok) => {
+            &N::Scalar(_, ref tag, ref anchor, _, ref value) => {
                 // TODO(tailhook) fix tag and anchor
                 try!(self.emit(Scalar(None, None, Auto, value.as_slice())));
             }
-            &N::Null(tag, anchor) => { }
-            &N::Alias(name) => unimplemented!(),
+            &N::Null(_, tag, anchor) => { }
+            &N::Alias(_, name) => unimplemented!(),
         }
         return Ok(());
     }
@@ -391,6 +391,7 @@ mod test {
     use std::io::{MemWriter, IoError};
     use std::str::{from_utf8};
     use std::mem::transmute;
+    use std::rc::Rc;
     use serialize::{Encodable, Encoder};
 
     use super::super::parser::parse;
@@ -437,7 +438,7 @@ mod test {
 
     fn assert_yaml_eq_yaml(source: &'static str, output: &'static str) {
         let mut buf = MemWriter::new();
-        parse(source, |doc| {
+        parse(Rc::new("<inline test>".to_string()), source, |doc| {
             let mut ctx = Context::new(&mut buf);
             ctx.emit_node(&doc.root).unwrap();
         }).unwrap();

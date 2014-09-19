@@ -5,11 +5,13 @@ use std::fmt::FormatError;
 use super::tokenizer::Pos;
 
 
+#[deriving(Clone)]
 pub struct TokenError {
     position: Pos,
     error: &'static str,
 }
 
+#[deriving(Clone)]
 pub struct ParserError {
     range: (Pos, Pos),
     error: &'static str,
@@ -51,7 +53,7 @@ impl Show for TokenError {
 
 impl Show for ParserError {
     fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
-        let (a, b) = self.range;
+        let (ref a, ref b) = self.range;
         try!(a.line.fmt(fmt));
         try!(':'.fmt(fmt));
         try!(a.line_offset.fmt(fmt));
@@ -68,8 +70,8 @@ impl Show for ParserError {
 impl Show for Error {
     fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
         return match *self {
-            TokenError(e) => e.fmt(fmt),
-            ParserError(e) => e.fmt(fmt),
+            TokenError(ref e) => e.fmt(fmt),
+            ParserError(ref e) => e.fmt(fmt),
         }
     }
 }

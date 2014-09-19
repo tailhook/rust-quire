@@ -1,5 +1,6 @@
 #![crate_id="quire#0.1"]
 #![crate_type="lib"]
+#![feature(macro_rules)]
 
 extern crate collections;
 extern crate serialize;
@@ -12,4 +13,5 @@ mod tokenizer;
 pub mod parser;
 mod json;
 pub mod emit;
+//pub mod decode;
 
