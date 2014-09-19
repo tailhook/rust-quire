@@ -1,5 +1,6 @@
 use std::default::Default;
 use std::collections::TreeMap;
+use std::fmt::{Show, Formatter, FormatError};
 
 use super::tokenizer::Pos;
 use E = super::errors;
@@ -44,8 +45,20 @@ pub enum Ast {
     Null(Pos, Tag, NullKind),
 }
 
+impl Show for Ast {
+    fn fmt(&self, fmt: &mut Formatter) -> Result<(), FormatError> {
+        match *self {
+            Map(_, _, _) => try!("Map".fmt(fmt)),
+            List(_, _, _) => try!("List".fmt(fmt)),
+            Scalar(_, _, _, _) => try!("Scalar".fmt(fmt)),
+            Null(_, _, _) => try!("Null".fmt(fmt)),
+        }
+        return Ok(());
+    }
+}
+
 impl Ast {
-    fn pos(&self) -> Pos {
+    pub fn pos(&self) -> Pos {
         match *self {
             Map(ref pos, _, _) => pos.clone(),
             List(ref pos, _, _) => pos.clone(),
