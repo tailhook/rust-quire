@@ -3,6 +3,7 @@ use std::vec::Vec;
 use std::str::CharOffsets;
 use std::iter::Peekable;
 use std::rc::Rc;
+use std::fmt::{Show, Formatter, FormatError};
 
 use super::chars::is_indicator;
 use super::chars::is_whitespace;
@@ -49,6 +50,18 @@ pub struct Pos {
     pub line_start: bool,
     pub line_offset: uint,
     pub offset: uint,
+}
+
+impl Show for Pos {
+    fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
+        try!(self.filename.fmt(fmt));
+        try!(':'.fmt(fmt));
+        try!(self.line.fmt(fmt));
+        try!(':'.fmt(fmt));
+        try!(self.line_offset.fmt(fmt));
+        try!(':'.fmt(fmt));
+        return Ok(());
+    }
 }
 
 pub struct Token<'tok> {

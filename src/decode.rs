@@ -5,10 +5,16 @@ use std::from_str::FromStr;
 use std::intrinsics::TypeId;
 use serialize::Decoder;
 
+use super::tokenizer::Pos;
 use A = super::ast;
 use E = super::errors;
 
-pub type DecodeResult<T> = Result<T, ()>;
+#[deriving(Show)]
+enum DecoderError {
+    MissingFieldError(Pos, String),
+}
+
+pub type DecodeResult<T> = Result<T, DecoderError>;
 
 /// A structure to decode Yaml to values in rust.
 pub struct YamlDecoder {
@@ -52,7 +58,7 @@ impl YamlDecoder {
 }
 
 
-impl Decoder<()> for YamlDecoder {
+impl Decoder<DecoderError> for YamlDecoder {
     fn read_nil(&mut self) -> DecodeResult<()> {
         match self.pop() {
             A::Null(_, _, _) => Ok(()),
@@ -159,7 +165,9 @@ impl Decoder<()> for YamlDecoder {
                       len: uint,
                       f: |&mut YamlDecoder| -> DecodeResult<T>)
                       -> DecodeResult<T> {
-        unimplemented!();
+        let value = try!(f(self));
+        self.pop();
+        return Ok(value);
     }
 
     fn read_struct_field<T>(&mut self,
@@ -167,7 +175,21 @@ impl Decoder<()> for YamlDecoder {
                             idx: uint,
                             f: |&mut YamlDecoder| -> DecodeResult<T>)
                             -> DecodeResult<T> {
-        unimplemented!();
+        let (pos, tag, mut children) = match self.pop() {
+            A::Map(pos, tag, children) => (pos, tag, children),
+            _ => unimplemented!(),
+        };
+
+        println!("Children {}, name {}", children, name);
+        let value = match children.pop(&name.to_string()) {
+            None => return Err(MissingFieldError(pos.clone(), name.to_string())),
+            Some(json) => {
+                self.stack.push(json);
+                try!(f(self))
+            }
+        };
+        self.stack.push(A::Map(pos, tag, children));
+        Ok(value)
     }
 
     fn read_tuple<T>(&mut self, f: |&mut YamlDecoder, uint| -> DecodeResult<T>) -> DecodeResult<T> {
@@ -246,7 +268,7 @@ mod test {
     #[test]
     fn decode_struct() {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
-            "a: 1, b: hello",
+            "a: 1\nb: hello",
             |doc| { process(Default::default(), doc) }).unwrap();
         let mut dec = YamlDecoder::new(ast);
         let val: TestStruct = Decodable::decode(&mut dec).unwrap();
