@@ -1,9 +1,13 @@
 use std::f64;
 use std::str;
+use std::any::{Any, AnyMutRefExt};
+use std::fmt::{Show, Formatter, FormatError};
 use std::default::Default;
 use std::from_str::FromStr;
 use std::intrinsics::TypeId;
-use serialize::Decoder;
+use serialize::{Decoder, Decodable};
+use serialize::json::ToJson;
+use J = serialize::json;
 
 use super::tokenizer::Pos;
 use A = super::ast;
@@ -15,6 +19,37 @@ enum DecoderError {
 }
 
 pub type DecodeResult<T> = Result<T, DecoderError>;
+
+struct AnyJson(J::Json);
+
+impl Deref<J::Json> for AnyJson {
+    fn deref<'x>(&'x self) -> &'x J::Json {
+        let AnyJson(ref val) = *self;
+        return val;
+    }
+}
+
+impl<D:Decoder<E>, E> Decodable<D, E> for AnyJson {
+    fn decode(dec: &mut D) -> Result<AnyJson, E> {
+        let dec: &mut YamlDecoder = (dec as &mut Any).as_mut().unwrap();
+        return Ok(AnyJson(dec.pop().to_json()));
+    }
+}
+
+impl PartialEq for AnyJson {
+    fn eq(&self, other: &AnyJson) -> bool {
+        let AnyJson(ref selfj) = *self;
+        let AnyJson(ref otherj) = *self;
+        return selfj == otherj;
+    }
+}
+impl Eq for AnyJson {}
+impl Show for AnyJson {
+    fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
+        let AnyJson(ref selfj) = *self;
+        selfj.fmt(fmt)
+    }
+}
 
 /// A structure to decode Yaml to values in rust.
 pub struct YamlDecoder {
@@ -257,9 +292,11 @@ mod test {
     use super::YamlDecoder;
     use super::super::parser::parse;
     use super::super::ast::process;
-    use serialize::Decodable;
+    use serialize::{Decodable, Decoder};
+    use super::{DecoderError, AnyJson};
+    use J = serialize::json;
 
-    #[deriving(Clone, Show, PartialEq, Eq, Default, Decodable)]
+    #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
     struct TestStruct {
         a: uint,
         b: String,
@@ -275,6 +312,23 @@ mod test {
         assert_eq!(val, TestStruct {
             a: 1,
             b: "hello".to_string(),
+            });
+    }
+
+    #[deriving(Show, PartialEq, Eq, Decodable)]
+    struct TestJson {
+        json: AnyJson,
+    }
+
+    #[test]
+    fn decode_json() {
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            "json:\n a: 1\n b: test",
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let mut dec = YamlDecoder::new(ast);
+        let val: TestJson = Decodable::decode(&mut dec).unwrap();
+        assert_eq!(val, TestJson {
+            json: AnyJson(J::from_str(r#"{"a": 1, "b": "test"}"#).unwrap()),
             });
     }
 }
