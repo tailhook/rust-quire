@@ -10,6 +10,7 @@ use super::parser::Node;
 use S = self::State;
 use L = self::Line;
 use N = super::parser;  // Node enum constants
+use A = super::ast;
 
 type Tag<'a> = &'a str;
 type Anchor<'a> = &'a str;
@@ -238,8 +239,41 @@ impl<'a> Context<'a> {
                 // TODO(tailhook) fix tag and anchor
                 try!(self.emit(Scalar(None, None, Auto, value.as_slice())));
             }
-            &N::ImplicitNull(tag, anchor, _) => { }
+            &N::ImplicitNull(ref _tag, ref _anchor, ref _token) => {
+                try!(self.emit(Null(None, None, Null::Null)));
+            }
             &N::Alias(name, _) => unimplemented!(),
+        }
+        return Ok(());
+    }
+
+    pub fn emit_ast(&mut self, node: &A::Ast) -> IoResult<()> {
+        match node {
+            &A::Map(_, ref _tag, ref map) => {
+                try!(self.emit(MapStart(None, None)));
+                for (k, v) in map.iter() {
+                    try!(self.emit(Scalar(None, None, Auto, k.as_slice())));
+                    try!(self.emit_ast(v));
+                }
+                try!(self.emit(MapEnd));
+            }
+            &A::List(_, ref _tag, ref items) => {
+                try!(self.emit(SeqStart(None, None)));
+                for i in items.iter() {
+                    try!(self.emit_ast(i));
+                }
+                try!(self.emit(SeqEnd));
+            },
+            &A::Scalar(_, ref _tag, _, ref value) => {
+                // TODO(tailhook) fix tag and anchor
+                try!(self.emit(Scalar(None, None, Auto, value.as_slice())));
+            }
+            &A::Null(_, _, kind) => {
+                try!(self.emit(Null(None, None, match kind {
+                    A::Explicit => Null::Null,
+                    A::Implicit => Null::Nothing,
+                })));
+            }
         }
         return Ok(());
     }
@@ -258,6 +292,13 @@ pub fn emit_parse_tree(tree: &Node, stream: &mut Writer)
 {
     let mut ctx = Context::new(stream);
     return ctx.emit_node(tree);
+}
+
+pub fn emit_ast(tree: &A::Ast, stream: &mut Writer)
+    -> IoResult<()>
+{
+    let mut ctx = Context::new(stream);
+    return ctx.emit_ast(tree);
 }
 
 
@@ -392,10 +433,12 @@ mod test {
     use std::str::{from_utf8};
     use std::mem::transmute;
     use std::rc::Rc;
+    use std::default::Default;
     use serialize::{Encodable, Encoder};
 
     use super::super::parser::parse;
     use super::{Opcode, Context, Null, Auto, Scalar, MapStart, MapEnd};
+    use super::super::ast::process;
 
     fn emit_and_compare(list: &[Opcode], output: &str) {
         let mut buf = MemWriter::new();
@@ -438,10 +481,25 @@ mod test {
 
     fn assert_yaml_eq_yaml(source: &'static str, output: &'static str) {
         let mut buf = MemWriter::new();
-        parse(Rc::new("<inline test>".to_string()), source, |doc| {
+        let filen = Rc::new("<inline test>".to_string());
+        parse(filen.clone(), source, |doc| {
             let mut ctx = Context::new(&mut buf);
             ctx.emit_node(&doc.root).unwrap();
         }).unwrap();
+        let bytes = buf.unwrap();
+        let value = from_utf8(bytes.as_slice()).unwrap();
+        assert_eq!(value, output);
+
+        let mut buf = MemWriter::new();
+        let (ast, _) = parse(filen, source, |doc| {
+            process(Default::default(), doc)
+        }).unwrap();
+
+        {
+            let mut ctx = Context::new(&mut buf);
+            ctx.emit_ast(&ast).unwrap();
+        }
+
         let bytes = buf.unwrap();
         let value = from_utf8(bytes.as_slice()).unwrap();
         assert_eq!(value, output);
