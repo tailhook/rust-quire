@@ -16,6 +16,7 @@ pub enum Warning {
     CantParseValue(Pos, String),
     ValidationError(Pos, String),
     MissingFieldError(Pos, String),
+    ExpectedSequence(Pos),
 }
 
 #[deriving(Clone)]

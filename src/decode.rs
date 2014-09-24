@@ -65,6 +65,14 @@ impl YamlDecoder {
         self.stack.pop().unwrap()
     }
 
+    fn push(&mut self, ast: A::Ast) {
+        self.stack.push(ast);
+    }
+
+    fn peek<'x>(&'x mut self) -> &'x A::Ast {
+        self.stack.last().unwrap()
+    }
+
     fn from_str<T: FromStr+Default+'static>(&mut self) -> DecodeResult<T> {
         match self.pop() {
             ref node@A::Scalar(ref pos, _, _, ref val) => {
@@ -208,7 +216,6 @@ impl Decoder<E::Warning> for YamlDecoder {
             _ => unimplemented!(),
         };
 
-        println!("Children {}, name {}", children, name);
         let value = match children.pop(&name.to_string()) {
             None => return Err(E::MissingFieldError(
                 pos.clone(), name.to_string())),
@@ -252,30 +259,88 @@ impl Decoder<E::Warning> for YamlDecoder {
         }
     }
 
-    fn read_seq<T>(&mut self, f: |&mut YamlDecoder, uint| -> DecodeResult<T>) -> DecodeResult<T> {
-        unimplemented!();
+    fn read_seq<T>(&mut self, f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
+        let node = self.pop();
+        let len = match node {
+            A::List(_, _, ref children) => {
+                children.len()
+            }
+            ref node => {
+                self.warnings.push(E::UnexpectedNode(node.pos(),
+                    "Sequence", format!("{}", node)));
+                0
+            }
+        };
+        self.push(node);
+        let value = try!(f(self, len));
+        self.pop();
+        return Ok(value);
     }
 
-    fn read_seq_elt<T>(&mut self,
-                       idx: uint,
-                       f: |&mut YamlDecoder| -> DecodeResult<T>) -> DecodeResult<T> {
-        unimplemented!();
+    fn read_seq_elt<T>(&mut self, idx: uint,
+        f: |&mut YamlDecoder| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
+        let (pos, tag, mut children) = match self.pop() {
+            A::List(pos, tag, children) => (pos, tag, children),
+            _ => unimplemented!(),
+        };
+
+        let ast = children.shift().unwrap();
+        self.stack.push(ast);
+        let value = try!(f(self));
+        self.stack.push(A::List(pos, tag, children));
+        Ok(value)
     }
 
-    fn read_map<T>(&mut self, f: |&mut YamlDecoder, uint| -> DecodeResult<T>) -> DecodeResult<T> {
-        unimplemented!();
+    fn read_map<T>(&mut self, f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
+        let node = self.pop();
+        let len = match node {
+            A::Map(_, _, ref children) => {
+                children.len()
+            }
+            ref node => {
+                self.warnings.push(E::UnexpectedNode(node.pos(),
+                    "Mapping", format!("{}", node)));
+                0
+            }
+        };
+        self.push(node);
+        let value = try!(f(self, len));
+        self.pop();
+        return Ok(value);
     }
 
     fn read_map_elt_key<T>(&mut self, idx: uint,
         f: |&mut YamlDecoder| -> DecodeResult<T>)
         -> DecodeResult<T>
     {
-        unimplemented!();
+        let (pos, tag, mut children) = match self.pop() {
+            A::Map(pos, tag, children) => (pos, tag, children),
+            _ => unimplemented!(),
+        };
+
+        let key = {
+            let (key, _) = children.iter().next().unwrap();
+            key.clone()
+        };
+        let val = children.pop(&key).unwrap();
+        self.stack.push(A::Map(pos.clone(), tag, children));
+        self.stack.push(val);
+        self.stack.push(A::Scalar(pos, A::NonSpecific, A::Quoted, key));
+        let value = try!(f(self));
+        Ok(value)
     }
 
-    fn read_map_elt_val<T>(&mut self, idx: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
-        -> DecodeResult<T> {
-        unimplemented!();
+    fn read_map_elt_val<T>(&mut self, idx: uint,
+        f: |&mut YamlDecoder| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
+        f(self)
     }
 }
 
@@ -283,6 +348,7 @@ impl Decoder<E::Warning> for YamlDecoder {
 mod test {
     use std::rc::Rc;
     use std::default::Default;
+    use std::collections::TreeMap;
     use super::YamlDecoder;
     use super::super::parser::parse;
     use super::super::ast::process;
@@ -307,6 +373,29 @@ mod test {
             a: 1,
             b: "hello".to_string(),
             });
+    }
+
+    #[test]
+    fn decode_list() {
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            "- a\n- b",
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let mut dec = YamlDecoder::new(ast);
+        let val: Vec<String> = Decodable::decode(&mut dec).unwrap();
+        assert_eq!(val, vec!("a".to_string(), "b".to_string()));
+    }
+
+    #[test]
+    fn decode_map() {
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            "a: 1\nb: 2",
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let mut dec = YamlDecoder::new(ast);
+        let val: TreeMap<String, int> = Decodable::decode(&mut dec).unwrap();
+        let mut res =  TreeMap::new();
+        res.insert("a".to_string(), 1);
+        res.insert("b".to_string(), 2);
+        assert_eq!(val, res);
     }
 
     #[deriving(Show, PartialEq, Eq, Decodable)]
