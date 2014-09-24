@@ -7,7 +7,8 @@ extern crate serialize;
 extern crate regex;
 #[cfg(test)] extern crate debug;
 
-pub use parser::parse;
+pub use sky::parse_config;
+pub use ast::Options;
 
 mod chars;
 mod errors;
@@ -18,4 +19,4 @@ pub mod emit;
 pub mod ast;
 pub mod decode;
 pub mod validate;
-
+pub mod sky;

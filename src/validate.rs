@@ -5,16 +5,16 @@ use std::collections::TreeMap;
 use regex::Regex;
 
 use super::errors::{Warning, ValidationError};
-use super::tokenizer::Pos;
+pub use super::tokenizer::Pos;
 use A = super::ast;
 
-trait Validator {
+pub trait Validator {
     fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>);
     fn default(&self, pos: Pos) -> Option<A::Ast>;
 }
 
 #[deriving(Default)]
-struct Scalar {
+pub struct Scalar {
     descr: Option<String>,
     default: Option<String>,
     min_length: Option<uint>,
@@ -63,7 +63,7 @@ impl Validator for Scalar {
 }
 
 #[deriving(Default)]
-struct Numeric<T> {
+pub struct Numeric<T> {
     descr: Option<String>,
     default: Option<T>,
     min: Option<T>,
@@ -114,7 +114,7 @@ impl<T:Ord+Show+FromStr+ToStr> Validator for Numeric<T> {
     }
 }
 
-struct Structure {
+pub struct Structure {
     members: Vec<(String, Box<Validator>)>,
 }
 

@@ -8,9 +8,11 @@ use P = super::parser;
 use T = super::tokenizer;
 
 
-struct Options {
-    merges: bool,
-    aliases: bool,
+#[deriving(Clone)]
+pub struct Options {
+    pub merges: bool,
+    pub aliases: bool,
+    pub print_warnings: bool,
 }
 
 impl Default for Options {
@@ -18,6 +20,7 @@ impl Default for Options {
         return Options {
             merges: true,
             aliases: true,
+            print_warnings: true,
         }
     }
 }
