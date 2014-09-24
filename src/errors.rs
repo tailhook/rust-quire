@@ -4,6 +4,7 @@ use std::fmt::FormatError;
 
 use super::tokenizer::Pos;
 
+#[deriving(Show)]
 pub enum Warning {
     //  AST transformation errors from ast.rs
     InvalidTag(Pos),
@@ -13,6 +14,8 @@ pub enum Warning {
     //  Decoder errors from decode.rs
     UnexpectedNode(Pos, &'static str, String),
     CantParseValue(Pos, String),
+    ValidationError(Pos, String),
+    MissingFieldError(Pos, String),
 }
 
 #[deriving(Clone)]

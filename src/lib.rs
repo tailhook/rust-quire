@@ -4,6 +4,8 @@
 
 extern crate collections;
 extern crate serialize;
+extern crate regex;
+#[cfg(test)] extern crate debug;
 
 pub use parser::parse;
 
@@ -15,4 +17,5 @@ pub mod json;
 pub mod emit;
 pub mod ast;
 pub mod decode;
+pub mod validate;
 

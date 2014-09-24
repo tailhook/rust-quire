@@ -13,12 +13,7 @@ use super::tokenizer::Pos;
 use A = super::ast;
 use E = super::errors;
 
-#[deriving(Show)]
-enum DecoderError {
-    MissingFieldError(Pos, String),
-}
-
-pub type DecodeResult<T> = Result<T, DecoderError>;
+pub type DecodeResult<T> = Result<T, E::Warning>;
 
 struct AnyJson(J::Json);
 
@@ -72,28 +67,26 @@ impl YamlDecoder {
 
     fn from_str<T: FromStr+Default+'static>(&mut self) -> DecodeResult<T> {
         match self.pop() {
-            ref node@A::Scalar(ref pos, _, A::Plain, ref val) => {
+            ref node@A::Scalar(ref pos, _, _, ref val) => {
                 match FromStr::from_str(val.as_slice()) {
                     Some(x) => Ok(x),
                     None => {
-                        self.warnings.push(E::CantParseValue(node.pos(),
+                        return Err(E::CantParseValue(node.pos(),
                             format!("{}", TypeId::of::<T>())));
-                        Ok(Default::default())
                     }
                 }
             }
             node => {
-                self.warnings.push(E::UnexpectedNode(node.pos(),
+                return Err(E::UnexpectedNode(node.pos(),
                     "Plain Scalar",
                     format!("{}", node)));
-                Ok(Default::default())
             }
         }
     }
 }
 
 
-impl Decoder<DecoderError> for YamlDecoder {
+impl Decoder<E::Warning> for YamlDecoder {
     fn read_nil(&mut self) -> DecodeResult<()> {
         match self.pop() {
             A::Null(_, _, _) => Ok(()),
@@ -217,7 +210,8 @@ impl Decoder<DecoderError> for YamlDecoder {
 
         println!("Children {}, name {}", children, name);
         let value = match children.pop(&name.to_string()) {
-            None => return Err(MissingFieldError(pos.clone(), name.to_string())),
+            None => return Err(E::MissingFieldError(
+                pos.clone(), name.to_string())),
             Some(json) => {
                 self.stack.push(json);
                 try!(f(self))
@@ -293,7 +287,7 @@ mod test {
     use super::super::parser::parse;
     use super::super::ast::process;
     use serialize::{Decodable, Decoder};
-    use super::{DecoderError, AnyJson};
+    use super::AnyJson;
     use J = serialize::json;
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
