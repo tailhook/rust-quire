@@ -222,7 +222,7 @@ impl<'a> Context<'a> {
                         NonSpecific
                     }
                     (val, None) => {
-                        LocalTag(val.slice_from(1).to_string())
+                        LocalTag(val.to_string())
                     }
                     ("", Some(val)) => {
                         self.warnings.push(E::UnsupportedTag(pos.clone()));

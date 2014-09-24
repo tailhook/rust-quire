@@ -550,7 +550,16 @@ fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     -> Result<Node<'x>, ParserError>
 {
-    let tok = tokiter.peek(0);
+    let mut tok = tokiter.peek(0);
+    let mut tag = None;
+    match tok.kind {
+        T::Tag => {
+            tag = Some(tok.value);
+            tokiter.next();
+            tok = tokiter.peek(0);
+        }
+        _ => {}
+    }
     match tok.kind {
         T::PlainString | T::SingleString | T::DoubleString
         | T::Literal | T::Folded => {
@@ -563,7 +572,7 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 }
             }
             tokiter.next();
-            return Ok(Scalar(None, None, tok.plain_value(), tok));
+            return Ok(Scalar(tag, None, tok.plain_value(), tok));
         }
         T::SequenceEntry => {
             return parse_list(tokiter, aliases);
