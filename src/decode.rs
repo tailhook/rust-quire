@@ -59,7 +59,7 @@ pub struct YamlDecoder {
 
 impl YamlDecoder {
 
-    fn new(ast: A::Ast) -> YamlDecoder {
+    pub fn new(ast: A::Ast) -> YamlDecoder {
         return YamlDecoder {
             stack: vec!(ast),
             warnings: Vec::new(),
