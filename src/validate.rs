@@ -1,5 +1,6 @@
 use std::from_str::FromStr;
 use std::fmt::Show;
+use std::default::Default;
 use std::collections::TreeMap;
 use std::str::replace;
 
@@ -169,7 +170,9 @@ impl Validator for Structure {
     }
 }
 
+#[deriving(Default)]
 pub struct Mapping {
+    pub descr: String,
     pub key_element: Box<Validator>,
     pub value_element: Box<Validator>,
 }
@@ -206,7 +209,9 @@ impl Validator for Mapping {
     }
 }
 
+#[deriving(Default)]
 pub struct Sequence {
+    pub descr: String,
     pub element: Box<Validator>,
 }
 
@@ -233,6 +238,23 @@ impl Validator for Sequence {
             res.push(value);
         }
         return (A::List(pos, A::NonSpecific, res), warnings);
+    }
+}
+
+struct Anything;
+
+impl Validator for Anything {
+    fn default(&self, _: Pos) -> Option<A::Ast> {
+        return None;
+    }
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
+        return (ast, Vec::new());
+    }
+}
+
+impl Default for Box<Validator> {
+    fn default() -> Box<Validator> {
+        return box Anything as Box<Validator>;
     }
 }
 
@@ -344,6 +366,7 @@ mod test {
         let validator = Mapping {
             key_element: box Scalar { .. Default::default()},
             value_element: box Numeric::<uint> { default: Some(0u), .. Default::default()},
+            .. Default::default()
         };
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
@@ -383,6 +406,7 @@ mod test {
     fn parse_seq(body: &str) -> Vec<uint> {
         let validator = Sequence {
             element: box Numeric { default: None::<uint>, .. Default::default()},
+            .. Default::default()
         };
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
