@@ -16,11 +16,11 @@ pub trait Validator {
 
 #[deriving(Default)]
 pub struct Scalar {
-    descr: Option<String>,
-    default: Option<String>,
-    min_length: Option<uint>,
-    max_length: Option<uint>,
-    regex: Option<Regex>,
+    pub descr: Option<String>,
+    pub default: Option<String>,
+    pub min_length: Option<uint>,
+    pub max_length: Option<uint>,
+    pub regex: Option<Regex>,
 }
 
 impl Validator for Scalar {
@@ -65,10 +65,10 @@ impl Validator for Scalar {
 
 #[deriving(Default)]
 pub struct Numeric<T> {
-    descr: Option<String>,
-    default: Option<T>,
-    min: Option<T>,
-    max: Option<T>,
+    pub descr: Option<String>,
+    pub default: Option<T>,
+    pub min: Option<T>,
+    pub max: Option<T>,
 }
 
 impl<T:Ord+Show+FromStr+ToStr> Validator for Numeric<T> {
@@ -116,7 +116,7 @@ impl<T:Ord+Show+FromStr+ToStr> Validator for Numeric<T> {
 }
 
 pub struct Structure {
-    members: Vec<(String, Box<Validator>)>,
+    pub members: Vec<(String, Box<Validator>)>,
 }
 
 impl Validator for Structure {
@@ -170,8 +170,8 @@ impl Validator for Structure {
 }
 
 pub struct Mapping {
-    key_element: Box<Validator>,
-    value_element: Box<Validator>,
+    pub key_element: Box<Validator>,
+    pub value_element: Box<Validator>,
 }
 
 impl Validator for Mapping {
@@ -207,7 +207,7 @@ impl Validator for Mapping {
 }
 
 pub struct Sequence {
-    element: Box<Validator>,
+    pub element: Box<Validator>,
 }
 
 impl Validator for Sequence {
