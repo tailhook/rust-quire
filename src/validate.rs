@@ -178,7 +178,7 @@ impl Validator for Mapping {
     }
     fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
         let mut warnings = vec!();
-        let (pos, mut map) = match ast {
+        let (pos, map) = match ast {
             A::Map(pos, _, items) => {
                 (pos, items)
             }
@@ -195,11 +195,42 @@ impl Validator for Mapping {
                 (A::Scalar(_, _, _, val), wrn) => (val, wrn),
                 _ => unreachable!(),
             };
+            warnings.extend(wrn.move_iter());
             let (value, wrn) = self.value_element.validate(v);
             warnings.extend(wrn.move_iter());
             res.insert(key, value);
         }
         return (A::Map(pos, A::NonSpecific, res), warnings);
+    }
+}
+
+pub struct Sequence {
+    element: Box<Validator>,
+}
+
+impl Validator for Sequence {
+    fn default(&self, pos: Pos) -> Option<A::Ast> {
+        return Some(A::List(pos, A::NonSpecific, Vec::new()));
+    }
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
+        let mut warnings = vec!();
+        let (pos, children) = match ast {
+            A::List(pos, _, items) => {
+                (pos, items)
+            }
+            ast => {
+                warnings.push(ValidationError(ast.pos(),
+                    format!("Value must be mapping")));
+                return (ast, warnings);
+            }
+        };
+        let mut res = Vec::new();
+        for val in children.move_iter() {
+            let (value, wrn) = self.element.validate(val);
+            warnings.extend(wrn.move_iter());
+            res.push(value);
+        }
+        return (A::List(pos, A::NonSpecific, res), warnings);
     }
 }
 
@@ -215,7 +246,7 @@ mod test {
     use super::super::ast::process;
     use super::super::parser::parse;
     use super::super::errors::Warning;
-    use super::{Validator, Structure, Scalar, Numeric, Mapping};
+    use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
     struct TestStruct {
@@ -310,6 +341,40 @@ mod test {
         m.insert("a".to_string(), 1);
         m.insert("bc".to_string(), 2);
         let res: HashMap<String, uint> = parse_map("a: 1\nbc: 2");
+        assert_eq!(res, m);
+    }
+
+    fn parse_seq(body: &str) -> Vec<uint> {
+        let validator = Sequence {
+            element: box Numeric { default: None::<uint>, .. Default::default()},
+        };
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        assert_eq!(warnings.len(), 0);
+        let (ast, warnings) = validator.validate(ast);
+        assert_eq!(warnings.len(), 0);
+        let mut dec = YamlDecoder::new(ast);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    fn test_seq_1() {
+        let m = vec!(1);
+        let res: Vec<uint> = parse_seq("- 1");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_seq_2() {
+        let m = vec!(1, 2);
+        let res: Vec<uint> = parse_seq("- 1\n- 2");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_seq_null() {
+        let m = Vec::new();
+        let res: Vec<uint> = parse_seq("[]");
         assert_eq!(res, m);
     }
 }
