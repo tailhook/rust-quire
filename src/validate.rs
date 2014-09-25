@@ -1,6 +1,7 @@
 use std::from_str::FromStr;
 use std::fmt::Show;
 use std::collections::TreeMap;
+use std::str::replace;
 
 use regex::Regex;
 
@@ -144,7 +145,8 @@ impl Validator for Structure {
             }
         };
         for &(ref k, ref validator) in self.members.iter() {
-            let value = match map.pop(k) {
+            let value = match map.pop(k)
+                .or(map.pop(&replace(k.as_slice(), "_", "-"))) {
                 Some(src) => {
                     let (value, wrn) = validator.validate(src);
                     warnings.extend(wrn.move_iter());
@@ -301,6 +303,40 @@ mod test {
         assert_eq!(parse_str("strkey: strvalue"), TestStruct {
             intkey: 123,
             strkey: "strvalue".to_string(),
+        });
+    }
+
+    #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
+    struct TestDash {
+        some_key: uint,
+    }
+
+    fn parse_dash_str(body: &str) -> TestDash {
+        let str_val = Structure { members: vec!(
+            ("some_key".to_string(), box Numeric {
+                default: Some(123u),
+                .. Default::default() } as Box<Validator>),
+        )};
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        assert_eq!(warnings.len(), 0);
+        let (ast, warnings) = str_val.validate(ast);
+        assert_eq!(warnings.len(), 0);
+        let mut dec = YamlDecoder::new(ast);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    fn test_dash_str() {
+        assert_eq!(parse_dash_str("some-key: 13"), TestDash {
+            some_key: 13,
+        });
+    }
+
+    #[test]
+    fn test_underscore_str() {
+        assert_eq!(parse_dash_str("some_key: 7"), TestDash {
+            some_key: 7,
         });
     }
 
