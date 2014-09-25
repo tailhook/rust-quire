@@ -161,11 +161,45 @@ impl Validator for Structure {
                     }
                 }
             };
-            println!("INSERT {} {:?}", k, value);
             map.insert(k.clone(), value);
         }
-        println!("MAP {}", map);
         return (A::Map(pos, A::NonSpecific, map), warnings);
+    }
+}
+
+pub struct Mapping {
+    key_element: Box<Validator>,
+    value_element: Box<Validator>,
+}
+
+impl Validator for Mapping {
+    fn default(&self, pos: Pos) -> Option<A::Ast> {
+        return Some(A::Map(pos, A::NonSpecific, TreeMap::new()));
+    }
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
+        let mut warnings = vec!();
+        let (pos, mut map) = match ast {
+            A::Map(pos, _, items) => {
+                (pos, items)
+            }
+            ast => {
+                warnings.push(ValidationError(ast.pos(),
+                    format!("Value must be mapping")));
+                return (ast, warnings);
+            }
+        };
+        let mut res = TreeMap::new();
+        for (k, v) in map.move_iter() {
+            let (key, wrn) = match self.key_element.validate(
+                A::Scalar(v.pos().clone(), A::NonSpecific, A::Plain, k)) {
+                (A::Scalar(_, _, _, val), wrn) => (val, wrn),
+                _ => unreachable!(),
+            };
+            let (value, wrn) = self.value_element.validate(v);
+            warnings.extend(wrn.move_iter());
+            res.insert(key, value);
+        }
+        return (A::Map(pos, A::NonSpecific, res), warnings);
     }
 }
 
@@ -174,11 +208,14 @@ mod test {
     use std::rc::Rc;
     use std::default::Default;
     use serialize::Decodable;
+    use std::collections::TreeMap;
+    use std::collections::HashMap;
 
     use super::super::decode::YamlDecoder;
     use super::super::ast::process;
     use super::super::parser::parse;
-    use super::{Validator, Structure, Scalar, Numeric};
+    use super::super::errors::Warning;
+    use super::{Validator, Structure, Scalar, Numeric, Mapping};
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
     struct TestStruct {
@@ -234,5 +271,45 @@ mod test {
             intkey: 123,
             strkey: "strvalue".to_string(),
         });
+    }
+
+    fn parse_map<T:Decodable<YamlDecoder, Warning>>(body: &str) -> T {
+        let validator = Mapping {
+            key_element: box Scalar { .. Default::default()},
+            value_element: box Numeric::<uint> { default: Some(0u), .. Default::default()},
+        };
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        assert_eq!(warnings.len(), 0);
+        let (ast, warnings) = validator.validate(ast);
+        assert_eq!(warnings.len(), 0);
+        let mut dec = YamlDecoder::new(ast);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    fn test_map_1() {
+        let mut m = TreeMap::new();
+        m.insert("a".to_string(), 1);
+        let res: TreeMap<String, uint> = parse_map("a: 1");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_map_2() {
+        let mut m = TreeMap::new();
+        m.insert("a".to_string(), 1);
+        m.insert("bc".to_string(), 2);
+        let res: TreeMap<String, uint> = parse_map("a: 1\nbc: 2");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_hash_map() {
+        let mut m = HashMap::new();
+        m.insert("a".to_string(), 1);
+        m.insert("bc".to_string(), 2);
+        let res: HashMap<String, uint> = parse_map("a: 1\nbc: 2");
+        assert_eq!(res, m);
     }
 }
