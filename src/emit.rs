@@ -335,6 +335,13 @@ pub fn emit_ast(tree: &A::Ast, stream: &mut Writer)
     return ctx.emit_ast(tree);
 }
 
+pub fn emit_object<'x, T: Encodable<Context<'x>, IoError>>(
+    val: &T, wr: &'x mut Writer) -> Result<(), IoError>
+{
+    let mut encoder = Context::new(wr);
+    val.encode(&mut encoder)
+}
+
 
 impl<'a> Encoder<IoError> for Context<'a> {
     fn emit_nil(&mut self) -> Result<(), IoError> {
@@ -445,10 +452,12 @@ impl<'a> Encoder<IoError> for Context<'a> {
         unimplemented!();
     }
     fn emit_seq(&mut self, len: uint, f: |this: &mut Context<'a>| -> Result<(), IoError>) -> Result<(), IoError> {
-        unimplemented!();
+        self.emit(SeqStart(None, None))
+            .and(f(self))
+            .and(self.emit(SeqEnd))
     }
     fn emit_seq_elt(&mut self, idx: uint, f: |this: &mut Context<'a>| -> Result<(), IoError>) -> Result<(), IoError> {
-        unimplemented!();
+        f(self)
     }
     fn emit_map(&mut self, len: uint, f: |&mut Context<'a>| -> Result<(), IoError>) -> Result<(), IoError> {
         unimplemented!();
@@ -581,6 +590,15 @@ mod test {
         let bytes = buf.unwrap();
         let value = from_utf8(bytes.as_slice()).unwrap();
         assert_eq!(value, "1\n");
+    }
+
+    #[test]
+    fn encode_seq() {
+        let mut buf = MemWriter::new();
+        Context::to_buffer(&vec!(1u, 2u), &mut buf);
+        let bytes = buf.unwrap();
+        let value = from_utf8(bytes.as_slice()).unwrap();
+        assert_eq!(value, "- 1\n- 2\n");
     }
 
     #[deriving(Encodable)]
