@@ -1,6 +1,6 @@
 #![crate_id="quire#0.1"]
 #![crate_type="lib"]
-#![feature(macro_rules)]
+#![feature(macro_rules, trace_macros)]
 
 extern crate collections;
 extern crate serialize;
@@ -20,3 +20,4 @@ pub mod ast;
 pub mod decode;
 pub mod validate;
 pub mod sky;
+pub mod macros;

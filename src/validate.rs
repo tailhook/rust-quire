@@ -116,7 +116,9 @@ impl<T:Ord+Show+FromStr+ToStr> Validator for Numeric<T> {
     }
 }
 
+#[deriving(Default)]
 pub struct Structure {
+    pub descr: Option<String>,
     pub members: Vec<(String, Box<Validator>)>,
 }
 
@@ -172,7 +174,7 @@ impl Validator for Structure {
 
 #[deriving(Default)]
 pub struct Mapping {
-    pub descr: String,
+    pub descr: Option<String>,
     pub key_element: Box<Validator>,
     pub value_element: Box<Validator>,
 }
@@ -211,7 +213,7 @@ impl Validator for Mapping {
 
 #[deriving(Default)]
 pub struct Sequence {
-    pub descr: String,
+    pub descr: Option<String>,
     pub element: Box<Validator>,
 }
 
@@ -286,7 +288,7 @@ mod test {
             ("strkey".to_string(), box Scalar {
                 default: Some("default_value".to_string()),
                 .. Default::default() } as Box<Validator>),
-        )};
+        ), .. Default::default()};
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
@@ -338,7 +340,7 @@ mod test {
             ("some_key".to_string(), box Numeric {
                 default: Some(123u),
                 .. Default::default() } as Box<Validator>),
-        )};
+        ), .. Default::default()};
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
