@@ -1,5 +1,6 @@
 use std::f64;
 use std::str;
+use std::vec::MoveItems;
 use std::any::{Any, AnyMutRefExt};
 use std::fmt::{Show, Formatter, FormatError};
 use std::default::Default;
@@ -49,6 +50,7 @@ impl Show for AnyJson {
 /// A structure to decode Yaml to values in rust.
 pub struct YamlDecoder {
     stack: Vec<A::Ast>,
+    bytes: Option<MoveItems<u8>>,
     warnings: Vec<E::Warning>,
 }
 
@@ -57,6 +59,7 @@ impl YamlDecoder {
     pub fn new(ast: A::Ast) -> YamlDecoder {
         return YamlDecoder {
             stack: vec!(ast),
+            bytes: None,
             warnings: Vec::new(),
         }
     }
@@ -118,7 +121,14 @@ impl Decoder<E::Warning> for YamlDecoder {
         Ok(try!(self.from_str()))
     }
     fn read_u8 (&mut self)  -> DecodeResult<u8> {
-        Ok(try!(self.from_str()))
+        match self.bytes {
+            Some(ref mut iter) => {
+                return Ok(iter.next().unwrap());
+            }
+            None => {
+                return Ok(try!(self.from_str()))
+            }
+        };
     }
     fn read_uint(&mut self) -> DecodeResult<uint> {
         Ok(try!(self.from_str()))
@@ -267,6 +277,15 @@ impl Decoder<E::Warning> for YamlDecoder {
             A::List(_, _, ref children) => {
                 children.len()
             }
+            A::Scalar(_, _, _, ref value) => {
+                // TODO(tailhook) check for !!binary tag
+                let vec = value.as_bytes().into_owned();
+                let len = vec.len();
+                self.bytes = Some(vec.move_iter());
+                let value = try!(f(self, len));
+                self.bytes = None;
+                return Ok(value);
+            }
             ref node => {
                 self.warnings.push(E::UnexpectedNode(node.pos(),
                     "Sequence", format!("{}", node)));
@@ -283,6 +302,10 @@ impl Decoder<E::Warning> for YamlDecoder {
         f: |&mut YamlDecoder| -> DecodeResult<T>)
         -> DecodeResult<T>
     {
+        if self.bytes.is_some() {
+            let value = try!(f(self));
+            return Ok(value);
+        }
         let (pos, tag, mut children) = match self.pop() {
             A::List(pos, tag, children) => (pos, tag, children),
             _ => unimplemented!(),
@@ -413,5 +436,22 @@ mod test {
         assert_eq!(val, TestJson {
             json: AnyJson(J::from_str(r#"{"a": 1, "b": "test"}"#).unwrap()),
             });
+    }
+
+    #[deriving(PartialEq, Eq, Decodable)]
+    struct TestPath {
+        path: Path,
+    }
+
+    #[test]
+    fn decode_path() {
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            "path: test/dir",
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let mut dec = YamlDecoder::new(ast);
+        let val: TestPath = Decodable::decode(&mut dec).unwrap();
+        println!("WARNINGS {}", dec.warnings);
+        println!("PATH {}", val.path.display());
+        assert!(val.path == Path::new("test/dir"));
     }
 }
