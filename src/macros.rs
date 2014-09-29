@@ -21,7 +21,7 @@ macro_rules! Structure {
         box Structure {
             members: vec!(
                 $( ( stringify!($nname).to_string(),
-                    validator!($typ { $($item : $value),* }) ) ),+
+                    validator!($typ { $($item : $value,)* }) ) ),+
             ),
             .. Default::default()
         }
@@ -30,7 +30,7 @@ macro_rules! Structure {
         box Structure {
             members: vec!(
                 $( ( stringify!($nname).to_string(),
-                    validator!($typ { $($item : $value),* }) ) ),+
+                    validator!($typ { $($item : $value,)* }) ) ),+
             ),
             .. Default::default()
         } as Box<Validator>
@@ -40,12 +40,12 @@ macro_rules! Structure {
 macro_rules! validator {
     ( $name:ident { $($item:ident : $value:expr),* } ) => {
         box $name {
-            $( $item : Some($value), )*
+            $( $item : $value, )*
         .. Default::default() } as Box<Validator>
     };
     ( $name:ident { $($item:ident : $value:expr,)* } ) => {
         box $name {
-            $( $item : Some($value), )*
+            $( $item : $value, )*
         .. Default::default() } as Box<Validator>
     };
 }
@@ -70,29 +70,29 @@ mod test {
     fn parse_str(body: &str) -> TestStruct {
         Structure!(
             intkey=Numeric {
-                default: 123u
+                default: Some(123u)
             },
         );
         Structure!(
             intkey=Numeric {
-                default: 123u
+                default: Some(123u)
             }
         );
         Structure!(
             intkey=Numeric {
-                default: 123u
+                default: Some(123u)
             },
             strkey=Scalar {
-                default: "default_value".to_string()
+                default: Some("default_value".to_string())
             }
         );
         let str_val = Structure!(
             intkey=Numeric {
-                default: 123u
+                default: Some(123u)
             },
             strkey=Scalar {
-                descr: "Hello world".to_string(),
-                default: "default_value".to_string()
+                descr: Some("Hello world".to_string()),
+                default: Some("default_value".to_string())
             },
         );
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
