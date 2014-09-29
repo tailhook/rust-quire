@@ -18,6 +18,7 @@ pub trait Validator {
 #[deriving(Default)]
 pub struct Scalar {
     pub descr: Option<String>,
+    pub optional: bool,
     pub default: Option<String>,
     pub min_length: Option<uint>,
     pub max_length: Option<uint>,
@@ -26,6 +27,9 @@ pub struct Scalar {
 
 impl Validator for Scalar {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
+        if self.default.is_none() && self.optional {
+            return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
+        }
         self.default.as_ref().map(|val| {
             A::Scalar(pos.clone(), A::NonSpecific, A::Quoted, val.clone()) })
     }
@@ -34,6 +38,9 @@ impl Validator for Scalar {
         let (pos, kind, val) = match ast {
             A::Scalar(pos, _, kind, string) => {
                 (pos, kind, string)
+            }
+            A::Null(_, _, _) if self.optional => {
+                return (ast, warnings);
             }
             ast => {
                 warnings.push(ValidationError(ast.pos(),
@@ -67,6 +74,7 @@ impl Validator for Scalar {
 #[deriving(Default)]
 pub struct Numeric<T> {
     pub descr: Option<String>,
+    pub optional: bool,
     pub default: Option<T>,
     pub min: Option<T>,
     pub max: Option<T>,
@@ -74,6 +82,9 @@ pub struct Numeric<T> {
 
 impl<T:Ord+Show+FromStr+ToStr> Validator for Numeric<T> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
+        if self.default.is_none() && self.optional {
+            return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
+        }
         self.default.as_ref().map(|val| {
             A::Scalar(pos.clone(), A::NonSpecific, A::Quoted, val.to_str()) })
     }
@@ -92,6 +103,9 @@ impl<T:Ord+Show+FromStr+ToStr> Validator for Numeric<T> {
                     }
                 };
                 (pos, val)
+            }
+            A::Null(_, _, _) if self.optional => {
+                return (ast, warnings);
             }
             ast => {
                 warnings.push(ValidationError(ast.pos(),
@@ -361,6 +375,49 @@ mod test {
     fn test_underscore_str() {
         assert_eq!(parse_dash_str("some_key: 7"), TestDash {
             some_key: 7,
+        });
+    }
+
+    #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
+    struct TestOpt {
+        some_key: Option<uint>,
+    }
+
+    fn parse_opt_str(body: &str) -> TestOpt {
+        let str_val = Structure { members: vec!(
+            ("some_key".to_string(), box Numeric {
+                default: None::<uint>,
+                optional: true,
+                .. Default::default() } as Box<Validator>),
+        ), .. Default::default()};
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        assert_eq!(warnings.len(), 0);
+        let (ast, warnings) = str_val.validate(ast);
+        println!("WARNINGS {}", warnings);
+        assert_eq!(warnings.len(), 0);
+        let mut dec = YamlDecoder::new(ast);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    fn test_opt_val() {
+        assert_eq!(parse_opt_str("some-key: 13"), TestOpt {
+            some_key: Some(13),
+        });
+    }
+
+    #[test]
+    fn test_opt_none() {
+        assert_eq!(parse_opt_str("some_key:"), TestOpt {
+            some_key: None,
+        });
+    }
+
+    #[test]
+    fn test_opt_no_key() {
+        assert_eq!(parse_opt_str("{}"), TestOpt {
+            some_key: None,
         });
     }
 
