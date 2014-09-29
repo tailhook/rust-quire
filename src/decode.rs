@@ -377,6 +377,7 @@ mod test {
     use super::super::ast::process;
     use serialize::{Decodable, Decoder};
     use super::AnyJson;
+    use super::super::errors::Warning;
     use J = serialize::json;
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
@@ -438,6 +439,43 @@ mod test {
             });
     }
 
+    #[deriving(PartialEq, Eq, Decodable, Show)]
+    struct TestOption {
+        path: Option<String>,
+    }
+
+    #[test]
+    fn decode_option_some() {
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            "path: test/value",
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let mut dec = YamlDecoder::new(ast);
+        let val: TestOption = Decodable::decode(&mut dec).unwrap();
+        assert!(val.path == Some("test/value".to_string()));
+    }
+
+    #[test]
+    fn decode_option_none() {
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            "path:",
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let mut dec = YamlDecoder::new(ast);
+        let val: TestOption = Decodable::decode(&mut dec).unwrap();
+        assert!(val.path == None);
+    }
+
+    #[test]
+    fn decode_option_no_key() {
+        // This one should fail, this would be worked out by validators
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            "{}",
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let mut dec = YamlDecoder::new(ast);
+        let val: Result<TestOption, Warning>;
+        val = Decodable::decode(&mut dec);
+        val.unwrap_err();
+    }
+
     #[deriving(PartialEq, Eq, Decodable)]
     struct TestPath {
         path: Path,
@@ -450,8 +488,6 @@ mod test {
             |doc| { process(Default::default(), doc) }).unwrap();
         let mut dec = YamlDecoder::new(ast);
         let val: TestPath = Decodable::decode(&mut dec).unwrap();
-        println!("WARNINGS {}", dec.warnings);
-        println!("PATH {}", val.path.display());
         assert!(val.path == Path::new("test/dir"));
     }
 }
