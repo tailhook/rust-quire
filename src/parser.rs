@@ -574,6 +574,9 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             tokiter.next();
             return Ok(Scalar(tag, None, tok.plain_value(), tok));
         }
+        T::Eof => {
+            return Ok(ImplicitNull(tag, None, tok.start.clone()));
+        }
         T::SequenceEntry => {
             return parse_list(tokiter, aliases);
         }

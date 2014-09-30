@@ -35,10 +35,20 @@ pub enum NullKind {
     Explicit,
 }
 
+#[deriving(Show)]
 pub enum Tag {
     NonSpecific,
     LocalTag(String),
     GlobalTag(String),
+}
+
+impl Tag {
+    pub fn is_specific(&self) -> bool {
+        match *self {
+            NonSpecific => false,
+            _ => true,
+        }
+    }
 }
 
 pub enum Ast {
@@ -67,6 +77,14 @@ impl Ast {
             List(ref pos, _, _) => pos.clone(),
             Scalar(ref pos, _, _, _) => pos.clone(),
             Null(ref pos, _, _) => pos.clone(),
+        }
+    }
+    pub fn tag<'x>(&'x self) -> &'x Tag {
+        match *self {
+            Map(_, ref tag, _) => tag,
+            List(_, ref tag, _) => tag,
+            Scalar(_, ref tag, _, _) => tag,
+            Null(_, ref tag, _) => tag,
         }
     }
 }

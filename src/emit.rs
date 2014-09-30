@@ -72,6 +72,15 @@ pub struct Context<'a> {
 }
 
 
+fn tag_as_string<'x>(tag: &'x A::Tag) -> Option<&'x str> {
+    return (match *tag {
+        A::NonSpecific => None,
+        A::LocalTag(ref value) => Some(value),
+        A::GlobalTag(_) => unimplemented!(),
+    }).map(|t| t.as_slice());
+}
+
+
 impl<'a> Context<'a> {
     pub fn new<'x>(stream: &'x mut Writer) -> Context<'x> {
         return Context {
@@ -114,7 +123,7 @@ impl<'a> Context<'a> {
             Null::Tilde =>
                 self.stream.write_str(if space { " ~\n" } else { "~\n" }),
             Null::Null =>
-                self.stream.write_str(if space { "null\n" } else { " null\n"}),
+                self.stream.write_str(if space { " null\n" } else { "null\n"}),
         };
     }
 
@@ -153,12 +162,14 @@ impl<'a> Context<'a> {
     }
 
     pub fn emit_tag_anchor(&mut self, tag: Option<Tag>,
-        anchor: Option<Tag>) -> IoResult<()> {
+        anchor: Option<Tag>, space: bool) -> IoResult<()> {
         match tag {
             Some(x) => {
                 try!(self.stream.write_char('!'));
                 try!(self.stream.write_str(x));
-                try!(self.stream.write_char(' '));
+                if space {
+                    try!(self.stream.write_char(' '));
+                }
             }
             None => {}
         }
@@ -175,11 +186,12 @@ impl<'a> Context<'a> {
         self.state = match (self.state, op) {
             (S::Fin, _) => unreachable!(),
             (S::New, Scalar(tag, anchor, style, value)) => {
-                try!(self.emit_tag_anchor(tag, anchor));
+                try!(self.emit_tag_anchor(tag, anchor, true));
                 try!(self.emit_scalar(style, value));
                 try!(self.ensure_line_start())
                 S::Fin }
             (S::New, Null(tag, anchor, style)) => {
+                try!(self.emit_tag_anchor(tag, anchor, false));
                 try!(self.emit_null(false, style));
                 try!(self.ensure_line_start())
                 S::Fin }
@@ -189,12 +201,12 @@ impl<'a> Context<'a> {
             (S::MapKey, Scalar(tag, anchor, style, value)) => {
                 try!(self.ensure_indented());
                 // TODO(tailhook) check for complex key
-                try!(self.emit_tag_anchor(tag, anchor));
+                try!(self.emit_tag_anchor(tag, anchor, true));
                 try!(self.emit_scalar(style, value));
                 S::MapSimpleKeyValue }
             (S::MapSimpleKeyValue, Scalar(tag, anchor, style, value)) => {
                 try!(self.stream.write_str(": "));
-                try!(self.emit_tag_anchor(tag, anchor));
+                try!(self.emit_tag_anchor(tag, anchor, true));
                 try!(self.emit_scalar(style, value));
                 S::MapKey }
             (S::MapSimpleKeyValue, MapStart(tag, anchor)) => {
@@ -220,7 +232,7 @@ impl<'a> Context<'a> {
             (S::SeqItem, Scalar(tag, anchor, style, value)) => {
                 try!(self.ensure_indented());
                 try!(self.stream.write_str("- "));
-                try!(self.emit_tag_anchor(tag, anchor));
+                try!(self.emit_tag_anchor(tag, anchor, true));
                 try!(self.emit_scalar(style, value));
                 S::SeqItem }
             (S::SeqItem, MapStart(tag, anchor)) => {
@@ -258,17 +270,16 @@ impl<'a> Context<'a> {
                 }
                 try!(self.emit(SeqEnd));
             },
-            &N::Scalar(Some(ref tag), _anchor, ref value, _) => {
+            &N::Scalar(ref tag, _anchor, ref value, _) => {
                 // TODO(tailhook) fix anchor
-                try!(self.emit(Scalar(
-                    Some(tag.slice_from(1)), None, Auto, value.as_slice())));
+                try!(self.emit(Scalar(tag.map(|t| t.slice_from(1)),
+                    None, Auto, value.as_slice())));
             }
-            &N::Scalar(None, _anchor, ref value, _) => {
+            &N::ImplicitNull(ref tag, ref _anchor, ref _token) => {
                 // TODO(tailhook) fix anchor
-                try!(self.emit(Scalar(None, None, Auto, value.as_slice())));
-            }
-            &N::ImplicitNull(ref _tag, ref _anchor, ref _token) => {
-                try!(self.emit(Null(None, None, Null::Null)));
+                println!("TAGTAG {}", tag);
+                try!(self.emit(Null(tag.map(|t| t.slice_from(1)),
+                    None, Null::Nothing)));
             }
             &N::Alias(name, _) => unimplemented!(),
         }
@@ -294,16 +305,11 @@ impl<'a> Context<'a> {
             },
             &A::Scalar(_, ref tag, _, ref value) => {
                 // TODO(tailhook) fix tag and anchor
-                let tag = match *tag {
-                    A::NonSpecific => None,
-                    A::LocalTag(ref value) => Some(value),
-                    A::GlobalTag(_) => unimplemented!(),
-                };
-                try!(self.emit(Scalar(tag.map(|t| t.as_slice()), None,
+                try!(self.emit(Scalar(tag_as_string(tag), None,
                                       Auto, value.as_slice())));
             }
-            &A::Null(_, _, kind) => {
-                try!(self.emit(Null(None, None, match kind {
+            &A::Null(_, ref tag, kind) => {
+                try!(self.emit(Null(tag_as_string(tag), None, match kind {
                     A::Explicit => Null::Null,
                     A::Implicit => Null::Nothing,
                 })));
@@ -556,6 +562,11 @@ mod test {
     #[test]
     fn yaml_tag_scalar() {
         assert_yaml_eq_yaml("!Tag Hello", "!Tag Hello\n");
+    }
+
+    #[test]
+    fn yaml_tag_null() {
+        assert_yaml_eq_yaml("!Tag", "!Tag\n");
     }
 
     #[test]
