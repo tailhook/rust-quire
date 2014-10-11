@@ -226,24 +226,28 @@ impl Validator for Mapping {
 }
 
 #[deriving(Default)]
-pub struct Sequence {
+pub struct Sequence<'a> {
     pub descr: Option<String>,
     pub element: Box<Validator>,
+    pub from_scalar: Option<fn (scalar: A::Ast) -> Vec<A::Ast>>,
 }
 
-impl Validator for Sequence {
+impl<'a> Validator for Sequence<'a> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
         return Some(A::List(pos, A::NonSpecific, Vec::new()));
     }
     fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
         let mut warnings = vec!();
-        let (pos, children) = match ast {
-            A::List(pos, _, items) => {
+        let (pos, children) = match (ast, self.from_scalar) {
+            (A::List(pos, _, items), _) => {
                 (pos, items)
             }
-            ast => {
+            (ast@A::Scalar(_, _, _, _), Some(fun)) => {
+                (ast.pos().clone(), fun(ast))
+            }
+            (ast, _) => {
                 warnings.push(ValidationError(ast.pos(),
-                    format!("Value must be mapping")));
+                    format!("Value must be sequence")));
                 return (ast, warnings);
             }
         };
