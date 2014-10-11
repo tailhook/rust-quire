@@ -252,10 +252,13 @@ impl Decoder<E::Warning> for YamlDecoder {
         };
 
         let value = match children.pop(&name.to_string()) {
-            None => return Err(E::MissingFieldError(
-                pos.clone(), name.to_string())),
-            Some(json) => {
-                self.stack.push(json);
+            None => {
+                self.stack.push(
+                    A::Null(pos.clone(), A::NonSpecific, A::Implicit));
+                try!(f(self))
+            }
+            Some(node) => {
+                self.stack.push(node);
                 try!(f(self))
             }
         };
