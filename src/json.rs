@@ -26,11 +26,11 @@ impl ToJson for A::Ast {
             A::Null(_, _, _) => J::Null,
             A::Scalar(_, _, A::Plain, ref val) => {
                 match FromStr::from_str(val.as_slice()) {
-                    Some(x) => return J::I64(x),
+                    Some(x) => return J::U64(x),
                     None => {}
                 }
                 match FromStr::from_str(val.as_slice()) {
-                    Some(x) => return J::U64(x),
+                    Some(x) => return J::I64(x),
                     None => {}
                 }
                 match FromStr::from_str(val.as_slice()) {
