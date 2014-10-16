@@ -92,7 +92,7 @@ impl<'a> Clone for YamlIter<'a> {
     }
 }
 
-struct Tokenizer<'a, 'b> {
+struct Tokenizer<'a, 'b: 'a> {
     result: &'a mut Vec<Token<'b>>,
     data: &'b str,
     iter: YamlIter<'b>,

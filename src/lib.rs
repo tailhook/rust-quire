@@ -1,4 +1,4 @@
-#![crate_id="quire#0.1"]
+#![crate_name="quire"]
 #![crate_type="lib"]
 #![feature(macro_rules, trace_macros)]
 

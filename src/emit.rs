@@ -1,19 +1,18 @@
-use std::io::{IoResult, IoError};
-use std::io::{MemWriter, IoError};
+use std::io::{IoResult, IoError, MemWriter};
 use std::io::Writer;
+use std::to_string::ToString;
 use std::str::{from_char, from_utf8};
-use std::to_str::ToStr;
 use serialize::{Encodable, Encoder};
 
 use super::parser::Node;
 
-use S = self::State;
-use L = self::Line;
-use N = super::parser;  // Node enum constants
-use A = super::ast;
+use self::State as S;
+use self::Line as L;
+use super::parser as N;  // Node enum constants
+use super::ast as A;
 
-type Tag<'a> = &'a str;
-type Anchor<'a> = &'a str;
+pub type Tag<'a> = &'a str;
+pub type Anchor<'a> = &'a str;
 
 pub enum ScalarStyle {
     Auto,
@@ -65,7 +64,7 @@ pub enum Opcode<'a> {
 pub struct Context<'a> {
     cur_indent: uint,
     want_newline: bool,
-    stream: &'a mut Writer,
+    stream: &'a mut Writer + 'a,
     stack: Vec<(State::Opcode, uint)>,
     state: State::Opcode,
     line: Line::State,
@@ -354,43 +353,43 @@ impl<'a> Encoder<IoError> for Context<'a> {
         return self.emit(Null(None, None, Null::Nothing));
     }
     fn emit_uint(&mut self, v: uint) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_u64(&mut self, v: u64) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_u32(&mut self, v: u32) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_u16(&mut self, v: u16) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_u8(&mut self, v: u8) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_int(&mut self, v: int) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_i64(&mut self, v: i64) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_i32(&mut self, v: i32) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_i16(&mut self, v: i16) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_i8(&mut self, v: i8) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_bool(&mut self, v: bool) -> Result<(), IoError> {
@@ -398,11 +397,11 @@ impl<'a> Encoder<IoError> for Context<'a> {
             if v { "true" } else { "false" }));
     }
     fn emit_f64(&mut self, v: f64) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_f32(&mut self, v: f32) -> Result<(), IoError> {
-        let val = v.to_str();
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_char(&mut self, v: char) -> Result<(), IoError> {

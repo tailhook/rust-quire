@@ -3,10 +3,10 @@ use std::string::String;
 
 use collections::treemap::TreeMap;
 use serialize::json::{ToJson, Json};
-use J = serialize::json;
+use serialize::json as J;
 
-use T = super::tokenizer;
-use A = super::ast;
+use super::tokenizer as T;
+use super::ast as A;
 use super::tokenizer;
 
 
@@ -18,7 +18,7 @@ impl ToJson for A::Ast {
                 for (k, v) in tm.iter() {
                     ob.insert(k.clone(), v.to_json());
                 }
-                J::Object(box ob)
+                J::Object(ob)
             },
             A::List(_, _, ref lst) => {
                 J::List(lst.iter().map(|ref val| val.to_json()).collect())
@@ -26,7 +26,15 @@ impl ToJson for A::Ast {
             A::Null(_, _, _) => J::Null,
             A::Scalar(_, _, A::Plain, ref val) => {
                 match FromStr::from_str(val.as_slice()) {
-                    Some(x) => return J::Number(x),
+                    Some(x) => return J::I64(x),
+                    None => {}
+                }
+                match FromStr::from_str(val.as_slice()) {
+                    Some(x) => return J::U64(x),
+                    None => {}
+                }
+                match FromStr::from_str(val.as_slice()) {
+                    Some(x) => return J::F64(x),
                     None => {}
                 }
                 if val.as_slice() == "~" || val.as_slice() == "null" {
@@ -47,7 +55,7 @@ mod test {
     use std::rc::Rc;
     use std::default::Default;
     use serialize::json::ToJson;
-    use J = serialize::json;
+    use serialize::json as J;
     use super::super::parser::parse;
     use super::super::ast::process;
 

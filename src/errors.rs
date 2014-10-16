@@ -11,6 +11,7 @@ pub enum Warning {
     NonScalarKey(Pos),
     UnsupportedTag(Pos),
     WrongNodeToMerge(Pos),
+    DecoderError(String),
     //  Decoder errors from decode.rs
     UnexpectedNode(Pos, &'static str, String),
     CantParseValue(Pos, String),
@@ -31,8 +32,8 @@ pub struct ParserError {
 }
 
 pub enum Error {
-    TokenError(TokenError),
-    ParserError(ParserError),
+    TokenErr(TokenError),
+    ParserErr(ParserError),
 }
 
 impl TokenError {
@@ -83,8 +84,8 @@ impl Show for ParserError {
 impl Show for Error {
     fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
         return match *self {
-            TokenError(ref e) => e.fmt(fmt),
-            ParserError(ref e) => e.fmt(fmt),
+            TokenErr(ref e) => e.fmt(fmt),
+            ParserErr(ref e) => e.fmt(fmt),
         }
     }
 }

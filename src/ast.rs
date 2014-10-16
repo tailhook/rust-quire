@@ -3,9 +3,9 @@ use std::collections::TreeMap;
 use std::fmt::{Show, Formatter, FormatError};
 
 use super::tokenizer::Pos;
-use E = super::errors;
-use P = super::parser;
-use T = super::tokenizer;
+use super::errors as E;
+use super::parser as P;
+use super::tokenizer as T;
 
 
 #[deriving(Clone)]
@@ -232,7 +232,7 @@ impl<'a> Context<'a> {
     {
         match *src {
             Some(val) => {
-                let mut pieces = val.splitn('!', 2);
+                let mut pieces = val.splitn(2, '!');
                 assert!(pieces.next().unwrap() == "");
                 match (pieces.next().unwrap(), pieces.next()) {
                     ("", None) => {

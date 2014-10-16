@@ -1,4 +1,4 @@
-LIBNAME := $(shell rustc --crate-file-name src/lib.rs)
+LIBNAME := $(shell rustc --print-file-name src/lib.rs)
 
 
 all: quire-lib quire_tool

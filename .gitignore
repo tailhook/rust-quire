@@ -1,4 +1,4 @@
 /quire_test
 /quire-tool
-/libquire-*.so
-/libquire-*.rlib
+/libquire.so
+/libquire.rlib

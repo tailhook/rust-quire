@@ -17,7 +17,7 @@ pub fn parse_config<T:Decodable<YamlDecoder, Warning>>(
     let mut file = try!(File::open(filename)
         .map_err(|e| format!("Error opending config {}: {}",
             filename.display(), e)));
-    let body = try!(file.read_to_str()
+    let body = try!(file.read_to_string()
         .map_err(|e| format!("Error reading config {}: {}",
             filename.display(), e)));
     let (ast, mut warnings) = try!(parse(

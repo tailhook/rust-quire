@@ -8,7 +8,7 @@ use regex::Regex;
 
 use super::errors::{Warning, ValidationError};
 pub use super::tokenizer::Pos;
-use A = super::ast;
+use super::ast as A;
 
 pub trait Validator {
     fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>);
@@ -80,13 +80,14 @@ pub struct Numeric<T> {
     pub max: Option<T>,
 }
 
-impl<T:Ord+Show+FromStr+ToStr> Validator for Numeric<T> {
+impl<T:Ord+Show+FromStr> Validator for Numeric<T> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
         if self.default.is_none() && self.optional {
             return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
         }
         self.default.as_ref().map(|val| {
-            A::Scalar(pos.clone(), A::NonSpecific, A::Quoted, val.to_str()) })
+            A::Scalar(pos.clone(), A::NonSpecific, A::Quoted, val.to_string())
+        })
     }
     fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
         let mut warnings = vec!();
@@ -125,18 +126,18 @@ impl<T:Ord+Show+FromStr+ToStr> Validator for Numeric<T> {
                     format!("Value must be at most {}", max)));
             }
         });
-        return (A::Scalar(pos, A::NonSpecific, A::Plain, val.to_str()),
+        return (A::Scalar(pos, A::NonSpecific, A::Plain, val.to_string()),
                 warnings);
     }
 }
 
 #[deriving(Default)]
-pub struct Structure {
+pub struct Structure<'a> {
     pub descr: Option<String>,
-    pub members: Vec<(String, Box<Validator>)>,
+    pub members: Vec<(String, Box<Validator + 'a>)>,
 }
 
-impl Validator for Structure {
+impl<'a> Validator for Structure<'a> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
         let mut map = TreeMap::new();
         for &(ref k, ref validator) in self.members.iter() {
@@ -187,13 +188,13 @@ impl Validator for Structure {
 }
 
 #[deriving(Default)]
-pub struct Mapping {
+pub struct Mapping<'a, 'b> {
     pub descr: Option<String>,
-    pub key_element: Box<Validator>,
-    pub value_element: Box<Validator>,
+    pub key_element: Box<Validator + 'a>,
+    pub value_element: Box<Validator + 'b>,
 }
 
-impl Validator for Mapping {
+impl<'a, 'b> Validator for Mapping<'a, 'b> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
         return Some(A::Map(pos, A::NonSpecific, TreeMap::new()));
     }
@@ -226,12 +227,12 @@ impl Validator for Mapping {
 }
 
 #[deriving(Default)]
-pub struct Sequence {
+pub struct Sequence<'a> {
     pub descr: Option<String>,
-    pub element: Box<Validator>,
+    pub element: Box<Validator + 'a>,
 }
 
-impl Validator for Sequence {
+impl<'a> Validator for Sequence<'a> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
         return Some(A::List(pos, A::NonSpecific, Vec::new()));
     }
@@ -268,8 +269,8 @@ impl Validator for Anything {
     }
 }
 
-impl Default for Box<Validator> {
-    fn default() -> Box<Validator> {
+impl<'a> Default for Box<Validator + 'a> {
+    fn default() -> Box<Validator + 'a> {
         return box Anything as Box<Validator>;
     }
 }

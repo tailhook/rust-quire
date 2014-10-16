@@ -10,10 +10,10 @@ use collections::Deque;
 
 use super::tokenizer::{Token, Pos};
 use super::errors::Error;
-use super::errors::TokenError;
-use super::errors::ParserError;
+use super::errors::{TokenErr, TokenError};
+use super::errors::{ParserErr, ParserError};
 use super::tokenizer::tokenize;
-use T = super::tokenizer;
+use super::tokenizer as T;
 
 type Aliases<'x> = TreeMap<&'x str, &'x Node<'x>>;
 
@@ -100,128 +100,126 @@ fn process_newline<'x>(iter: &mut Peekable<char, Chars<'x>>, res: &mut String,
     }
 }
 
-impl<'a> T::Token<'a> {
-    fn plain_value(&self) -> String {
-        let mut res = String::with_capacity(self.value.len());
-        match self.kind {
-            T::PlainString => {
-                let mut iter = self.value.chars().peekable();
-                loop {
-                    let ch = match iter.next() {
-                        None => break,
-                        Some(ch) => ch,
-                    };
-                    if ch == '\n' {
-                        process_newline(&mut iter, &mut res, 0);
-                    } else {
-                        res.push_char(ch);
-                    }
-                }
-            }
-            T::DoubleString => {
-                let mut escaped_space = 0;
-                let mut iter = self.value.chars().peekable();
-                assert_eq!(iter.next(), Some('"'));
-                loop {
-                    match iter.next() {
-                        None => break,
-                        Some('\\') => {
-                            match iter.next() {
-                                None => res.push_char('\\'),  // fixme
-                                Some('0') => res.push_char('\0'),
-                                Some('a') => res.push_char('\x07'),
-                                Some('b') => res.push_char('\x08'),
-                                Some('t') | Some('\t') => res.push_char('\t'),
-                                Some('n') => res.push_char('\n'),
-                                Some('r') => res.push_char('\r'),
-                                Some('v') => res.push_char('\x0b'),
-                                Some('f') => res.push_char('\x0c'),
-                                Some('e') => res.push_char('\x1b'),
-                                Some(' ') => {
-                                    res.push_char(' ');
-                                    escaped_space = res.len();
-                                }
-                                Some('"') => res.push_char('"'),
-                                Some('/') => res.push_char('/'),
-                                Some('\\') => res.push_char('\\'),
-                                Some('N') => res.push_char('\x85'),
-                                Some('_') => res.push_char('\xa0'),
-                                Some('L') => res.push_char('\u2028'),
-                                Some('P') => res.push_char('\u2029'),
-                                Some('x') => {
-                                    unimplemented!();
-                                },
-                                Some('u') => {
-                                    unimplemented!();
-                                },
-                                Some('U') => {
-                                    unimplemented!();
-                                },
-                                Some('\n') => {
-                                    escaped_space = res.len();
-                                    process_newline(&mut iter, &mut res,
-                                        escaped_space);
-                                }
-                                Some(x) => {
-                                    res.push_char('\\');
-                                    res.push_char(x);
-                                }
-                            }
-                            escaped_space = res.len();
-                        }
-                        Some('"') => break,
-                        Some('\n') => {
-                            process_newline(&mut iter, &mut res,
-                                escaped_space);
-                        }
-                        Some(x) => res.push_char(x),
-                    }
-                }
-            },
-            T::SingleString => {
-                let mut iter = self.value.chars().peekable();
-                assert_eq!(iter.next(), Some('\''));
-                loop {
-                    match iter.next() {
-                        None => break,
-                        Some('\'') => {
-                            match iter.next() {
-                                None => break,
-                                Some('\'') => res.push_char('\''),
-                                Some(x) => unreachable!(),
-                            }
-                        }
-                        Some('\n') => {
-                            process_newline(&mut iter, &mut res, 0);
-                        }
-                        Some(x) => res.push_char(x),
-                    }
-                }
-            }
-            T::Literal => {
-                let mut lines = self.value.split('\n');
-                let fline = lines.next().unwrap();
-                if fline == "|" {
-                    let mut indent = 0;
-                    for line in lines {
-                        if indent == 0 {
-                            let trimmed = line.trim_left_chars(' ');
-                            indent = line.len() - trimmed.len();
-                        }
-                        res.push_str(line.slice(indent, line.len()));
-                        res.push_char('\n');
-                    }
+fn plain_value<'a>(tok: &Token<'a>) -> String {
+    let mut res = String::with_capacity(tok.value.len());
+    match tok.kind {
+        T::PlainString => {
+            let mut iter = tok.value.chars().peekable();
+            loop {
+                let ch = match iter.next() {
+                    None => break,
+                    Some(ch) => ch,
+                };
+                if ch == '\n' {
+                    process_newline(&mut iter, &mut res, 0);
                 } else {
-                    unimplemented!();
+                    res.push_char(ch);
                 }
             }
-            T::Folded => {
+        }
+        T::DoubleString => {
+            let mut escaped_space = 0;
+            let mut iter = tok.value.chars().peekable();
+            assert_eq!(iter.next(), Some('"'));
+            loop {
+                match iter.next() {
+                    None => break,
+                    Some('\\') => {
+                        match iter.next() {
+                            None => res.push_char('\\'),  // fixme
+                            Some('0') => res.push_char('\0'),
+                            Some('a') => res.push_char('\x07'),
+                            Some('b') => res.push_char('\x08'),
+                            Some('t') | Some('\t') => res.push_char('\t'),
+                            Some('n') => res.push_char('\n'),
+                            Some('r') => res.push_char('\r'),
+                            Some('v') => res.push_char('\x0b'),
+                            Some('f') => res.push_char('\x0c'),
+                            Some('e') => res.push_char('\x1b'),
+                            Some(' ') => {
+                                res.push_char(' ');
+                                escaped_space = res.len();
+                            }
+                            Some('"') => res.push_char('"'),
+                            Some('/') => res.push_char('/'),
+                            Some('\\') => res.push_char('\\'),
+                            Some('N') => res.push_char('\x85'),
+                            Some('_') => res.push_char('\xa0'),
+                            Some('L') => res.push_char('\u2028'),
+                            Some('P') => res.push_char('\u2029'),
+                            Some('x') => {
+                                unimplemented!();
+                            },
+                            Some('u') => {
+                                unimplemented!();
+                            },
+                            Some('U') => {
+                                unimplemented!();
+                            },
+                            Some('\n') => {
+                                escaped_space = res.len();
+                                process_newline(&mut iter, &mut res,
+                                    escaped_space);
+                            }
+                            Some(x) => {
+                                res.push_char('\\');
+                                res.push_char(x);
+                            }
+                        }
+                        escaped_space = res.len();
+                    }
+                    Some('"') => break,
+                    Some('\n') => {
+                        process_newline(&mut iter, &mut res,
+                            escaped_space);
+                    }
+                    Some(x) => res.push_char(x),
+                }
+            }
+        },
+        T::SingleString => {
+            let mut iter = tok.value.chars().peekable();
+            assert_eq!(iter.next(), Some('\''));
+            loop {
+                match iter.next() {
+                    None => break,
+                    Some('\'') => {
+                        match iter.next() {
+                            None => break,
+                            Some('\'') => res.push_char('\''),
+                            Some(x) => unreachable!(),
+                        }
+                    }
+                    Some('\n') => {
+                        process_newline(&mut iter, &mut res, 0);
+                    }
+                    Some(x) => res.push_char(x),
+                }
+            }
+        }
+        T::Literal => {
+            let mut lines = tok.value.split('\n');
+            let fline = lines.next().unwrap();
+            if fline == "|" {
+                let mut indent = 0;
+                for line in lines {
+                    if indent == 0 {
+                        let trimmed = line.trim_left_chars(' ');
+                        indent = line.len() - trimmed.len();
+                    }
+                    res.push_str(line.slice(indent, line.len()));
+                    res.push_char('\n');
+                }
+            } else {
                 unimplemented!();
             }
-            _ => unreachable!(),
         }
-        return res;
+        T::Folded => {
+            unimplemented!();
+        }
+        _ => unreachable!(),
     }
+    return res;
 }
 
 pub struct Directive<'a>(&'a Token<'a>);
@@ -242,12 +240,12 @@ pub enum Node<'a> {
     Alias(&'a str, &'a Token<'a>),
 }
 
-
 impl<'a> PartialOrd for Node<'a> {
-    fn lt(&self, other: &Node) -> bool {
-        return self.cmp(other) == Less;
+    fn partial_cmp(&self, other: &Node) -> Option<Ordering> {
+        return Some(self.cmp(other));
     }
 }
+
 impl<'a> Ord for Node<'a> {
     fn cmp(&self, other: &Node) -> Ordering {
         return match (self, other) {
@@ -348,7 +346,7 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             T::Eof => break,
             T::Unindent => break,
             T::PlainString | T::SingleString | T::DoubleString
-            => Scalar(None, None, ktoken.plain_value(), ktoken),
+            => Scalar(None, None, plain_value(ktoken), ktoken),
             _ => return Err(ParserError::new(
                 ktoken.start.clone(), ktoken.end.clone(), "Unexpected token")),
         };
@@ -468,7 +466,7 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             T::FlowMapEnd => break,
             T::PlainString | T::SingleString | T::DoubleString
             | T::Literal | T::Folded
-            => Scalar(None, None, ktoken.plain_value(), ktoken),
+            => Scalar(None, None, plain_value(ktoken), ktoken),
             _ => return Err(ParserError::new(
                 ktoken.start.clone(), ktoken.end.clone(), "Unexpected token")),
         };
@@ -534,7 +532,7 @@ fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 }
             }
             tokiter.next();
-            return Ok(Scalar(None, None, tok.plain_value(), tok));
+            return Ok(Scalar(None, None, plain_value(tok), tok));
         }
         T::FlowSeqStart => {
             return parse_flow_list(tokiter, aliases);
@@ -572,7 +570,7 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 }
             }
             tokiter.next();
-            return Ok(Scalar(tag, None, tok.plain_value(), tok));
+            return Ok(Scalar(tag, None, plain_value(tok), tok));
         }
         T::Eof => {
             return Ok(ImplicitNull(tag, None, tok.start.clone()));
@@ -649,11 +647,11 @@ pub fn parse<'x, T>(name: Rc<String>, data: &str, process: |Document| -> T)
 {
     let tokens = match tokenize(name, data) {
         Ok(lst) => lst,
-        Err(e) => return Err(TokenError(e)),
+        Err(e) => return Err(TokenErr(e)),
     };
     let doc = match parse_tokens(&tokens) {
         Ok(doc) => doc,
-        Err(e) => return Err(ParserError(e)),
+        Err(e) => return Err(ParserErr(e)),
     };
     return Ok(process(doc));
 }

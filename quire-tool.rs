@@ -3,21 +3,24 @@ extern crate argparse;
 extern crate serialize;
 
 use std::os;
+use std::rc::Rc;
 use std::str::from_utf8;
 use std::io::fs::File;
+use std::default::Default;
 use std::io::stdio::stderr;
 use std::io::stdio::stdout;
 
 use serialize::json::ToJson;
 
 use argparse::{ArgumentParser, StoreConst, Store};
-use quire::parse;
-use quire::emit::emit_parse_tree;
+use quire::parser::parse;
+use quire::ast::process;
+use quire::emit::emit_ast;
 
 enum Action {
     NoAction,
-    ToJson,
-    ToYaml,
+    AsJson,
+    AsYaml,
 }
 
 
@@ -27,9 +30,9 @@ fn main() {
     let mut pretty = false;
     let mut filename = Path::new("");
     ap.refer(&mut action)
-        .add_option(["-J", "--to-json"], box StoreConst(ToJson),
+        .add_option(["-J", "--to-json"], box StoreConst(AsJson),
                     "Print parsed YAML as a JSON")
-        .add_option(["-Y", "--to-yaml"], box StoreConst(ToYaml),
+        .add_option(["-Y", "--to-yaml"], box StoreConst(AsYaml),
                     "Print parsed YAML as a YAML
                      (probably with some transormations)");
     ap.refer(&mut pretty)
@@ -61,44 +64,41 @@ fn main() {
         .expect("File is not utf-8 encoded");
     let mut out = stdout();
 
+    let (ast, warnings) = match parse(
+        Rc::new(format!("{}", filename.display())),
+        string.as_slice(),
+        |doc| { process(Default::default(), doc) })
+    {
+        Ok(pair) => pair,
+        Err(e) => {
+            (write!(stderr(),
+                "Error parsing file {}: {}\n",
+                filename.display(), e)
+            ).ok().expect("Error formatting error");
+            return;
+        }
+    };
+    warnings.iter().all(|e| write!(stderr(),
+        "Error parsing file {}: {}\n",
+        filename.display(), e).is_ok());
     match action {
         NoAction => unreachable!(),
-        ToJson => {
-            match parse(string.as_slice(), |doc| { doc.to_json() })  {
-                Ok(json) => {
-                    if pretty {
-                        json.to_pretty_writer(&mut out).unwrap();
-                    } else {
-                        json.to_writer(&mut out).unwrap();
-                    }
-                }
-                Err(e) => {
-                    (write!(stderr(),
-                        "Error parsing file {}: {}\n",
-                        filename.display(), e)
-                    ).ok().expect("Error formatting error");
-                }
+        AsJson => {
+            let json = ast.to_json();
+            if pretty {
+                json.to_pretty_writer(&mut out).unwrap();
+            } else {
+                json.to_writer(&mut out).unwrap();
             }
         }
-        ToYaml => {
-            match parse(string.as_slice(), |doc| {
-                match emit_parse_tree(&doc.root, &mut out) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        (write!(stderr(), "Error printing file: {}\n",e)
-                        ).ok().expect("Error formatting error");
-                    }
-                }
-            })  {
+        AsYaml => {
+            match emit_ast(&ast, &mut out) {
                 Ok(()) => {}
                 Err(e) => {
-                    (write!(stderr(),
-                        "Error parsing file {}: {}\n",
-                        filename.display(), e)
+                    (write!(stderr(), "Error printing file: {}\n",e)
                     ).ok().expect("Error formatting error");
                 }
             }
-
         }
     }
 }

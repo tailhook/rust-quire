@@ -6,10 +6,10 @@ use std::from_str::FromStr;
 use std::intrinsics::TypeId;
 use serialize::{Decoder, Decodable};
 use serialize::json::ToJson;
-use J = serialize::json;
+use serialize::json as J;
 
-use A = super::ast;
-use E = super::errors;
+use super::ast as A;
+use super::errors as E;
 
 pub type DecodeResult<T> = Result<T, E::Warning>;
 
@@ -22,7 +22,7 @@ impl Deref<J::Json> for AnyJson {
     }
 }
 
-impl<D:Decoder<E>, E> Decodable<D, E> for AnyJson {
+impl<D:Decoder<E> + 'static, E> Decodable<D, E> for AnyJson {
     fn decode(dec: &mut D) -> Result<AnyJson, E> {
         let dec: &mut YamlDecoder = (dec as &mut Any).as_mut().unwrap();
         return Ok(AnyJson(dec.pop().to_json()));
@@ -192,13 +192,13 @@ impl Decoder<E::Warning> for YamlDecoder {
                     &A::GlobalTag(_) => unimplemented!(),
                 }
             }
-            ref node@A::Scalar(_, _, _, ref value) => {
+            A::Scalar(ref pos, _, _, ref value) => {
                 for (i, name) in names.iter().enumerate() {
                     if *name == value.as_slice() {
                         return f(self, i);
                     }
                 }
-                return Err(E::UnexpectedNode(node.pos(),
+                return Err(E::UnexpectedNode(pos.clone(),
                     "One of the supported tags",
                     format!("{} is not one of {}", value, names)));
             }
@@ -390,6 +390,10 @@ impl Decoder<E::Warning> for YamlDecoder {
     {
         f(self)
     }
+
+    fn error(&mut self, err: &str) -> E::Warning {
+        E::DecoderError(err.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -403,7 +407,7 @@ mod test {
     use serialize::{Decodable, Decoder};
     use super::AnyJson;
     use super::super::errors::Warning;
-    use J = serialize::json;
+    use serialize::json as J;
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
     struct TestStruct {
