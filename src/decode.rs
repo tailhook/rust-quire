@@ -252,10 +252,13 @@ impl Decoder<E::Warning> for YamlDecoder {
         };
 
         let value = match children.pop(&name.to_string()) {
-            None => return Err(E::MissingFieldError(
-                pos.clone(), name.to_string())),
-            Some(json) => {
-                self.stack.push(json);
+            None => {
+                self.stack.push(
+                    A::Null(pos.clone(), A::NonSpecific, A::Implicit));
+                try!(f(self))
+            }
+            Some(node) => {
+                self.stack.push(node);
                 try!(f(self))
             }
         };
@@ -495,14 +498,14 @@ mod test {
 
     #[test]
     fn decode_option_no_key() {
-        // This one should fail, this would be worked out by validators
+        // This one failed in rust0.11 but works in rust0.12 for unknown reason
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "{}",
             |doc| { process(Default::default(), doc) }).unwrap();
         let mut dec = YamlDecoder::new(ast);
         let val: Result<TestOption, Warning>;
-        val = Decodable::decode(&mut dec);
-        val.unwrap_err();
+        let val: TestOption = Decodable::decode(&mut dec).unwrap();
+        assert!(val.path == None);
     }
 
     #[deriving(PartialEq, Eq, Decodable)]

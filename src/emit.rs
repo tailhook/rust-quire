@@ -203,10 +203,23 @@ impl<'a> Context<'a> {
                 try!(self.emit_tag_anchor(tag, anchor, true));
                 try!(self.emit_scalar(style, value));
                 S::MapSimpleKeyValue }
+            (S::MapKey, Null(tag, anchor, style)) => {
+                try!(self.ensure_indented());
+                // TODO(tailhook) check for complex key
+                try!(self.emit_tag_anchor(tag, anchor, false));
+                try!(self.emit_null(false, style));
+                try!(self.ensure_line_start())
+                S::MapKey }
             (S::MapSimpleKeyValue, Scalar(tag, anchor, style, value)) => {
                 try!(self.stream.write_str(": "));
                 try!(self.emit_tag_anchor(tag, anchor, true));
                 try!(self.emit_scalar(style, value));
+                S::MapKey }
+            (S::MapSimpleKeyValue, Null(tag, anchor, style)) => {
+                try!(self.stream.write_str(": "));
+                try!(self.emit_tag_anchor(tag, anchor, false));
+                try!(self.emit_null(false, style));
+                try!(self.ensure_line_start())
                 S::MapKey }
             (S::MapSimpleKeyValue, MapStart(tag, anchor)) => {
                 try!(self.stream.write_char(':'));
