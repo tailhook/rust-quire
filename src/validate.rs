@@ -80,7 +80,7 @@ pub struct Numeric<T> {
     pub max: Option<T>,
 }
 
-impl<T:Ord+Show+FromStr> Validator for Numeric<T> {
+impl<T:PartialOrd+Show+FromStr> Validator for Numeric<T> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
         if self.default.is_none() && self.optional {
             return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
