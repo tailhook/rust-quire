@@ -156,7 +156,7 @@ impl<'a> Validator for Structure<'a> {
             A::Map(pos, _, items) => {
                 (pos, items)
             }
-            A::Null(pos, _, _) => {
+            A::Null(pos, _, A::Implicit) => {
                 return (self.default(pos).unwrap(), warnings);
             }
             ast => {
@@ -207,6 +207,9 @@ impl<'a, 'b> Validator for Mapping<'a, 'b> {
             A::Map(pos, _, items) => {
                 (pos, items)
             }
+            A::Null(pos, _, A::Implicit) => {
+                return (A::Map(pos, A::NonSpecific, TreeMap::new()), warnings);
+            }
             ast => {
                 warnings.push(ValidationError(ast.pos(),
                     format!("Value must be mapping")));
@@ -245,6 +248,9 @@ impl<'a> Validator for Sequence<'a> {
         let (pos, children) = match (ast, self.from_scalar) {
             (A::List(pos, _, items), _) => {
                 (pos, items)
+            }
+            (A::Null(pos, _, A::Implicit), _) => {
+                return (A::List(pos, A::NonSpecific, Vec::new()), warnings);
             }
             (ast@A::Scalar(_, _, _, _), Some(fun)) => {
                 (ast.pos().clone(), fun(ast))
@@ -470,6 +476,20 @@ mod test {
         assert_eq!(res, m);
     }
 
+    #[test]
+    fn test_map_empty() {
+        let mut m = TreeMap::new();
+        let res: TreeMap<String, uint> = parse_map("{}");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_map_null() {
+        let mut m = TreeMap::new();
+        let res: TreeMap<String, uint> = parse_map("");
+        assert_eq!(res, m);
+    }
+
     fn parse_complex_map<T:Decodable<YamlDecoder, Warning>>(body: &str) -> T {
         let validator = Mapping {
             key_element: box Scalar { .. Default::default()},
@@ -554,9 +574,16 @@ mod test {
     }
 
     #[test]
-    fn test_seq_null() {
+    fn test_seq_empty() {
         let m = Vec::new();
         let res: Vec<uint> = parse_seq("[]");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_seq_null() {
+        let m = Vec::new();
+        let res: Vec<uint> = parse_seq("");
         assert_eq!(res, m);
     }
 }
