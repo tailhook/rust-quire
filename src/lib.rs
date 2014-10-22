@@ -1,6 +1,6 @@
 #![crate_name="quire"]
 #![crate_type="lib"]
-#![feature(macro_rules, trace_macros)]
+#![feature(macro_rules, trace_macros, if_let)]
 
 extern crate collections;
 extern crate serialize;

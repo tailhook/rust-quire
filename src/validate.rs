@@ -1,5 +1,6 @@
 use std::from_str::FromStr;
 use std::fmt::Show;
+use std::num::{FromStrRadix,from_str_radix};
 use std::default::Default;
 use std::collections::TreeMap;
 use std::str::replace;
@@ -80,7 +81,19 @@ pub struct Numeric<T> {
     pub max: Option<T>,
 }
 
-impl<T:PartialOrd+Show+FromStr> Validator for Numeric<T> {
+fn from_numeric<T:FromStr+FromStrRadix>(src: &str) -> Option<T> {
+    if let Some(x) = FromStr::from_str(src) {
+        return Some(x);
+    }
+    match src.slice_to(2) {
+        "0x" => { return from_str_radix(src.slice_from(2), 16); }
+        "0o" => { return from_str_radix(src.slice_from(2), 8); }
+        "0b" => { return from_str_radix(src.slice_from(2), 2); }
+        _    => { return None; }
+    }
+}
+
+impl<T:PartialOrd+Show+FromStr+FromStrRadix> Validator for Numeric<T> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
         if self.default.is_none() && self.optional {
             return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
@@ -92,19 +105,15 @@ impl<T:PartialOrd+Show+FromStr> Validator for Numeric<T> {
     fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
         let mut warnings = vec!();
         let (pos, val): (Pos, T)  = match ast {
-            A::Scalar(pos, tag, kind, string) => {
-                let val = match FromStr::from_str(string.as_slice()) {
-                    Some(val) => {
-                        val
-                    }
-                    None => {
-                        warnings.push(ValidationError(pos.clone(),
-                            format!("Value must be numeric")));
-                        return (A::Scalar(pos, tag, kind, string), warnings);
-                    }
-                };
-                (pos, val)
-            }
+            A::Scalar(pos, tag, kind, string)
+            => match from_numeric(string.as_slice()) {
+                Some(val) => (pos, val),
+                None => {
+                    warnings.push(ValidationError(pos.clone(),
+                        format!("Value must be numeric")));
+                    return (A::Scalar(pos, tag, kind, string), warnings);
+                }
+            },
             A::Null(_, _, _) if self.optional => {
                 return (ast, warnings);
             }
@@ -584,6 +593,13 @@ mod test {
     fn test_seq_null() {
         let m = Vec::new();
         let res: Vec<uint> = parse_seq("");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_numeric() {
+        let m = vec!(100, 200, 300);
+        let res: Vec<uint> = parse_seq("- 0o144\n- 0b11001000\n- 0x12c");
         assert_eq!(res, m);
     }
 }
