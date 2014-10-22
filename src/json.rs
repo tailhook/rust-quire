@@ -134,6 +134,11 @@ mod test {
     }
 
     #[test]
+    fn test_to_json_1level() {
+        assert_yaml_eq_json("abc:\ndef:", "{\"abc\": null, \"def\": null}");
+    }
+
+    #[test]
     fn test_to_json_two_keys() {
         assert_yaml_eq_json("a: 1\nb: 2", "{\"a\": 1, \"b\": 2}");
     }

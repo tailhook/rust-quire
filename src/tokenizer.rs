@@ -700,6 +700,19 @@ fn test_tokenize_map() {
 }
 
 #[test]
+fn test_tokenize_map_two_nulls() {
+    let tokens = test_tokenize("a:\nb:");
+    let strings = simple_tokens(tokens);
+    assert_eq!(strings, vec!(
+        (PlainString, "a"),
+        (MappingValue, ":"),
+        (Whitespace, "\n"),
+        (PlainString, "b"),
+        (MappingValue, ":"),
+        ));
+}
+
+#[test]
 fn test_list() {
     let tokens = test_tokenize("-");
     assert_eq!(simple_tokens(tokens),

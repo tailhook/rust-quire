@@ -402,7 +402,8 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                     None, None, tok.start.clone()));
                 break;
             }
-            _ => {
+            _ if tok.start.line == delim.end.line ||
+                 tok.start.indent > delim.end.indent => {
                 let value = match parse_node(tokiter, aliases) {
                     Ok(value) => value,
                     Err(err) => return Err(err),
@@ -412,6 +413,15 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                         ktoken.start.clone(), ktoken.end.clone(),
                         "Duplicate key"));
                 }
+            }
+            _ => {
+                let value = ImplicitNull(None, None, delim.end.clone());
+                if !children.insert(key, value) {
+                    return Err(ParserError::new(
+                        ktoken.start.clone(), ktoken.end.clone(),
+                        "Duplicate key"));
+                }
+                continue;
             }
         }
     }
@@ -524,6 +534,7 @@ fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     match tok.kind {
         T::PlainString | T::SingleString | T::DoubleString => {
             if tok.start.line == tok.end.line {
+                // TODO(tailhook) something wrong with this block
                 // Only one-line scalars are allowed to be mapping keys
                 let val = tokiter.peek(1);
                 if (val.kind == T::MappingValue &&
