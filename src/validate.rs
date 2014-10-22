@@ -156,6 +156,9 @@ impl<'a> Validator for Structure<'a> {
             A::Map(pos, _, items) => {
                 (pos, items)
             }
+            A::Null(pos, _, _) => {
+                return (self.default(pos).unwrap(), warnings);
+            }
             ast => {
                 warnings.push(ValidationError(ast.pos(),
                     format!("Value must be mapping")));
@@ -464,6 +467,61 @@ mod test {
         m.insert("a".to_string(), 1);
         m.insert("bc".to_string(), 2);
         let res: HashMap<String, uint> = parse_map("a: 1\nbc: 2");
+        assert_eq!(res, m);
+    }
+
+    fn parse_complex_map<T:Decodable<YamlDecoder, Warning>>(body: &str) -> T {
+        let validator = Mapping {
+            key_element: box Scalar { .. Default::default()},
+            value_element: box Structure { members: vec!(
+                ("some_key".to_string(), box Numeric {
+                    default: Some(123u),
+                    .. Default::default() } as Box<Validator>),
+            ), .. Default::default()} as Box<Validator>,
+            .. Default::default()
+        };
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        warnings.iter().advance(|w| { println!("WARNING: {}", w); true });
+        assert_eq!(warnings.len(), 0);
+        ::emit::emit_ast(&ast, &mut ::std::io::stdout());
+        let (ast, warnings) = validator.validate(ast);
+        ::emit::emit_ast(&ast, &mut ::std::io::stdout());
+        warnings.iter().advance(|w| { println!("WARNING: {}", w); true });
+        assert_eq!(warnings.len(), 0);
+        let mut dec = YamlDecoder::new(ast);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    fn test_cmap_1() {
+        let mut m = TreeMap::new();
+        m.insert("a".to_string(), TestDash {
+            some_key: 13,
+        });
+        let res: TreeMap<String, TestDash>;
+        res = parse_complex_map("a:\n some_key: 13");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_cmap_2() {
+        let mut m = TreeMap::new();
+        m.insert("a".to_string(), TestDash {
+            some_key: 123,
+        });
+        let res: TreeMap<String, TestDash>;
+        res = parse_complex_map("a:\n");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_cmap_3() {
+        let mut m = TreeMap::new();
+        m.insert("a".to_string(), TestDash {
+            some_key: 123,
+        });
+        let res: TreeMap<String, TestDash> = parse_complex_map("a: {}");
         assert_eq!(res, m);
     }
 
