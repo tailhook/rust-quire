@@ -808,14 +808,33 @@ fn test_plain_words() {
 }
 
 #[test]
+fn test_words_in_list() {
+    let tokens = test_tokenize("- a\n b");
+    assert_eq!(simple_tokens(tokens),
+        vec!((SequenceEntry, "-"), (Whitespace, " "), (PlainString, "a\n b")));
+}
+
+#[test]
 fn test_block() {
     let tokens = test_tokenize("|\n a");
     assert_eq!(simple_tokens(tokens),
         vec!((Literal, "|\n a")));
+}
+
+#[test]
+fn test_block_flow() {
     let tokens = test_tokenize("a: >\n b\nc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, " "),
              (Folded, ">\n b"), (Whitespace, "\n"), (PlainString, "c")));
+}
+
+#[test]
+fn test_block_in_list() {
+    let tokens = test_tokenize("- |\n  a");
+    assert_eq!(simple_tokens(tokens),
+        vec!((SequenceEntry, "-"), (Whitespace, " "),
+             (Literal, "|\n  a")));
 }
 
 #[test]

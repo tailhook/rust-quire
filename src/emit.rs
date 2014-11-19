@@ -607,6 +607,12 @@ mod test {
     }
 
     #[test]
+    fn yaml_literal_in_list() {
+        assert_yaml_eq_yaml("- |\n  val", r#"- "val"\n"#);
+    }
+
+
+    #[test]
     fn encode_int() {
         let mut buf = MemWriter::new();
         Context::to_buffer(&1u, &mut buf);
