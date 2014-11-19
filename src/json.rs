@@ -347,4 +347,24 @@ mod test {
             "a: |\n hello\n world\n",
             r#"{"a": "hello\nworld\n"}"#);
     }
+
+    #[test]
+    fn yaml_words_in_list() {
+        assert_yaml_eq_json("- a\n b\n", r#"["a b"]"#);
+    }
+
+    #[test]
+    fn yaml_literal_in_list() {
+        assert_yaml_eq_json("- |\n  val\n", r#"["val\n"]"#);
+    }
+
+    #[test]
+    fn yaml_words_with_space() {
+        assert_yaml_eq_json("   a\nb", r#""a b""#);
+    }
+
+    #[test]
+    fn indented_map() {
+        assert_yaml_eq_json("   a: 1\n   b: 2\n", r#"{"a": 1, "b": 2}"#);
+    }
 }

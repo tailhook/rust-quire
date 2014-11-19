@@ -606,11 +606,6 @@ mod test {
         assert_yaml_eq_yaml("- a: b\n  c: d", "- a: b\n  c: d\n");
     }
 
-    #[test]
-    fn yaml_literal_in_list() {
-        assert_yaml_eq_yaml("- |\n  val", r#"- "val"\n"#);
-    }
-
 
     #[test]
     fn encode_int() {

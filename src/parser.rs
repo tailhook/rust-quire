@@ -615,10 +615,26 @@ fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         }
         tokiter.next();
     }
-    let res =  match parse_node(tokiter, aliases) {
-        Ok(node) => node,
-        Err(e) => return Err(e),
-    };
+    let res;
+    if let T::Indent = tokiter.peek(0).kind {
+        tokiter.next();
+        res =  match parse_node(tokiter, aliases) {
+            Ok(node) => node,
+            Err(e) => return Err(e),
+        };
+        if let T::Unindent = tokiter.peek(0).kind {
+            tokiter.next();
+        } else {
+            return Err(ParserError::new(
+                tokiter.peek(0).start.clone(),
+                tokiter.peek(0).end.clone(), "Unexpected token"));
+        }
+    } else {
+        res =  match parse_node(tokiter, aliases) {
+            Ok(node) => node,
+            Err(e) => return Err(e),
+        };
+    }
     loop {
         let tok = match tokiter.next() {
             Some(tok) => tok,

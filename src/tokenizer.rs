@@ -203,7 +203,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     }
 
     fn read_plain(&mut self, start: Pos) {
-        let mut minindent = start.indent;
+        let mut minindent = *self.indent_levels.last().unwrap();
         if !start.line_start {
             minindent += 1;
         }
@@ -288,7 +288,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
         // TODO(tailhook) we indent the same way as with plain scalars
         //                by PyYaml sets indent to the one of the first line
         //                of content, is it what's by spec?
-        let mut minindent = start.indent;
+        let mut minindent = *self.indent_levels.last().unwrap();
         if !start.line_start {
             minindent += 1;
         }
@@ -772,27 +772,50 @@ fn test_map_value() {
 }
 
 #[test]
-fn test_plain() {
+fn test_plain1() {
     let tokens = test_tokenize("a");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a")));
+}
+
+#[test]
+fn test_plain2() {
     let tokens = test_tokenize("abc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "abc")));
+}
+
+#[test]
+fn test_plain3() {
     let tokens = test_tokenize("abc\ndef");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "abc\ndef")));
+}
+
+#[test]
+fn test_plain4() {
     let tokens = test_tokenize("a#bc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a#bc")));
+}
+
+#[test]
+fn test_plain5() {
     let tokens = test_tokenize(" a\nbc");
     assert_eq!(simple_tokens(tokens),
-        vec!((Whitespace, " "), (Indent, ""), (PlainString, "a"),
-             (Whitespace, "\n"), (Unindent, ""), (PlainString, "bc")));
+        vec!((Whitespace, " "), (Indent, ""), (PlainString, "a\nbc"),
+             (Unindent, "")));
+}
+
+#[test]
+fn test_plain6() {
     let tokens = test_tokenize("a:\n a\n bc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, "\n "),
              (Indent, ""), (PlainString, "a\n bc"), (Unindent, "")));
+}
+#[test]
+fn test_plain7() {
     let tokens = test_tokenize("a: a\nbc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, " "),
@@ -811,7 +834,8 @@ fn test_plain_words() {
 fn test_words_in_list() {
     let tokens = test_tokenize("- a\n b");
     assert_eq!(simple_tokens(tokens),
-        vec!((SequenceEntry, "-"), (Whitespace, " "), (PlainString, "a\n b")));
+        vec!((SequenceEntry, "-"), (Whitespace, " "),
+             (Indent, ""), (PlainString, "a\n b"), (Unindent, "")));
 }
 
 #[test]
@@ -833,8 +857,8 @@ fn test_block_flow() {
 fn test_block_in_list() {
     let tokens = test_tokenize("- |\n  a");
     assert_eq!(simple_tokens(tokens),
-        vec!((SequenceEntry, "-"), (Whitespace, " "),
-             (Literal, "|\n  a")));
+        vec!((SequenceEntry, "-"), (Whitespace, " "), (Indent, ""),
+             (Literal, "|\n  a"), (Unindent, "")));
 }
 
 #[test]
