@@ -1,11 +1,9 @@
-use std::io::IoResult;
 use std::vec::Vec;
 use std::str::CharOffsets;
 use std::iter::Peekable;
 use std::rc::Rc;
 use std::fmt::{Show, Formatter, FormatError};
 
-use super::chars::is_indicator;
 use super::chars::is_whitespace;
 use super::chars::is_printable;
 use super::chars::is_tag_char;
@@ -38,7 +36,6 @@ pub enum TokenType {
     FlowMapEnd,  // '}'
     FlowEntry,  // ','
     Directive,  // '%...'
-    Reserved,  // '@' or '`'
 }
 
 
@@ -241,8 +238,9 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         let pos = self.iter.position.clone();
                         let niter = self.skip_whitespace();
                         self.iter = niter.clone();
-                        if (pos.line == niter.position.line ||
-                            niter.position.indent >= minindent) {
+                        if pos.line == niter.position.line ||
+                                niter.position.indent >= minindent
+                        {
                             match self.iter.chars.peek() {
                                 Some(&(_, '\t')) => {
                                     self.error = Some(
@@ -317,7 +315,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     }
 
     fn add_token(&mut self, kind: TokenType, start: Pos, end: Pos) {
-        if(kind != Whitespace && kind != Comment) {
+        if kind != Whitespace && kind != Comment {
             // always have "0" at bottom of the stack so just unwrap it
             let cur = *self.indent_levels.last().unwrap();
             if start.indent > cur {

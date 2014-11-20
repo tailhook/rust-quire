@@ -8,24 +8,12 @@ pub fn is_printable(character: char) -> bool {
         || 0x10000 <= ch && ch <= 0x10FFFF;
 }
 
-pub fn is_indicator(ch: char) -> bool {
-    return ch == '-' || ch == '?' || ch == ':' || ch == ','
-        || ch == '[' || ch == ']' || ch == '{' || ch == '}'
-        || ch == '#' || ch == '&' || ch == '*' || ch == '!'
-        || ch == '|' || ch == '>' || ch == '"' || ch == '\''
-        || ch == '%';
-}
-
 pub fn is_flow_indicator(ch: char) -> bool {
     return ch == ',' || ch == '[' || ch == ']' || ch == '{' || ch == '}';
 }
 
 pub fn is_reserved(ch: char) -> bool {
     return ch == '@' || ch == '`';
-}
-
-pub fn is_linebreak(ch: char) -> bool {
-    return ch == '\x0a' || ch == '\x0d';
 }
 
 pub fn is_whitespace(ch: char) -> bool {
@@ -36,23 +24,9 @@ pub fn is_dec_digit(ch: char) -> bool {
     return '0' <= ch && ch <= '9';
 }
 
-pub fn is_hex_digit(ch: char) -> bool {
-    return is_dec_digit(ch)
-        || 'a' <= ch && ch <= 'f' || 'A' <= ch && ch <= 'F';
-}
-
 pub fn is_word_char(ch: char) -> bool {
     return is_dec_digit(ch) || ch == '-'
         || 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z';
-}
-
-pub fn is_uri_char(ch: char) -> bool {
-    return ch == '%' || is_word_char(ch)
-        || ch == '#'
-        || ch == ';' || ch == '/' || ch == '?' || ch == ':' || ch == '@'
-        || ch == '&' || ch == '=' || ch == '+' || ch == '$' || ch == ','
-        || ch == '_' || ch == '.' || ch == '!' || ch == '~' || ch == '*'
-        || ch == '\'' || ch == '(' || ch == ')' || ch == '[' || ch == ']';
 }
 
 pub fn is_tag_char(ch: char) -> bool {

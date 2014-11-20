@@ -1,13 +1,12 @@
 use std::io::{IoResult, IoError, MemWriter};
 use std::io::Writer;
 use std::to_string::ToString;
-use std::str::{from_char, from_utf8};
 use serialize::{Encodable, Encoder};
 
 use super::parser::Node;
 
 use self::State as S;
-use self::Line as L;
+use self::line as L;
 use super::parser as N;  // Node enum constants
 use super::ast as A;
 
@@ -23,7 +22,7 @@ pub enum ScalarStyle {
     Folded,
 }
 
-pub mod Null {
+pub mod null {
     pub enum Style {
         Nothing,
         Tilde,
@@ -42,7 +41,7 @@ mod State {
     }
 }
 
-mod Line {
+mod line {
     pub enum State {
         Start,
         AfterIndent,  // Like Start, but already indented
@@ -55,7 +54,7 @@ pub enum Opcode<'a> {
     MapEnd,
     SeqStart(Option<Tag<'a>>, Option<Anchor<'a>>),
     SeqEnd,
-    Null(Option<Tag<'a>>, Option<Anchor<'a>>, Null::Style),
+    Null(Option<Tag<'a>>, Option<Anchor<'a>>, null::Style),
     Scalar(Option<Tag<'a>>, Option<Anchor<'a>>, ScalarStyle, &'a str),
     Comment(&'a str),
     Alias(&'a str),
@@ -63,11 +62,10 @@ pub enum Opcode<'a> {
 
 pub struct Context<'a> {
     cur_indent: uint,
-    want_newline: bool,
     stream: &'a mut Writer + 'a,
     stack: Vec<(State::Opcode, uint)>,
     state: State::Opcode,
-    line: Line::State,
+    line: line::State,
 }
 
 
@@ -84,7 +82,6 @@ impl<'a> Context<'a> {
     pub fn new<'x>(stream: &'x mut Writer) -> Context<'x> {
         return Context {
             cur_indent: 0,
-            want_newline: false,
             stream: stream,
             stack: Vec::new(),
             state: S::New,
@@ -116,12 +113,12 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn emit_null(&mut self, space:bool, style: Null::Style) -> IoResult<()> {
+    fn emit_null(&mut self, space:bool, style: null::Style) -> IoResult<()> {
         return match style {
-            Null::Nothing => self.stream.write_char('\n'),
-            Null::Tilde =>
+            null::Nothing => self.stream.write_char('\n'),
+            null::Tilde =>
                 self.stream.write_str(if space { " ~\n" } else { "~\n" }),
-            Null::Null =>
+            null::Null =>
                 self.stream.write_str(if space { " null\n" } else { "null\n"}),
         };
     }
@@ -153,8 +150,8 @@ impl<'a> Context<'a> {
             L::AfterIndent => return Ok(()),
             _ => {}
         }
-        self.ensure_line_start();
-        for i in range(0, self.cur_indent) {
+        try!(self.ensure_line_start());
+        for _ in range(0, self.cur_indent) {
             try!(self.stream.write_char(' '));
         }
         return Ok(());
@@ -173,7 +170,7 @@ impl<'a> Context<'a> {
             None => {}
         }
         match anchor {
-            Some(x) => {
+            Some(_) => {
                 unimplemented!();
             }
             None => {}
@@ -291,7 +288,7 @@ impl<'a> Context<'a> {
                 // TODO(tailhook) fix anchor
                 println!("TAGTAG {}", tag);
                 try!(self.emit(Null(tag.map(|t| t.slice_from(1)),
-                    None, Null::Nothing)));
+                    None, null::Nothing)));
             }
             &N::Alias(name, _) => unimplemented!(),
         }
@@ -322,8 +319,8 @@ impl<'a> Context<'a> {
             }
             &A::Null(_, ref tag, kind) => {
                 try!(self.emit(Null(tag_as_string(tag), None, match kind {
-                    A::Explicit => Null::Null,
-                    A::Implicit => Null::Nothing,
+                    A::Explicit => null::Null,
+                    A::Implicit => null::Nothing,
                 })));
             }
         }
@@ -334,7 +331,7 @@ impl<'a> Context<'a> {
         val: &T, wr: &'x mut MemWriter)
     {
         let mut encoder = Context::new(wr);
-        val.encode(&mut encoder);
+        val.encode(&mut encoder).unwrap();
     }
 
 }
@@ -363,7 +360,7 @@ pub fn emit_object<'x, T: Encodable<Context<'x>, IoError>>(
 
 impl<'a> Encoder<IoError> for Context<'a> {
     fn emit_nil(&mut self) -> Result<(), IoError> {
-        return self.emit(Null(None, None, Null::Nothing));
+        return self.emit(Null(None, None, null::Nothing));
     }
     fn emit_uint(&mut self, v: uint) -> Result<(), IoError> {
         let val = v.to_string();
@@ -418,7 +415,7 @@ impl<'a> Encoder<IoError> for Context<'a> {
         return self.emit(Scalar(None, None, Plain, val.as_slice()));
     }
     fn emit_char(&mut self, v: char) -> Result<(), IoError> {
-        let val = from_char(v);
+        let val = v.to_string();
         return self.emit(Scalar(None, None, Auto, val.as_slice()));
     }
     fn emit_str(&mut self, v: &str) -> Result<(), IoError> {
@@ -490,15 +487,14 @@ impl<'a> Encoder<IoError> for Context<'a> {
 
 #[cfg(test)]
 mod test {
-    use std::io::{MemWriter, IoError};
+    use std::io::{MemWriter};
     use std::str::{from_utf8};
-    use std::mem::transmute;
     use std::rc::Rc;
     use std::default::Default;
     use serialize::{Encodable, Encoder};
 
     use super::super::parser::parse;
-    use super::{Opcode, Context, Null, Auto, Scalar, MapStart, MapEnd};
+    use super::{Opcode, Context, Null, null, Auto, Scalar, MapStart, MapEnd};
     use super::super::ast::process;
 
     fn emit_and_compare(list: &[Opcode], output: &str) {
@@ -506,7 +502,7 @@ mod test {
         {
             let mut ctx = Context::new(&mut buf);
             for op in list.iter() {
-                ctx.emit(*op);
+                ctx.emit(*op).unwrap();
             }
         }
         let bytes = buf.unwrap();
@@ -517,7 +513,7 @@ mod test {
     #[test]
     fn test_empty() {
         emit_and_compare([
-            Null(None, None, Null::Nothing),
+            Null(None, None, null::Nothing),
         ], "\n");
     }
 

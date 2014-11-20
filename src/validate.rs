@@ -487,14 +487,14 @@ mod test {
 
     #[test]
     fn test_map_empty() {
-        let mut m = TreeMap::new();
+        let m = TreeMap::new();
         let res: TreeMap<String, uint> = parse_map("{}");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_map_null() {
-        let mut m = TreeMap::new();
+        let m = TreeMap::new();
         let res: TreeMap<String, uint> = parse_map("");
         assert_eq!(res, m);
     }
@@ -511,12 +511,10 @@ mod test {
         };
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
-        warnings.iter().advance(|w| { println!("WARNING: {}", w); true });
+        warnings.iter().all(|w| { println!("WARNING: {}", w); true });
         assert_eq!(warnings.len(), 0);
-        ::emit::emit_ast(&ast, &mut ::std::io::stdout());
         let (ast, warnings) = validator.validate(ast);
-        ::emit::emit_ast(&ast, &mut ::std::io::stdout());
-        warnings.iter().advance(|w| { println!("WARNING: {}", w); true });
+        warnings.iter().all(|w| { println!("WARNING: {}", w); true });
         assert_eq!(warnings.len(), 0);
         let mut dec = YamlDecoder::new(ast);
         return Decodable::decode(&mut dec).unwrap();

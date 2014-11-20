@@ -503,7 +503,6 @@ mod test {
             "{}",
             |doc| { process(Default::default(), doc) }).unwrap();
         let mut dec = YamlDecoder::new(ast);
-        let val: Result<TestOption, Warning>;
         let val: TestOption = Decodable::decode(&mut dec).unwrap();
         assert!(val.path == None);
     }

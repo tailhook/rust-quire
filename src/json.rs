@@ -1,13 +1,10 @@
 use std::from_str::FromStr;
-use std::string::String;
 
 use collections::treemap::TreeMap;
 use serialize::json::{ToJson, Json};
 use serialize::json as J;
 
-use super::tokenizer as T;
 use super::ast as A;
-use super::tokenizer;
 
 
 impl ToJson for A::Ast {
@@ -42,7 +39,7 @@ impl ToJson for A::Ast {
                 }
                 J::String(val.clone())
             }
-            A::Scalar(_, _, Quoted, ref val) => {
+            A::Scalar(_, _, A::Quoted, ref val) => {
                 J::String(val.clone())
             }
         };

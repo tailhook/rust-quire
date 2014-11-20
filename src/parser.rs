@@ -1,16 +1,13 @@
-use std::slice::Items;
 use std::iter::Peekable;
 use std::str::Chars;
 use std::rc::Rc;
 use std::fmt::{Show, Formatter, FormatError};
 
 use collections::treemap::TreeMap;
-use collections::ringbuf::RingBuf;
-use collections::Deque;
 
 use super::tokenizer::{Token, Pos};
 use super::errors::Error;
-use super::errors::{TokenErr, TokenError};
+use super::errors::{TokenErr};
 use super::errors::{ParserErr, ParserError};
 use super::tokenizer::tokenize;
 use super::tokenizer as T;
@@ -19,7 +16,6 @@ type Aliases<'x> = TreeMap<&'x str, &'x Node<'x>>;
 
 pub struct TokenIter<'a> {
     index: uint,
-    peeked: RingBuf<&'a Token<'a>>,
     tokens: &'a[Token<'a>],
     eof_token: &'a Token<'a>,
 }
@@ -30,7 +26,6 @@ impl<'a> TokenIter<'a> {
         assert!(last.kind == T::Eof);
         return TokenIter {
             index: 0,
-            peeked: RingBuf::new(),
             tokens: src.as_slice(),
             eof_token: last,
         };
@@ -73,11 +68,11 @@ fn process_newline<'x>(iter: &mut Peekable<char, Chars<'x>>, res: &mut String,
     cut_limit: uint)
 {
     while res.len() > cut_limit {
-        match res.pop_char() {
+        match res.pop() {
             None => break,
             Some(' ') | Some('\t') => continue,
             Some(x) => {
-                res.push_char(x);
+                res.push(x);
                 break;
             }
         }
@@ -88,7 +83,7 @@ fn process_newline<'x>(iter: &mut Peekable<char, Chars<'x>>, res: &mut String,
             Some(&' ') => { }
             Some(&'\n') => {
                 need_space = false;
-                res.push_char('\n');
+                res.push('\n');
             }
             Some(_) => break,
             None => break,
@@ -96,7 +91,7 @@ fn process_newline<'x>(iter: &mut Peekable<char, Chars<'x>>, res: &mut String,
         iter.next();
     }
     if need_space {
-        res.push_char(' ');
+        res.push(' ');
     }
 }
 
@@ -113,7 +108,7 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                 if ch == '\n' {
                     process_newline(&mut iter, &mut res, 0);
                 } else {
-                    res.push_char(ch);
+                    res.push(ch);
                 }
             }
         }
@@ -126,27 +121,26 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                     None => break,
                     Some('\\') => {
                         match iter.next() {
-                            None => res.push_char('\\'),  // fixme
-                            Some('0') => res.push_char('\0'),
-                            Some('a') => res.push_char('\x07'),
-                            Some('b') => res.push_char('\x08'),
-                            Some('t') | Some('\t') => res.push_char('\t'),
-                            Some('n') => res.push_char('\n'),
-                            Some('r') => res.push_char('\r'),
-                            Some('v') => res.push_char('\x0b'),
-                            Some('f') => res.push_char('\x0c'),
-                            Some('e') => res.push_char('\x1b'),
+                            None => res.push('\\'),  // fixme
+                            Some('0') => res.push('\0'),
+                            Some('a') => res.push('\x07'),
+                            Some('b') => res.push('\x08'),
+                            Some('t') | Some('\t') => res.push('\t'),
+                            Some('n') => res.push('\n'),
+                            Some('r') => res.push('\r'),
+                            Some('v') => res.push('\x0b'),
+                            Some('f') => res.push('\x0c'),
+                            Some('e') => res.push('\x1b'),
                             Some(' ') => {
-                                res.push_char(' ');
-                                escaped_space = res.len();
+                                res.push(' ');
                             }
-                            Some('"') => res.push_char('"'),
-                            Some('/') => res.push_char('/'),
-                            Some('\\') => res.push_char('\\'),
-                            Some('N') => res.push_char('\x85'),
-                            Some('_') => res.push_char('\xa0'),
-                            Some('L') => res.push_char('\u2028'),
-                            Some('P') => res.push_char('\u2029'),
+                            Some('"') => res.push('"'),
+                            Some('/') => res.push('/'),
+                            Some('\\') => res.push('\\'),
+                            Some('N') => res.push('\x85'),
+                            Some('_') => res.push('\xa0'),
+                            Some('L') => res.push('\u2028'),
+                            Some('P') => res.push('\u2029'),
                             Some('x') => {
                                 unimplemented!();
                             },
@@ -162,8 +156,8 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                                     escaped_space);
                             }
                             Some(x) => {
-                                res.push_char('\\');
-                                res.push_char(x);
+                                res.push('\\');
+                                res.push(x);
                             }
                         }
                         escaped_space = res.len();
@@ -173,7 +167,7 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                         process_newline(&mut iter, &mut res,
                             escaped_space);
                     }
-                    Some(x) => res.push_char(x),
+                    Some(x) => res.push(x),
                 }
             }
         },
@@ -186,14 +180,14 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                     Some('\'') => {
                         match iter.next() {
                             None => break,
-                            Some('\'') => res.push_char('\''),
-                            Some(x) => unreachable!(),
+                            Some('\'') => res.push('\''),
+                            Some(_) => unreachable!(),
                         }
                     }
                     Some('\n') => {
                         process_newline(&mut iter, &mut res, 0);
                     }
-                    Some(x) => res.push_char(x),
+                    Some(x) => res.push(x),
                 }
             }
         }
@@ -208,7 +202,7 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                         indent = line.len() - trimmed.len();
                     }
                     res.push_str(line.slice(indent, line.len()));
-                    res.push_char('\n');
+                    res.push('\n');
                 }
             } else {
                 unimplemented!();
@@ -537,8 +531,9 @@ fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 // TODO(tailhook) something wrong with this block
                 // Only one-line scalars are allowed to be mapping keys
                 let val = tokiter.peek(1);
-                if (val.kind == T::MappingValue &&
-                    val.start.line == tok.end.line) {
+                if val.kind == T::MappingValue &&
+                        val.start.line == tok.end.line
+                {
                     return parse_map(tokiter, aliases);
                 }
             }
@@ -575,8 +570,9 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             if tok.start.line == tok.end.line {
                 // Only one-line scalars are allowed to be mapping keys
                 let val = tokiter.peek(1);
-                if (val.kind == T::MappingValue &&
-                    val.start.line == tok.end.line) {
+                if val.kind == T::MappingValue &&
+                        val.start.line == tok.end.line
+                {
                     return parse_map(tokiter, aliases);
                 }
             }
