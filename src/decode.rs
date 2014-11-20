@@ -307,9 +307,9 @@ impl Decoder<E::Warning> for YamlDecoder {
             }
             A::Scalar(_, _, _, ref value) => {
                 // TODO(tailhook) check for !!binary tag
-                let vec = value.as_bytes().into_owned();
+                let vec = value.as_bytes().into_vec();
                 let len = vec.len();
-                self.bytes = Some(vec.move_iter());
+                self.bytes = Some(vec.into_iter());
                 let value = try!(f(self, len));
                 self.bytes = None;
                 return Ok(value);
@@ -339,7 +339,7 @@ impl Decoder<E::Warning> for YamlDecoder {
             _ => unimplemented!(),
         };
 
-        let ast = children.shift().unwrap();
+        let ast = children.remove(0).unwrap();
         self.stack.push(ast);
         let value = try!(f(self));
         self.stack.push(A::List(pos, tag, children));

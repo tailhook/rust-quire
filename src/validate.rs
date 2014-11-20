@@ -179,7 +179,7 @@ impl<'a> Validator for Structure<'a> {
                 .or(map.pop(&replace(k.as_slice(), "_", "-"))) {
                 Some(src) => {
                     let (value, wrn) = validator.validate(src);
-                    warnings.extend(wrn.move_iter());
+                    warnings.extend(wrn.into_iter());
                     value
                 }
                 None => {
@@ -226,15 +226,15 @@ impl<'a, 'b> Validator for Mapping<'a, 'b> {
             }
         };
         let mut res = TreeMap::new();
-        for (k, v) in map.move_iter() {
+        for (k, v) in map.into_iter() {
             let (key, wrn) = match self.key_element.validate(
                 A::Scalar(v.pos().clone(), A::NonSpecific, A::Plain, k)) {
                 (A::Scalar(_, _, _, val), wrn) => (val, wrn),
                 _ => unreachable!(),
             };
-            warnings.extend(wrn.move_iter());
+            warnings.extend(wrn.into_iter());
             let (value, wrn) = self.value_element.validate(v);
-            warnings.extend(wrn.move_iter());
+            warnings.extend(wrn.into_iter());
             res.insert(key, value);
         }
         return (A::Map(pos, A::NonSpecific, res), warnings);
@@ -271,9 +271,9 @@ impl<'a> Validator for Sequence<'a> {
             }
         };
         let mut res = Vec::new();
-        for val in children.move_iter() {
+        for val in children.into_iter() {
             let (value, wrn) = self.element.validate(val);
-            warnings.extend(wrn.move_iter());
+            warnings.extend(wrn.into_iter());
             res.push(value);
         }
         return (A::List(pos, A::NonSpecific, res), warnings);

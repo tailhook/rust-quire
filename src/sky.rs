@@ -27,7 +27,7 @@ pub fn parse_config<T:Decodable<YamlDecoder, Warning>>(
         .map_err(|e| format!("Error parsing config {}: {}",
             filename.display(), e)));
     let (ast, nwarn) = validator.validate(ast);
-    warnings.extend(nwarn.move_iter());
+    warnings.extend(nwarn.into_iter());
     let mut dec = YamlDecoder::new(ast);
     let res = Decodable::decode(&mut dec);
     if options.print_warnings {
