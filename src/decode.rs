@@ -24,7 +24,7 @@ impl Deref<J::Json> for AnyJson {
 
 impl<D:Decoder<E> + 'static, E> Decodable<D, E> for AnyJson {
     fn decode(dec: &mut D) -> Result<AnyJson, E> {
-        let dec: &mut YamlDecoder = (dec as &mut Any).as_mut().unwrap();
+        let dec: &mut YamlDecoder = (dec as &mut Any).downcast_mut().unwrap();
         return Ok(AnyJson(dec.pop().to_json()));
     }
 }
