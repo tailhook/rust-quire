@@ -12,10 +12,6 @@ pub fn is_flow_indicator(ch: char) -> bool {
     return ch == ',' || ch == '[' || ch == ']' || ch == '{' || ch == '}';
 }
 
-pub fn is_reserved(ch: char) -> bool {
-    return ch == '@' || ch == '`';
-}
-
 pub fn is_whitespace(ch: char) -> bool {
     return ch == '\x20' || ch == '\x09' || ch == '\r' || ch == '\n';
 }
