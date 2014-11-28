@@ -364,4 +364,10 @@ mod test {
     fn indented_map() {
         assert_yaml_eq_json("   a: 1\n   b: 2\n", r#"{"a": 1, "b": 2}"#);
     }
+
+    #[test]
+    fn map_map() {
+        assert_yaml_eq_json("a: {\n  b: {}}",
+            r#"{"a": {"b": {}}}"#);
+    }
 }

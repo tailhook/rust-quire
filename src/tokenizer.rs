@@ -315,7 +315,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     }
 
     fn add_token(&mut self, kind: TokenType, start: Pos, end: Pos) {
-        if kind != Whitespace && kind != Comment {
+        if kind != Whitespace && kind != Comment && self.flow_level == 0 {
             // always have "0" at bottom of the stack so just unwrap it
             let cur = *self.indent_levels.last().unwrap();
             if start.indent > cur {
