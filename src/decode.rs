@@ -228,6 +228,9 @@ impl Decoder<Error> for YamlDecoder {
         f: |&mut YamlDecoder| -> DecodeResult<T>)
         -> DecodeResult<T>
     {
+        if idx == 0 {
+            return f(self);
+        }
         unimplemented!();
     }
 
@@ -600,6 +603,7 @@ mod test {
     enum TestEnum {
         Alpha,
         Beta,
+        Gamma(int),
     }
 
     fn decode_enum(text: &str) -> TestEnum {
@@ -629,6 +633,11 @@ mod test {
     #[test]
     fn test_enum_4() {
         assert_eq!(decode_enum("!Alpha"), Alpha);
+    }
+
+    #[test]
+    fn test_enum_5() {
+        assert_eq!(decode_enum("!Gamma 5"), Gamma(5));
     }
 
 }
