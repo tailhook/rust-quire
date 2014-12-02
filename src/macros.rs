@@ -100,7 +100,8 @@ mod test {
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = str_val.validate(ast);
         assert_eq!(warnings.len(), 0);
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
 

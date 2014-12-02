@@ -7,12 +7,12 @@ use std::str::replace;
 
 use regex::Regex;
 
-use super::errors::{Warning, ValidationError};
+use super::errors::Error;
 pub use super::tokenizer::Pos;
 use super::ast as A;
 
 pub trait Validator {
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>);
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>);
     fn default(&self, pos: Pos) -> Option<A::Ast>;
 }
 
@@ -34,7 +34,7 @@ impl Validator for Scalar {
         self.default.as_ref().map(|val| {
             A::Scalar(pos.clone(), A::NonSpecific, A::Quoted, val.clone()) })
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, kind, val) = match ast {
             A::Scalar(pos, _, kind, string) => {
@@ -44,26 +44,26 @@ impl Validator for Scalar {
                 return (ast, warnings);
             }
             ast => {
-                warnings.push(ValidationError(ast.pos(),
+                warnings.push(Error::validation_error(&ast.pos(),
                     format!("Value must be scalar")));
                 return (ast, warnings);
             }
         };
         self.min_length.map(|minl| {
             if val.len() < minl {
-                warnings.push(ValidationError(pos.clone(),
+                warnings.push(Error::validation_error(&pos,
                     format!("Value must be at least {} characters", minl)));
             }
         });
         self.max_length.map(|maxl| {
             if val.len() > maxl {
-                warnings.push(ValidationError(pos.clone(),
+                warnings.push(Error::validation_error(&pos,
                     format!("Value must be at most {} characters", maxl)));
             }
         });
         self.regex.as_ref().map(|regex| {
             if regex.is_match(val.as_slice()) {
-                warnings.push(ValidationError(pos.clone(),
+                warnings.push(Error::validation_error(&pos,
                     format!("Value must match regular expression {}",
                             regex)));
             }
@@ -102,14 +102,14 @@ impl<T:PartialOrd+Show+FromStr+FromStrRadix> Validator for Numeric<T> {
             A::Scalar(pos.clone(), A::NonSpecific, A::Quoted, val.to_string())
         })
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, val): (Pos, T)  = match ast {
             A::Scalar(pos, tag, kind, string)
             => match from_numeric(string.as_slice()) {
                 Some(val) => (pos, val),
                 None => {
-                    warnings.push(ValidationError(pos.clone(),
+                    warnings.push(Error::validation_error(&pos,
                         format!("Value must be numeric")));
                     return (A::Scalar(pos, tag, kind, string), warnings);
                 }
@@ -118,20 +118,20 @@ impl<T:PartialOrd+Show+FromStr+FromStrRadix> Validator for Numeric<T> {
                 return (ast, warnings);
             }
             ast => {
-                warnings.push(ValidationError(ast.pos(),
+                warnings.push(Error::validation_error(&ast.pos(),
                     format!("Value must be scalar")));
                 return (ast, warnings);
             }
         };
         self.min.as_ref().map(|min| {
             if val < *min {
-                warnings.push(ValidationError(pos.clone(),
+                warnings.push(Error::validation_error(&pos,
                     format!("Value must be at least {}", min)));
             }
         });
         self.max.as_ref().map(|max| {
             if val > *max {
-                warnings.push(ValidationError(pos.clone(),
+                warnings.push(Error::validation_error(&pos,
                     format!("Value must be at most {}", max)));
             }
         });
@@ -159,7 +159,7 @@ impl<'a> Validator for Structure<'a> {
         }
         return Some(A::Map(pos, A::NonSpecific, map));
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, mut map) = match ast {
             A::Map(pos, _, items) => {
@@ -169,7 +169,7 @@ impl<'a> Validator for Structure<'a> {
                 return (self.default(pos).unwrap(), warnings);
             }
             ast => {
-                warnings.push(ValidationError(ast.pos(),
+                warnings.push(Error::validation_error(&ast.pos(),
                     format!("Value must be mapping")));
                 return (ast, warnings);
             }
@@ -186,7 +186,7 @@ impl<'a> Validator for Structure<'a> {
                     match validator.default(pos.clone()) {
                         Some(x) => x,
                         None => {
-                            warnings.push(ValidationError(pos.clone(),
+                            warnings.push(Error::validation_error(&pos,
                                 format!("Field {} is expected", k)));
                             continue;
                         }
@@ -210,7 +210,7 @@ impl<'a, 'b> Validator for Mapping<'a, 'b> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
         return Some(A::Map(pos, A::NonSpecific, TreeMap::new()));
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, map) = match ast {
             A::Map(pos, _, items) => {
@@ -220,7 +220,7 @@ impl<'a, 'b> Validator for Mapping<'a, 'b> {
                 return (A::Map(pos, A::NonSpecific, TreeMap::new()), warnings);
             }
             ast => {
-                warnings.push(ValidationError(ast.pos(),
+                warnings.push(Error::validation_error(&ast.pos(),
                     format!("Value must be mapping")));
                 return (ast, warnings);
             }
@@ -252,7 +252,7 @@ impl<'a> Validator for Sequence<'a> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
         return Some(A::List(pos, A::NonSpecific, Vec::new()));
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, children) = match (ast, self.from_scalar) {
             (A::List(pos, _, items), _) => {
@@ -265,7 +265,7 @@ impl<'a> Validator for Sequence<'a> {
                 (ast.pos().clone(), fun(ast))
             }
             (ast, _) => {
-                warnings.push(ValidationError(ast.pos(),
+                warnings.push(Error::validation_error(&ast.pos(),
                     format!("Value must be sequence")));
                 return (ast, warnings);
             }
@@ -286,7 +286,7 @@ impl Validator for Anything {
     fn default(&self, _: Pos) -> Option<A::Ast> {
         return None;
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Warning>) {
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
         return (ast, Vec::new());
     }
 }
@@ -308,7 +308,7 @@ mod test {
     use super::super::decode::YamlDecoder;
     use super::super::ast::process;
     use super::super::parser::parse;
-    use super::super::errors::Warning;
+    use super::super::errors::Error;
     use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
@@ -331,7 +331,8 @@ mod test {
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = str_val.validate(ast);
         assert_eq!(warnings.len(), 0);
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
 
@@ -383,7 +384,8 @@ mod test {
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = str_val.validate(ast);
         assert_eq!(warnings.len(), 0);
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
 
@@ -419,7 +421,8 @@ mod test {
         let (ast, warnings) = str_val.validate(ast);
         println!("WARNINGS {}", warnings);
         assert_eq!(warnings.len(), 0);
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
 
@@ -444,7 +447,7 @@ mod test {
         });
     }
 
-    fn parse_map<T:Decodable<YamlDecoder, Warning>>(body: &str) -> T {
+    fn parse_map<T:Decodable<YamlDecoder, Error>>(body: &str) -> T {
         let validator = Mapping {
             key_element: box Scalar { .. Default::default()},
             value_element: box Numeric::<uint> { default: Some(0u), .. Default::default()},
@@ -455,7 +458,8 @@ mod test {
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = validator.validate(ast);
         assert_eq!(warnings.len(), 0);
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
 
@@ -499,7 +503,9 @@ mod test {
         assert_eq!(res, m);
     }
 
-    fn parse_complex_map<T:Decodable<YamlDecoder, Warning>>(body: &str) -> T {
+    fn parse_complex_map<T:Decodable<YamlDecoder, Error>>(body: &str)
+        -> T
+    {
         let validator = Mapping {
             key_element: box Scalar { .. Default::default()},
             value_element: box Structure { members: vec!(
@@ -516,7 +522,8 @@ mod test {
         let (ast, warnings) = validator.validate(ast);
         warnings.iter().all(|w| { println!("WARNING: {}", w); true });
         assert_eq!(warnings.len(), 0);
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
 
@@ -562,7 +569,8 @@ mod test {
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = validator.validate(ast);
         assert_eq!(warnings.len(), 0);
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
 

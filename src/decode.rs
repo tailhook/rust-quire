@@ -1,4 +1,5 @@
 use std::vec::MoveItems;
+use std::mem::swap;
 use std::any::{Any, AnyMutRefExt};
 use std::fmt::{Show, Formatter, FormatError};
 use std::default::Default;
@@ -9,9 +10,11 @@ use serialize::json::ToJson;
 use serialize::json as J;
 
 use super::ast as A;
-use super::errors as E;
+use super::errors::Error;
+use super::tokenizer::Pos;
 
-pub type DecodeResult<T> = Result<T, E::Warning>;
+
+pub type DecodeResult<T> = Result<T, Error>;
 
 struct AnyJson(J::Json);
 
@@ -25,7 +28,14 @@ impl Deref<J::Json> for AnyJson {
 impl<D:Decoder<E> + 'static, E> Decodable<D, E> for AnyJson {
     fn decode(dec: &mut D) -> Result<AnyJson, E> {
         let dec: &mut YamlDecoder = (dec as &mut Any).downcast_mut().unwrap();
-        return Ok(AnyJson(dec.pop().to_json()));
+        match dec.state {
+            Node(ref node) => {
+                return Ok(AnyJson(node.to_json()));
+            }
+            Byte(_) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
+            Key(_, ref val) => return Ok(AnyJson(J::String(val.clone()))),
+        }
     }
 }
 
@@ -44,62 +54,66 @@ impl Show for AnyJson {
     }
 }
 
-/// A structure to decode Yaml to values in rust.
+enum ParserState {
+    Node(A::Ast),
+    Map(Vec<(String, A::Ast)>),  // used only in read_map_elt_key/elt_val
+    Seq(Vec<A::Ast>),  // used only in read_seq_elt
+    ByteSeq(Vec<u8>),  // used for decoding Path
+    Byte(u8),     // used for decoding Path
+    Key(Pos, String),
+}
+
 pub struct YamlDecoder {
-    stack: Vec<A::Ast>,
-    bytes: Option<MoveItems<u8>>,
-    warnings: Vec<E::Warning>,
+    state: ParserState,
+    sender: Sender<Error>,
 }
 
 impl YamlDecoder {
 
-    pub fn new(ast: A::Ast) -> YamlDecoder {
+    pub fn new(ast: A::Ast, sender: Sender<Error>)
+        -> YamlDecoder
+    {
         return YamlDecoder {
-            stack: vec!(ast),
-            bytes: None,
-            warnings: Vec::new(),
+            state: Node(ast),
+            sender: sender,
         }
     }
 
-    fn pop(&mut self) -> A::Ast {
-        self.stack.pop().unwrap()
-    }
-
-    fn push(&mut self, ast: A::Ast) {
-        self.stack.push(ast);
-    }
-
     fn from_str<T: FromStr+Default+'static>(&mut self) -> DecodeResult<T> {
-        match self.pop() {
-            A::Scalar(ref pos, _, _, ref val) => {
+        match self.state {
+            Node(A::Scalar(ref pos, _, _, ref val)) | Key(ref pos, ref val) => {
                 match FromStr::from_str(val.as_slice()) {
                     Some(x) => Ok(x),
                     None => {
-                        return Err(E::CantParseValue(pos.clone(),
-                            format!("{}", TypeId::of::<T>())));
+                        return Err(Error::decode_error(pos,
+                            format!("Can't parse value of type: {}",
+                                    TypeId::of::<T>())));
                     }
                 }
             }
-            node => {
-                return Err(E::UnexpectedNode(node.pos(),
-                    "Plain Scalar",
-                    format!("{}", node)));
+            Node(ref node) => {
+                return Err(Error::decode_error(&node.pos(),
+                    format!("Expected scalar, got {}", node)));
             }
+            Byte(_) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
         }
     }
 }
 
 
-impl Decoder<E::Warning> for YamlDecoder {
+impl Decoder<Error> for YamlDecoder {
     fn read_nil(&mut self) -> DecodeResult<()> {
-        match self.pop() {
-            A::Null(_, _, _) => Ok(()),
-            node => {
-                self.warnings.push(E::UnexpectedNode(node.pos(),
-                    "null",
-                    format!("{}", node)));
-                Ok(())
+        match self.state {
+            Node(A::Null(_, _, _)) => return Ok(()),
+            Node(ref node) => {
+                self.sender.send(Error::decode_error(&node.pos(),
+                    format!("Expected null")));
+                return Ok(())
             }
+            Key(_, _) => unimplemented!(),
+            Byte(_) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
         }
     }
 
@@ -114,14 +128,10 @@ impl Decoder<E::Warning> for YamlDecoder {
         Ok(try!(self.from_str()))
     }
     fn read_u8 (&mut self)  -> DecodeResult<u8> {
-        match self.bytes {
-            Some(ref mut iter) => {
-                return Ok(iter.next().unwrap());
-            }
-            None => {
-                return Ok(try!(self.from_str()))
-            }
-        };
+        if let Byte(x) = self.state {
+            return Ok(x);
+        }
+        Ok(try!(self.from_str()))
     }
     fn read_uint(&mut self) -> DecodeResult<uint> {
         Ok(try!(self.from_str()))
@@ -172,230 +182,276 @@ impl Decoder<E::Warning> for YamlDecoder {
     }
 
     fn read_enum_variant<T>(&mut self,
-                            names: &[&str],
-                            f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
-                            -> DecodeResult<T> {
-        match self.pop() {
-            ref node if node.tag().is_specific() => {
+        names: &[&str], f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
+        let mut idx = None;
+        match self.state {
+            Node(ref node) if node.tag().is_specific() => {
                 match node.tag() {
                     &A::NonSpecific => unreachable!(),
                     &A::LocalTag(ref tag) => {
                         for (i, name) in names.iter().enumerate() {
                             if *name == tag.as_slice() {
-                                return f(self, i);
+                                idx = Some(i);
                             }
                         }
-                        return Err(E::UnexpectedNode(node.pos(),
-                            "One of the supported tags",
-                            format!("{} is not one of {}", tag, names)));
+                        if idx.is_none() {
+                            return Err(Error::decode_error(&node.pos(),
+                                format!("{} is not one of {}", tag, names)));
+                        }
                     }
                     &A::GlobalTag(_) => unimplemented!(),
                 }
             }
-            A::Scalar(ref pos, _, _, ref value) => {
+            Node(A::Scalar(ref pos, _, _, ref value)) => {
                 for (i, name) in names.iter().enumerate() {
                     if *name == value.as_slice() {
-                        return f(self, i);
+                        idx = Some(i);
                     }
                 }
-                return Err(E::UnexpectedNode(pos.clone(),
-                    "One of the supported tags",
-                    format!("{} is not one of {}", value, names)));
+                if idx.is_none() {
+                    return Err(Error::decode_error(pos,
+                        format!("{} is not one of {}", value, names)));
+                }
             }
-            node => {
-                return Err(E::UnexpectedNode(node.pos(),
-                    "Scalar or tagged value", format!("{}", node)));
+            Node(ref node) => {
+                return Err(Error::decode_error(&node.pos(),
+                    format!("Scalar or tagged value expected")));
             }
+            _ => unimplemented!(),
         }
+        return f(self, idx.unwrap());
     }
 
-    fn read_enum_variant_arg<T>(&mut self, idx: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
-                                -> DecodeResult<T> {
+    fn read_enum_variant_arg<T>(&mut self, idx: uint,
+        f: |&mut YamlDecoder| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
         unimplemented!();
     }
 
     fn read_enum_struct_variant<T>(&mut self,
-                                   names: &[&str],
-                                   f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
-                                   -> DecodeResult<T> {
+        names: &[&str], f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
         unimplemented!();
     }
 
 
     fn read_enum_struct_variant_field<T>(&mut self,
-                                         name: &str,
-                                         idx: uint,
-                                         f: |&mut YamlDecoder| -> DecodeResult<T>)
-                                         -> DecodeResult<T> {
+        _name: &str, _idx: uint, _f: |&mut YamlDecoder| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
         unimplemented!();
     }
 
     fn read_struct<T>(&mut self,
-                      _name: &str,
-                      _len: uint,
-                      f: |&mut YamlDecoder| -> DecodeResult<T>)
-                      -> DecodeResult<T>
+        _name: &str, _len: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
+        -> DecodeResult<T>
     {
-        let value = try!(f(self));
-        self.pop();
-        return Ok(value);
+        match self.state {
+            Node(A::Map(_, _, _)) => {}
+            Node(A::Null(ref pos, _, _)) => {
+                return f(&mut YamlDecoder {
+                    state: Node(A::Map(pos.clone(), A::NonSpecific,
+                        Default::default())),
+                    sender: self.sender.clone(),
+                });
+            }
+            Node(ref node) => {
+                return Err(Error::decode_error(&node.pos(),
+                    "Mapping expected".to_string()));
+            }
+            Byte(_) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
+            Key(ref pos, _) => unimplemented!(),
+        };
+        return f(self);
     }
 
     fn read_struct_field<T>(&mut self,
-                            name: &str,
-                            idx: uint,
-                            f: |&mut YamlDecoder| -> DecodeResult<T>)
-                            -> DecodeResult<T> {
-        let (pos, tag, mut children) = match self.pop() {
-            A::Map(pos, tag, children) => (pos, tag, children),
-            _ => unimplemented!(),
-        };
-
-        let value = match children.pop(&name.to_string()) {
-            None => {
-                self.stack.push(
-                    A::Null(pos.clone(), A::NonSpecific, A::Implicit));
-                try!(f(self))
-            }
-            Some(node) => {
-                self.stack.push(node);
-                try!(f(self))
-            }
-        };
-        self.stack.push(A::Map(pos, tag, children));
-        Ok(value)
+        name: &str, idx: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
+        if let Node(A::Map(ref pos, _, ref mut children)) = self.state {
+            match children.pop(&name.to_string()) {
+                None => {
+                    return f(&mut YamlDecoder {
+                        state: Node(A::Null(pos.clone(), A::NonSpecific,
+                            A::Implicit)),
+                        sender: self.sender.clone(),
+                    });
+                }
+                Some(node) => {
+                    return f(&mut YamlDecoder {
+                        state: Node(node),
+                        sender: self.sender.clone(),
+                    });
+                }
+            };
+        }
+        unreachable!();
     }
 
-    fn read_tuple<T>(&mut self, f: |&mut YamlDecoder, uint| -> DecodeResult<T>) -> DecodeResult<T> {
+    fn read_tuple<T>(&mut self,
+        _f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
         unimplemented!();
     }
 
     fn read_tuple_arg<T>(&mut self,
-                         idx: uint,
-                         f: |&mut YamlDecoder| -> DecodeResult<T>) -> DecodeResult<T> {
+        idx: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
         unimplemented!();
     }
 
     fn read_tuple_struct<T>(&mut self,
-                            name: &str,
-                            f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
-                            -> DecodeResult<T> {
+        name: &str, f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
         unimplemented!();
     }
 
     fn read_tuple_struct_arg<T>(&mut self,
-                                idx: uint,
-                                f: |&mut YamlDecoder| -> DecodeResult<T>)
-                                -> DecodeResult<T> {
+        idx: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
         unimplemented!();
     }
 
-    fn read_option<T>(&mut self, f: |&mut YamlDecoder, bool| -> DecodeResult<T>) -> DecodeResult<T> {
-        match self.pop() {
-            A::Null(_, _, _) => f(self, false),
-            node => { self.stack.push(node); f(self, true) }
+    fn read_option<T>(&mut self,
+        f: |&mut YamlDecoder, bool| -> DecodeResult<T>)
+        -> DecodeResult<T>
+    {
+        match self.state {
+            Node(A::Null(_, _, _)) => f(self, false),
+            Node(_) => f(self, true),
+            Key(_, _) => unimplemented!(),
+            Byte(_) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
         }
     }
 
-    fn read_seq<T>(&mut self, f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+    fn read_seq<T>(&mut self,
+        f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
         -> DecodeResult<T>
     {
-        let node = self.pop();
-        let len = match node {
-            A::List(_, _, ref children) => {
-                children.len()
+        let items = match self.state {
+            Node(A::List(_, _, ref mut children)) => {
+                let mut ch = Default::default();
+                swap(children, &mut ch);
+                ch
             }
-            A::Scalar(_, _, _, ref value) => {
-                // TODO(tailhook) check for !!binary tag
-                let vec = value.as_bytes().into_vec();
-                let len = vec.len();
-                self.bytes = Some(vec.into_iter());
-                let value = try!(f(self, len));
-                self.bytes = None;
-                return Ok(value);
+            Node(A::Scalar(ref pos, _, _, ref val)) => {
+                let bytes = val.as_bytes();
+                return f(&mut YamlDecoder {
+                    state: ByteSeq(bytes.to_vec()),
+                    sender: self.sender.clone(),
+                }, bytes.len());
             }
-            ref node => {
-                self.warnings.push(E::UnexpectedNode(node.pos(),
-                    "Sequence", format!("{}", node)));
-                0
+            Node(A::Null(ref pos, _, _)) => Vec::new(),
+            Node(ref node) => {
+                return Err(Error::decode_error(&node.pos(),
+                    "Sequence expected".to_string()));
             }
+            Byte(_) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
+            Key(_, _) => unimplemented!(),
         };
-        self.push(node);
-        let value = try!(f(self, len));
-        self.pop();
-        return Ok(value);
+        let len = items.len();
+        return f(&mut YamlDecoder {
+            state: Seq(items),
+            sender: self.sender.clone(),
+        }, len);
     }
 
-    fn read_seq_elt<T>(&mut self, _idx: uint,
+    fn read_seq_elt<T>(&mut self, idx: uint,
         f: |&mut YamlDecoder| -> DecodeResult<T>)
         -> DecodeResult<T>
     {
-        if self.bytes.is_some() {
-            let value = try!(f(self));
-            return Ok(value);
+        match self.state {
+            Seq(ref mut els) => {
+                let val = els.remove(0).unwrap();
+                return f(&mut YamlDecoder {
+                    state: Node(val),
+                    sender: self.sender.clone(),
+                });
+            }
+            ByteSeq(ref vec) => {
+                return f(&mut YamlDecoder {
+                    state: Byte(vec[idx]),
+                    sender: self.sender.clone(),
+                });
+            }
+            _ => unreachable!(),
         }
-        let (pos, tag, mut children) = match self.pop() {
-            A::List(pos, tag, children) => (pos, tag, children),
-            _ => unimplemented!(),
-        };
-
-        let ast = children.remove(0).unwrap();
-        self.stack.push(ast);
-        let value = try!(f(self));
-        self.stack.push(A::List(pos, tag, children));
-        Ok(value)
     }
 
-    fn read_map<T>(&mut self, f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+    fn read_map<T>(&mut self,
+        f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
         -> DecodeResult<T>
     {
-        let node = self.pop();
-        let len = match node {
-            A::Map(_, _, ref children) => {
-                children.len()
+        let items = match self.state {
+            Node(A::Map(_, _, ref mut children)) => {
+                let mut ch = Default::default();
+                swap(children, &mut ch);
+                ch.into_iter().collect()
             }
-            ref node => {
-                self.warnings.push(E::UnexpectedNode(node.pos(),
-                    "Mapping", format!("{}", node)));
-                0
+            Node(A::Null(ref pos, _, _)) => Vec::new(),
+            Node(ref node) => {
+                return Err(Error::decode_error(&node.pos(),
+                    "Mapping expected".to_string()));
             }
+            Byte(_) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
+            Key(_, _) => unimplemented!(),
         };
-        self.push(node);
-        let value = try!(f(self, len));
-        self.pop();
-        return Ok(value);
+        let len = items.len();
+        return f(&mut YamlDecoder {
+            state: Map(items),
+            sender: self.sender.clone(),
+        }, len);
     }
 
     fn read_map_elt_key<T>(&mut self, _idx: uint,
         f: |&mut YamlDecoder| -> DecodeResult<T>)
         -> DecodeResult<T>
     {
-        let (pos, tag, mut children) = match self.pop() {
-            A::Map(pos, tag, children) => (pos, tag, children),
-            _ => unimplemented!(),
-        };
-
-        let key = {
-            let (key, _) = children.iter().next().unwrap();
-            key.clone()
-        };
-        let val = children.pop(&key).unwrap();
-        self.stack.push(A::Map(pos.clone(), tag, children));
-        self.stack.push(val);
-        self.stack.push(A::Scalar(pos, A::NonSpecific, A::Quoted, key));
-        let value = try!(f(self));
-        Ok(value)
+        if let Map(ref mut vec) = self.state {
+            let &(ref key, ref val) = vec.get(0);
+            return f(&mut YamlDecoder {
+                state: Key(val.pos().clone(), key.clone()),
+                sender: self.sender.clone(),
+            });
+        }
+        unreachable!();
     }
 
     fn read_map_elt_val<T>(&mut self, _idx: uint,
         f: |&mut YamlDecoder| -> DecodeResult<T>)
         -> DecodeResult<T>
     {
-        f(self)
+        if let Map(ref mut els) = self.state {
+            let (_, val) = els.remove(0).unwrap();
+            return f(&mut YamlDecoder {
+                state: Node(val),
+                sender: self.sender.clone(),
+            });
+        }
+        unreachable!();
     }
 
-    fn error(&mut self, err: &str) -> E::Warning {
-        E::DecoderError(err.to_string())
+    fn error(&mut self, err: &str) -> Error {
+        let pos = match self.state {
+            Node(ref node) => node.pos().clone(),
+            Byte(_) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_) => unimplemented!(),
+            Key(ref pos, _) => pos.clone(),
+        };
+        return Error::decode_error(&pos, err.to_string())
     }
 }
 
@@ -409,7 +465,7 @@ mod test {
     use super::super::ast::process;
     use serialize::{Decodable, Decoder};
     use super::AnyJson;
-    use super::super::errors::Warning;
+    use super::super::errors::Error;
     use serialize::json as J;
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
@@ -423,12 +479,18 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "a: 1\nb: hello",
             |doc| { process(Default::default(), doc) }).unwrap();
-        let mut dec = YamlDecoder::new(ast);
-        let val: TestStruct = Decodable::decode(&mut dec).unwrap();
+        let mut warnings = vec!();
+        let (tx, rx) = channel();
+        let val: TestStruct = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
         assert_eq!(val, TestStruct {
             a: 1,
             b: "hello".to_string(),
             });
+        assert_eq!(warnings.len(), 0);
     }
 
     #[test]
@@ -436,9 +498,15 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "- a\n- b",
             |doc| { process(Default::default(), doc) }).unwrap();
-        let mut dec = YamlDecoder::new(ast);
-        let val: Vec<String> = Decodable::decode(&mut dec).unwrap();
+        let mut warnings = vec!();
+        let (tx, rx) = channel();
+        let val: Vec<String> = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
         assert_eq!(val, vec!("a".to_string(), "b".to_string()));
+        assert_eq!(warnings.len(), 0);
     }
 
     #[test]
@@ -446,7 +514,8 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "a: 1\nb: 2",
             |doc| { process(Default::default(), doc) }).unwrap();
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         let val: TreeMap<String, int> = Decodable::decode(&mut dec).unwrap();
         let mut res =  TreeMap::new();
         res.insert("a".to_string(), 1);
@@ -464,7 +533,8 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "json:\n a: 1\n b: test",
             |doc| { process(Default::default(), doc) }).unwrap();
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         let val: TestJson = Decodable::decode(&mut dec).unwrap();
         assert_eq!(val, TestJson {
             json: AnyJson(J::from_str(r#"{"a": 1, "b": "test"}"#).unwrap()),
@@ -481,7 +551,8 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "path: test/value",
             |doc| { process(Default::default(), doc) }).unwrap();
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         let val: TestOption = Decodable::decode(&mut dec).unwrap();
         assert!(val.path == Some("test/value".to_string()));
     }
@@ -491,7 +562,8 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "path:",
             |doc| { process(Default::default(), doc) }).unwrap();
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         let val: TestOption = Decodable::decode(&mut dec).unwrap();
         assert!(val.path == None);
     }
@@ -502,7 +574,8 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "{}",
             |doc| { process(Default::default(), doc) }).unwrap();
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         let val: TestOption = Decodable::decode(&mut dec).unwrap();
         assert!(val.path == None);
     }
@@ -517,7 +590,8 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "path: test/dir",
             |doc| { process(Default::default(), doc) }).unwrap();
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         let val: TestPath = Decodable::decode(&mut dec).unwrap();
         assert!(val.path == Path::new("test/dir"));
     }
@@ -532,7 +606,8 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             text,
             |doc| { process(Default::default(), doc) }).unwrap();
-        let mut dec = YamlDecoder::new(ast);
+        let (tx, rx) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
 

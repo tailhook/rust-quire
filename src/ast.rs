@@ -3,7 +3,7 @@ use std::collections::TreeMap;
 use std::fmt::{Show, Formatter, FormatError};
 
 use super::tokenizer::Pos;
-use super::errors as E;
+use super::errors::Error;
 use super::parser as P;
 use super::tokenizer as T;
 
@@ -91,7 +91,7 @@ impl Ast {
 
 struct Context<'a> {
     options: Options,
-    warnings: Vec<E::Warning>,
+    warnings: Vec<Error>,
     directives: Vec<P::Directive<'a>>,
     aliases: TreeMap<&'a str, &'a P::Node<'a>>,
 }
@@ -170,7 +170,9 @@ impl<'a> Context<'a> {
                         }
                         ref node => {
                             self.warnings.push(
-                                E::NonScalarKey(pos_for_node(node)));
+                                Error::preprocess_error(&pos_for_node(node),
+                                    "Non scalar keys are not supported yet"
+                                    .to_string()));
                             continue;
                         }
                     };
@@ -194,7 +196,9 @@ impl<'a> Context<'a> {
                 unimplemented!();
             }
             _ => {
-                self.warnings.push(E::WrongNodeToMerge(pos_for_node(node)));
+                self.warnings.push(Error::preprocess_error(&pos_for_node(node),
+                    "Value of merge key must be either mapping or \
+                     list of mappings".to_string()));
             }
         }
     }
@@ -222,7 +226,8 @@ impl<'a> Context<'a> {
                 unimplemented!();
             }
             _ => {
-                self.warnings.push(E::WrongNodeToMerge(pos_for_node(node)));
+                self.warnings.push(Error::preprocess_error(&pos_for_node(node),
+                    "The of !Unpack node must be sequence".to_string()));
             }
         }
     }
@@ -236,18 +241,21 @@ impl<'a> Context<'a> {
                 assert!(pieces.next().unwrap() == "");
                 match (pieces.next().unwrap(), pieces.next()) {
                     ("", None) => {
-                        self.warnings.push(E::InvalidTag(pos.clone()));
+                        self.warnings.push(Error::preprocess_error(pos,
+                            "Unexpected empty tag".to_string()));
                         NonSpecific
                     }
                     (val, None) => {
                         LocalTag(val.to_string())
                     }
                     ("", Some(val)) => {
-                        self.warnings.push(E::UnsupportedTag(pos.clone()));
+                        self.warnings.push(Error::preprocess_error(pos,
+                            "Global tags are unsupported yet".to_string()));
                         NonSpecific
                     }
                     (_, Some(val)) => {
-                        self.warnings.push(E::UnsupportedTag(pos.clone()));
+                        self.warnings.push(Error::preprocess_error(pos,
+                            "Tag prefixes are unsupported yet".to_string()));
                         NonSpecific
                     }
                 }
@@ -259,7 +267,7 @@ impl<'a> Context<'a> {
 
 
 pub fn process(opt: Options, doc: P::Document)
-    -> (Ast, Vec<E::Warning>)
+    -> (Ast, Vec<Error>)
 {
     let mut ctx = Context {
         options: opt,

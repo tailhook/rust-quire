@@ -1,16 +1,18 @@
 use std::rc::Rc;
 use std::io::stderr;
 use std::io::fs::File;
-use serialize::Decodable;
+use std::mem::transmute;
+use std::comm::channel;
+use serialize::{Decodable, Decoder};
 
 use super::ast;
-pub use super::errors::Warning;
+pub use super::errors::Error;
 use super::parser::parse;
 use super::decode::YamlDecoder;
 use super::validate::Validator;
 
 
-pub fn parse_config<T:Decodable<YamlDecoder, Warning>>(
+pub fn parse_config<T: Decodable<YamlDecoder, Error>>(
     filename: &Path, validator: &Validator, options: ast::Options)
     -> Result<T, String>
 {
@@ -28,8 +30,12 @@ pub fn parse_config<T:Decodable<YamlDecoder, Warning>>(
             filename.display(), e)));
     let (ast, nwarn) = validator.validate(ast);
     warnings.extend(nwarn.into_iter());
-    let mut dec = YamlDecoder::new(ast);
-    let res = Decodable::decode(&mut dec);
+    let (tx, rx) = channel();
+    let res = {
+        let mut dec = YamlDecoder::new(ast, tx);
+        Decodable::decode(&mut dec)
+    };
+    warnings.extend(rx.iter());
     if options.print_warnings {
         let mut err = stderr();
         for warning in warnings.iter() {

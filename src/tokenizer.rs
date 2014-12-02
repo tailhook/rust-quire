@@ -8,7 +8,7 @@ use super::chars::is_whitespace;
 use super::chars::is_printable;
 use super::chars::is_tag_char;
 use super::chars::is_flow_indicator;
-use super::errors::TokenError;
+use super::errors::Error;
 
 #[deriving(PartialEq, Show)]
 pub enum TokenType {
@@ -73,7 +73,7 @@ struct YamlIter<'a> {
     chars: Peekable<(uint, char), CharOffsets<'a>>,
     position: Pos,
     value: Option<char>,
-    error: Option<TokenError>,
+    error: Option<Error>,
 }
 
 impl<'a> Clone for YamlIter<'a> {
@@ -93,7 +93,7 @@ struct Tokenizer<'a, 'b: 'a> {
     result: &'a mut Vec<Token<'b>>,
     data: &'b str,
     iter: YamlIter<'b>,
-    error: Option<TokenError>,
+    error: Option<Error>,
     indent_levels: Vec<uint>,
     flow_level: uint,
 }
@@ -149,8 +149,8 @@ impl<'a> Iterator<(Pos, char)> for YamlIter<'a> {
 
                     }
                     ch if !is_printable(ch) => {
-                        self.error = Some(TokenError::new(npos.clone(),
-                            "Unacceptable character"));
+                        self.error = Some(Error::tokenizer_error(npos,
+                            "Unacceptable character".to_string()));
                         return None;
                     }
                     _ => {
@@ -244,10 +244,10 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             match self.iter.chars.peek() {
                                 Some(&(_, '\t')) => {
                                     self.error = Some(
-                                        TokenError::new(
-                                        self.iter.position.clone(),
+                                        Error::tokenizer_error(
+                                        &self.iter.position,
                                         "Tab character may appear only in \
-                                            quoted string"));
+                                            quoted string".to_string()));
                                     break;
                                 }
                                 Some(&(_, '#')) => {
@@ -267,9 +267,10 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         }
                     }
                     '\t' => {
-                        self.error = Some(TokenError::new(
-                            self.iter.position.clone(),
-                            "Tab character may appear only in quoted string"));
+                        self.error = Some(Error::tokenizer_error(
+                            &self.iter.position,
+                            "Tab character may appear only in quoted string"
+                            .to_string()));
                         break;
                     }
                     _ => {},
@@ -337,8 +338,9 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     self.indent_levels.pop();
                 }
                 if *self.indent_levels.last().unwrap() != start.indent {
-                    self.error = Some(TokenError::new(start.clone(),
-                        "Unindent doesn't match any outer indentation level"));
+                    self.error = Some(Error::tokenizer_error(&start,
+                        "Unindent doesn't match any outer indentation level"
+                        .to_string()));
                 }
             }
         }
@@ -351,7 +353,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     }
 
 
-    fn tokenize(&mut self) -> Option<TokenError> {
+    fn tokenize(&mut self) -> Option<Error> {
         'tokenloop: loop  {
             if !self.error.is_none() {
                 break;
@@ -427,8 +429,10 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                                 self.add_token(MappingValue, start, end);
                             }
                             _ => {
-                                self.error = Some(TokenError::new(start,
-                                    "Either add a space or quote the colon"));
+                                self.error = Some(Error::tokenizer_error(
+                                    &start,
+                                    "Either add a space or quote the colon"
+                                    .to_string()));
                                 break;
                             }
                         }
@@ -455,8 +459,9 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 }
                 Some((start, '%')) => {
                     if start.line_offset != 1 {
-                        self.error = Some(TokenError::new(start,
-                            "Directive must start at start of line"));
+                        self.error = Some(Error::tokenizer_error(&start,
+                            "Directive must start at start of line"
+                            .to_string()));
                         break;
                     }
                     for (_, ch) in self.iter {
@@ -468,13 +473,14 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     self.add_token(Directive, start, end);
                 }
                 Some((start, '@')) | Some((start, '`')) => {
-                    self.error = Some(TokenError::new(start,
-                        "Characters '@' and '`' are not allowed"));
+                    self.error = Some(Error::tokenizer_error(&start,
+                        "Characters '@' and '`' are not allowed".to_string()));
                     break;
                 }
                 Some((start, '\t')) => {
-                    self.error = Some(TokenError::new(start,
-                        "Tab character may appear only in quoted string"));
+                    self.error = Some(Error::tokenizer_error(&start,
+                        "Tab character may appear only in quoted string"
+                        .to_string()));
                     break;
                 }
                 Some((start, '"')) => {
@@ -486,8 +492,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         prev = ch;
                     }
                     if self.iter.value.is_none() {
-                        self.error = Some(TokenError::new(start,
-                            "Unclosed double-quoted string"));
+                        self.error = Some(Error::tokenizer_error(&start,
+                            "Unclosed double-quoted string".to_string()));
                         break;
                     }
                     let end = self.iter.position.clone();
@@ -509,8 +515,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         }
                     }
                     if self.iter.value.is_none() {
-                        self.error = Some(TokenError::new(start,
-                            "Unclosed quoted string"));
+                        self.error = Some(Error::tokenizer_error(&start,
+                            "Unclosed quoted string".to_string()));
                         break;
                     }
                     let end = self.iter.position.clone();
@@ -534,8 +540,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         }
                         let (pos, ch) = self.iter.next().unwrap();
                         if !is_tag_char(ch) {
-                            self.error = Some(TokenError::new(pos,
-                                "Bad char in tag name"));
+                            self.error = Some(Error::tokenizer_error(&pos,
+                                "Bad char in tag name".to_string()));
                             break 'tokenloop;
                         }
                     }
@@ -551,14 +557,15 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         }
                         let (pos, ch) = self.iter.next().unwrap();
                         if is_flow_indicator(ch) {
-                            self.error = Some(TokenError::new(pos,
-                                "Bad char in anchor name"));
+                            self.error = Some(Error::tokenizer_error(&pos,
+                                "Bad char in anchor name".to_string()));
                             break 'tokenloop;
                         }
                     }
                     if self.iter.position.offset - start.offset < 2 {
-                        self.error = Some(TokenError::new(start,
-                           "Anchor name requires at least one character"));
+                        self.error = Some(Error::tokenizer_error(&start,
+                           "Anchor name requires at least one character"
+                           .to_string()));
                         break;
                     }
                     let end = self.iter.position.clone();
@@ -573,14 +580,15 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         }
                         let (pos, ch) = self.iter.next().unwrap();
                         if is_flow_indicator(ch) {
-                            self.error = Some(TokenError::new(pos,
-                                "Bad char in alias name"));
+                            self.error = Some(Error::tokenizer_error(&pos,
+                                "Bad char in alias name".to_string()));
                             break 'tokenloop;
                         }
                     }
                     if self.iter.position.offset - start.offset < 2 {
-                        self.error = Some(TokenError::new(start,
-                            "Alias name requires at least one character"));
+                        self.error = Some(Error::tokenizer_error(&start,
+                            "Alias name requires at least one character"
+                            .to_string()));
                         break;
                     }
                     let end = self.iter.position.clone();
@@ -652,7 +660,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
 }
 
 pub fn tokenize<'x>(name: Rc<String>, data: &'x str)
-    -> Result<Vec<Token<'x>>, TokenError>
+    -> Result<Vec<Token<'x>>, Error>
 {
     let mut result: Vec<Token<'x>> = Vec::new();
     //let iter = data.char_indices();
@@ -664,12 +672,12 @@ pub fn tokenize<'x>(name: Rc<String>, data: &'x str)
 
 #[cfg(test)]
 pub fn test_tokenize<'x>(data: &'x str)
-    -> Result<Vec<Token<'x>>, TokenError> {
+    -> Result<Vec<Token<'x>>, Error> {
     return tokenize(Rc::new("<inline_test>".to_string()), data);
 }
 
 #[cfg(test)]
-fn simple_tokens<'x>(res: Result<Vec<Token<'x>>, TokenError>)
+fn simple_tokens<'x>(res: Result<Vec<Token<'x>>, Error>)
     -> Vec<(TokenType, &'x str)>
 {
     match res {
@@ -875,18 +883,18 @@ fn test_directive() {
         vec!((PlainString, "a%bc")));
     let err = test_tokenize(" %bc").err().unwrap();
     // TODO(pc) add testcase with percent sign at start of token
-    assert_eq!(format!("{}", err).as_slice(), "1:2: \
-        Directive must start at start of line");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:2: \
+        Tokenizer Error: Directive must start at start of line");
 }
 
 #[test]
 fn test_reserved() {
     let err = test_tokenize("@").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:1: \
-        Characters '@' and '`' are not allowed");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:1: \
+        Tokenizer Error: Characters '@' and '`' are not allowed");
     let err = test_tokenize("a:\n  @").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "2:3: \
-        Characters '@' and '`' are not allowed");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:2:3: \
+        Tokenizer Error: Characters '@' and '`' are not allowed");
     let tokens = test_tokenize("a@");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a@")));
@@ -898,32 +906,32 @@ fn test_reserved() {
 #[test]
 fn test_bad_char_ctl() {
     let err = test_tokenize("\x01").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:1: \
-        Unacceptable character");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:1: \
+        Tokenizer Error: Unacceptable character");
 }
 #[test]
 fn test_bad_char_tab() {
     let err = test_tokenize("\t").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:1: \
-        Tab character may appear only in quoted string");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:1: \
+        Tokenizer Error: Tab character may appear only in quoted string");
 }
 #[test]
 fn test_bad_char_tab2() {
     let err = test_tokenize("a:\n  \tbc").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "2:3: \
-        Tab character may appear only in quoted string");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:2:3: \
+        Tokenizer Error: Tab character may appear only in quoted string");
 }
 #[test]
 fn test_bad_char_tab3() {
     let err = test_tokenize("a\n\tb").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "2:1: \
-        Tab character may appear only in quoted string");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:2:1: \
+        Tokenizer Error: Tab character may appear only in quoted string");
 }
 #[test]
 fn test_bad_char_tab4() {
     let err = test_tokenize("a\tb").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:2: \
-        Tab character may appear only in quoted string");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:2: \
+        Tokenizer Error: Tab character may appear only in quoted string");
 }
 
 #[test]
@@ -938,8 +946,8 @@ fn test_double_quoted() {
     assert_eq!(simple_tokens(tokens),
         vec!((DoubleString, "\"a\\\"\nb\"")));
     let err = test_tokenize("val: \"value\nof").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:6: \
-        Unclosed double-quoted string");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:6: \
+        Tokenizer Error: Unclosed double-quoted string");
 }
 
 #[test]
@@ -955,8 +963,8 @@ fn test_single_quoted() {
         vec!((SingleString, "'a\\'"), (MappingValue, ":"),
              (Whitespace, " "), (SingleString, "'b'")));
     let err = test_tokenize("val: 'value\nof").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:6: \
-        Unclosed quoted string");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:6: \
+        Tokenizer Error: Unclosed quoted string");
 }
 
 #[test]
@@ -981,8 +989,8 @@ fn test_tag() {
     assert_eq!(simple_tokens(test_tokenize("!a b")),
         vec!((Tag, "!a"), (Whitespace, " "), (PlainString, "b")));
     let err = test_tokenize("!a[]").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:3: \
-        Bad char in tag name");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:3: \
+        Tokenizer Error: Bad char in tag name");
 }
 
 #[test]
@@ -992,11 +1000,11 @@ fn test_anchor() {
     assert_eq!(simple_tokens(test_tokenize("&a b")),
         vec!((Anchor, "&a"), (Whitespace, " "), (PlainString, "b")));
     let err = test_tokenize("&a[]").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:3: \
-        Bad char in anchor name");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:3: \
+        Tokenizer Error: Bad char in anchor name");
     let err = test_tokenize("&").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:1: \
-        Anchor name requires at least one character");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:1: \
+        Tokenizer Error: Anchor name requires at least one character");
 }
 
 #[test]
@@ -1006,11 +1014,11 @@ fn test_alias() {
     assert_eq!(simple_tokens(test_tokenize("*a b")),
         vec!((Alias, "*a"), (Whitespace, " "), (PlainString, "b")));
     let err = test_tokenize("*a[]").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:3: \
-        Bad char in alias name");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:3: \
+        Tokenizer Error: Bad char in alias name");
     let err = test_tokenize("*").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "1:1: \
-        Alias name requires at least one character");
+    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:1: \
+        Tokenizer Error: Alias name requires at least one character");
 }
 
 #[test]

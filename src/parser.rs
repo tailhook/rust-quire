@@ -7,8 +7,6 @@ use collections::treemap::TreeMap;
 
 use super::tokenizer::{Token, Pos};
 use super::errors::Error;
-use super::errors::{TokenErr};
-use super::errors::{ParserErr, ParserError};
 use super::tokenizer::tokenize;
 use super::tokenizer as T;
 
@@ -278,7 +276,7 @@ impl<'a> Show for Node<'a> {
 
 
 fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
-    -> Result<Node<'x>, ParserError>
+    -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
     let mut children = Vec::new();
@@ -308,9 +306,8 @@ fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 let etok = tokiter.peek(0);
                 match etok.kind {
                     T::Unindent => {}
-                    _ => return Err(ParserError::new(
-                        etok.start.clone(), etok.end.clone(),
-                        "Unexpected token")),
+                    _ => return Err(Error::parse_error(
+                        &etok.start, "Expected unindent".to_string())),
                 }
                 tokiter.next().unwrap();
             }
@@ -328,7 +325,7 @@ fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 }
 
 fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
-    -> Result<Node<'x>, ParserError>
+    -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
     let mut children = TreeMap::new();
@@ -341,19 +338,17 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             T::Unindent => break,
             T::PlainString | T::SingleString | T::DoubleString
             => Scalar(None, None, plain_value(ktoken), ktoken),
-            _ => return Err(ParserError::new(
-                ktoken.start.clone(), ktoken.end.clone(), "Unexpected token")),
+            _ => return Err(Error::parse_error(
+                &ktoken.start, "Expected mapping key or unindent".to_string())),
         };
         tokiter.next().unwrap();
         let delim = tokiter.peek(0);
         match delim.kind {
             T::MappingValue => {}
-            T::Eof => return Err(ParserError::new(
-                delim.start.clone(), delim.end.clone(),
-                "Unexpected end of file")),
-            _ => return Err(ParserError::new(
-                delim.start.clone(), delim.end.clone(),
-                "Unexpected token")),
+            T::Eof => return Err(Error::parse_error(&delim.start,
+                "Unexpected end of file, expected mapping value".to_string())),
+            _ => return Err(Error::parse_error(&delim.start,
+                "Expected colon `:` which denotes mapping value".to_string())),
         }
         tokiter.next().unwrap();
         let tok = tokiter.peek(0);
@@ -365,16 +360,14 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                     Err(err) => return Err(err),
                 };
                 if !children.insert(key, value) {
-                    return Err(ParserError::new(
-                        ktoken.start.clone(), ktoken.end.clone(),
-                        "Duplicate key"));
+                    return Err(Error::parse_error(&ktoken.start,
+                        "Duplicate key".to_string()));
                 }
                 let etok = tokiter.peek(0);
                 match etok.kind {
                     T::Unindent => {}
-                    _ => return Err(ParserError::new(
-                        etok.start.clone(), etok.end.clone(),
-                        "Unexpected token")),
+                    _ => return Err(Error::parse_error(&etok.start,
+                        "Expected unindent".to_string())),
                 }
                 tokiter.next();
             }
@@ -386,9 +379,8 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                     Err(err) => return Err(err),
                 };
                 if !children.insert(key, value) {
-                    return Err(ParserError::new(
-                        ktoken.start.clone(), ktoken.end.clone(),
-                        "Duplicate key"));
+                    return Err(Error::parse_error(&ktoken.start,
+                        "Duplicate key".to_string()));
                 }
             }
             T::Eof | T::Unindent => {
@@ -403,17 +395,15 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                     Err(err) => return Err(err),
                 };
                 if !children.insert(key, value) {
-                    return Err(ParserError::new(
-                        ktoken.start.clone(), ktoken.end.clone(),
-                        "Duplicate key"));
+                    return Err(Error::parse_error(&ktoken.start,
+                        "Duplicate key".to_string()));
                 }
             }
             _ => {
                 let value = ImplicitNull(None, None, delim.end.clone());
                 if !children.insert(key, value) {
-                    return Err(ParserError::new(
-                        ktoken.start.clone(), ktoken.end.clone(),
-                        "Duplicate key"));
+                    return Err(Error::parse_error(&ktoken.start,
+                        "Duplicate key".to_string()));
                 }
                 continue;
             }
@@ -424,7 +414,7 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 }
 
 fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
-    -> Result<Node<'x>, ParserError>
+    -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
     let mut children = Vec::new();
@@ -448,8 +438,8 @@ fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         match tok.kind {
             T::FlowSeqEnd => break,
             T::FlowEntry => continue,
-            _ => return Err(ParserError::new(
-                tok.start.clone(), tok.end.clone(), "Unexpected token")),
+            _ => return Err(Error::parse_error(&tok.start,
+                "Expected comma `,` or colon `:`".to_string())),
         }
     }
     return Ok(List(None, None, children,
@@ -457,7 +447,7 @@ fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 }
 
 fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
-    -> Result<Node<'x>, ParserError>
+    -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
     let mut children = TreeMap::new();
@@ -469,10 +459,10 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         let key = match ktoken.kind {
             T::FlowMapEnd => break,
             T::PlainString | T::SingleString | T::DoubleString
-            | T::Literal | T::Folded
             => Scalar(None, None, plain_value(ktoken), ktoken),
-            _ => return Err(ParserError::new(
-                ktoken.start.clone(), ktoken.end.clone(), "Unexpected token")),
+            _ => return Err(Error::parse_error(&ktoken.start,
+                "Expected next mapping key or or closing bracket `}`"
+                .to_string())),
         };
 
         let tok = tokiter.next().unwrap();
@@ -481,9 +471,8 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 // Value is null
                 if !children.insert(key,
                     ImplicitNull(None, None, tok.start.clone())) {
-                    return Err(ParserError::new(
-                        ktoken.start.clone(), ktoken.end.clone(),
-                        "Duplicate key"));
+                    return Err(Error::parse_error(&ktoken.start,
+                        "Duplicate key".to_string()));
                 }
                 break;
             }
@@ -491,30 +480,30 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 // Value is null
                 if !children.insert(key,
                     ImplicitNull(None, None, tok.start.clone())) {
-                    return Err(ParserError::new(
-                        ktoken.start.clone(), ktoken.end.clone(),
-                        "Duplicate key"));
+                    return Err(Error::parse_error(&ktoken.start,
+                        "Duplicate key".to_string()));
                 }
                 continue;
             }
             T::MappingValue => {}
-            _ => return Err(ParserError::new(
-                tok.start.clone(), tok.end.clone(), "Unexpected token")),
+            _ => return Err(Error::parse_error(&tok.start,
+                "Expected comma `,`, colon `:` or closing bracket `}`"
+                .to_string())),
         }
         let value = match parse_flow_node(tokiter, aliases) {
             Ok(value) => value,
             Err(err) => return Err(err),
         };
         if !children.insert(key, value) {
-            return Err(ParserError::new(
-                ktoken.start.clone(), ktoken.end.clone(), "Duplicate key"));
+            return Err(Error::parse_error(&ktoken.start,
+                "Duplicate key".to_string()));
         }
         let tok = tokiter.next().unwrap();
         match tok.kind {
             T::FlowMapEnd => break,
             T::FlowEntry => continue,
-            _ => return Err(ParserError::new(
-                tok.start.clone(), tok.end.clone(), "Unexpected token")),
+            _ => return Err(Error::parse_error(&tok.start,
+                "Expected comma `,` or closing bracket `}`".to_string())),
         }
     }
     return Ok(Map(None, None, children,
@@ -522,7 +511,7 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 }
 
 fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
-    -> Result<Node<'x>, ParserError>
+    -> Result<Node<'x>, Error>
 {
     let tok = tokiter.peek(0);
     match tok.kind {
@@ -546,13 +535,13 @@ fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         T::FlowMapStart => {
             return parse_flow_map(tokiter, aliases);
         }
-        _ => return Err(ParserError::new(
-            tok.start.clone(), tok.end.clone(), "Unexpected token")),
+        _ => return Err(Error::parse_error(&tok.start,
+            "Expected plain string, sequence or mapping".to_string())),
     };
 }
 
 fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
-    -> Result<Node<'x>, ParserError>
+    -> Result<Node<'x>, Error>
 {
     let mut tok = tokiter.peek(0);
     let mut tag = None;
@@ -591,13 +580,13 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         T::FlowMapStart => {
             return parse_flow_map(tokiter, aliases);
         }
-        _ => return Err(ParserError::new(
-            tok.start.clone(), tok.end.clone(), "Unexpected token")),
+        _ => return Err(Error::parse_error(&tok.start,
+            "Expected scalar, sequence or mapping".to_string())),
     };
 }
 
 fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
-    -> Result<(Vec<Directive<'x>>, Node<'x>), ParserError>
+    -> Result<(Vec<Directive<'x>>, Node<'x>), Error>
 {
     let mut directives = Vec::new();
     loop {
@@ -621,9 +610,8 @@ fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         if let T::Unindent = tokiter.peek(0).kind {
             tokiter.next();
         } else {
-            return Err(ParserError::new(
-                tokiter.peek(0).start.clone(),
-                tokiter.peek(0).end.clone(), "Unexpected token"));
+            return Err(Error::parse_error(&tokiter.peek(0).start,
+                "Expected unindent".to_string()));
         }
     } else {
         res =  match parse_node(tokiter, aliases) {
@@ -640,8 +628,8 @@ fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         match tok.kind {
             T::DocumentEnd => {}
             _ => {
-                return Err(ParserError::new(
-                    tok.start.clone(), tok.end.clone(), "Unexpected token"));
+                return Err(Error::parse_error(&tok.start,
+                    "Expected document end".to_string()));
             }
         }
     }
@@ -650,7 +638,7 @@ fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 
 
 pub fn parse_tokens<'x>(tokens: &'x Vec<Token<'x>>)
-    -> Result<Document<'x>, ParserError>
+    -> Result<Document<'x>, Error>
 {
     let mut aliases = TreeMap::new();
     let mut iter = TokenIter::new(tokens);
@@ -670,11 +658,11 @@ pub fn parse<'x, T>(name: Rc<String>, data: &str, process: |Document| -> T)
 {
     let tokens = match tokenize(name, data) {
         Ok(lst) => lst,
-        Err(e) => return Err(TokenErr(e)),
+        Err(e) => return Err(e),
     };
     let doc = match parse_tokens(&tokens) {
         Ok(doc) => doc,
-        Err(e) => return Err(ParserErr(e)),
+        Err(e) => return Err(e),
     };
     return Ok(process(doc));
 }

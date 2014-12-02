@@ -4,88 +4,73 @@ use std::fmt::FormatError;
 
 use super::tokenizer::Pos;
 
-#[deriving(Show)]
-pub enum Warning {
-    //  AST transformation errors from ast.rs
-    InvalidTag(Pos),
-    NonScalarKey(Pos),
-    UnsupportedTag(Pos),
-    WrongNodeToMerge(Pos),
-    DecoderError(String),
-    //  Decoder errors from decode.rs
-    UnexpectedNode(Pos, &'static str, String),
-    CantParseValue(Pos, String),
-    ValidationError(Pos, String),
-    MissingFieldError(Pos, String),
-}
+#[deriving(Send, Clone)]
+pub struct ErrorPos(String, uint, uint);
 
-#[deriving(Clone)]
-pub struct TokenError {
-    position: Pos,
-    error: &'static str,
-}
-
-#[deriving(Clone)]
-pub struct ParserError {
-    range: (Pos, Pos),
-    error: &'static str,
-}
-
+#[deriving(Send, Clone)]
 pub enum Error {
-    TokenErr(TokenError),
-    ParserErr(ParserError),
+    TokenizerError(ErrorPos, String),
+    ParseError(ErrorPos, String),
+    ValidationError(ErrorPos, String),
+    PreprocessError(ErrorPos, String),
+    DecodeError(ErrorPos, String),
 }
 
-impl TokenError {
-    pub fn new(pos: Pos, err: &'static str) -> TokenError {
-        return TokenError {
-            position: pos,
-            error: err,
-            };
+impl Error {
+    pub fn parse_error(pos: &Pos, message: String) -> Error {
+        return ParseError(
+            ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
+            message);
     }
-}
-
-impl ParserError {
-    pub fn new(start: Pos, end: Pos, err: &'static str) -> ParserError {
-        return ParserError {
-            range: (start, end),
-            error: err,
-            };
+    pub fn tokenizer_error(pos: &Pos, message: String) -> Error {
+        return TokenizerError(
+            ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
+            message);
     }
-}
-
-impl Show for TokenError {
-    fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
-        try!(self.position.line.fmt(fmt));
-        try!(':'.fmt(fmt));
-        try!(self.position.line_offset.fmt(fmt));
-        try!(": ".fmt(fmt));
-        try!(self.error.fmt(fmt));
-        return Ok(());
+    pub fn validation_error(pos: &Pos, message: String) -> Error {
+        return ValidationError(
+            ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
+            message);
     }
-}
-
-impl Show for ParserError {
-    fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
-        let (ref a, ref b) = self.range;
-        try!(a.line.fmt(fmt));
-        try!(':'.fmt(fmt));
-        try!(a.line_offset.fmt(fmt));
-        try!(": ".fmt(fmt));
-        try!(b.line.fmt(fmt));
-        try!(':'.fmt(fmt));
-        try!(b.line_offset.fmt(fmt));
-        try!(": ".fmt(fmt));
-        try!(self.error.fmt(fmt));
-        return Ok(());
+    pub fn decode_error(pos: &Pos, message: String) -> Error {
+        return DecodeError(
+            ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
+            message);
+    }
+    pub fn preprocess_error(pos: &Pos, message: String) -> Error {
+        return PreprocessError(
+            ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
+            message);
     }
 }
 
 impl Show for Error {
-    fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
-        return match *self {
-            TokenErr(ref e) => e.fmt(fmt),
-            ParserErr(ref e) => e.fmt(fmt),
+    fn fmt(&self, fmt: &mut Formatter) -> Result<(), FormatError> {
+        match *self {
+            TokenizerError(ErrorPos(ref filename, line, offset), ref message)
+            | ParseError(ErrorPos(ref filename, line, offset), ref message)
+            | DecodeError(ErrorPos(ref filename, line, offset), ref message)
+            | ValidationError(ErrorPos(ref filename, line, offset), ref message)
+            | PreprocessError(ErrorPos(ref filename, line, offset), ref message)
+            => {
+                try!(filename.fmt(fmt));
+                try!(":".fmt(fmt));
+                try!(line.fmt(fmt));
+                try!(":".fmt(fmt));
+                try!(offset.fmt(fmt));
+                try!(": ".fmt(fmt));
+                match *self {
+                    TokenizerError(_, _) => try!("Tokenizer Error".fmt(fmt)),
+                    ParseError(_, _) => try!("Parse Error".fmt(fmt)),
+                    DecodeError(_, _) => try!("Decode Error".fmt(fmt)),
+                    PreprocessError(_, _) => try!("Preprocess Error".fmt(fmt)),
+                    ValidationError(_, _) => try!("Validation Error".fmt(fmt)),
+                }
+                try!(": ".fmt(fmt));
+                try!(message.fmt(fmt));
+            }
         }
+        return Ok(());
     }
 }
+
