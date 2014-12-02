@@ -1,4 +1,3 @@
-use std::vec::MoveItems;
 use std::mem::swap;
 use std::any::{Any, AnyMutRefExt};
 use std::fmt::{Show, Formatter, FormatError};
@@ -175,7 +174,7 @@ impl Decoder<Error> for YamlDecoder {
         Ok(try!(self.from_str()))
     }
 
-    fn read_enum<T>(&mut self, name: &str,
+    fn read_enum<T>(&mut self, _name: &str,
         f: |&mut YamlDecoder| -> DecodeResult<T>) -> DecodeResult<T>
     {
         return f(self);
@@ -268,13 +267,13 @@ impl Decoder<Error> for YamlDecoder {
             }
             Byte(_) => unimplemented!(),
             Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
-            Key(ref pos, _) => unimplemented!(),
+            Key(_, _) => unimplemented!(),
         };
         return f(self);
     }
 
     fn read_struct_field<T>(&mut self,
-        name: &str, idx: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
+        name: &str, _idx: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
         -> DecodeResult<T>
     {
         if let Node(A::Map(ref pos, _, ref mut children)) = self.state {
@@ -348,14 +347,14 @@ impl Decoder<Error> for YamlDecoder {
                 swap(children, &mut ch);
                 ch
             }
-            Node(A::Scalar(ref pos, _, _, ref val)) => {
+            Node(A::Scalar(_, _, _, ref val)) => {
                 let bytes = val.as_bytes();
                 return f(&mut YamlDecoder {
                     state: ByteSeq(bytes.to_vec()),
                     sender: self.sender.clone(),
                 }, bytes.len());
             }
-            Node(A::Null(ref pos, _, _)) => Vec::new(),
+            Node(A::Null(_, _, _)) => Vec::new(),
             Node(ref node) => {
                 return Err(Error::decode_error(&node.pos(),
                     "Sequence expected".to_string()));
@@ -403,7 +402,7 @@ impl Decoder<Error> for YamlDecoder {
                 swap(children, &mut ch);
                 ch.into_iter().collect()
             }
-            Node(A::Null(ref pos, _, _)) => Vec::new(),
+            Node(A::Null(_, _, _)) => Vec::new(),
             Node(ref node) => {
                 return Err(Error::decode_error(&node.pos(),
                     "Mapping expected".to_string()));
@@ -424,7 +423,7 @@ impl Decoder<Error> for YamlDecoder {
         -> DecodeResult<T>
     {
         if let Map(ref mut vec) = self.state {
-            let &(ref key, ref val) = vec.get(0);
+            let (ref key, ref val) = (*vec)[0];
             return f(&mut YamlDecoder {
                 state: Key(val.pos().clone(), key.clone()),
                 sender: self.sender.clone(),
@@ -468,7 +467,6 @@ mod test {
     use super::super::ast::process;
     use serialize::{Decodable, Decoder};
     use super::AnyJson;
-    use super::super::errors::Error;
     use serialize::json as J;
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
@@ -517,13 +515,18 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "a: 1\nb: 2",
             |doc| { process(Default::default(), doc) }).unwrap();
+        let mut warnings = vec!();
         let (tx, rx) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        let val: TreeMap<String, int> = Decodable::decode(&mut dec).unwrap();
+        let val: TreeMap<String, int> = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
         let mut res =  TreeMap::new();
         res.insert("a".to_string(), 1);
         res.insert("b".to_string(), 2);
         assert_eq!(val, res);
+        assert_eq!(warnings.len(), 0);
     }
 
     #[deriving(Show, PartialEq, Eq, Decodable)]
@@ -536,12 +539,17 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "json:\n a: 1\n b: test",
             |doc| { process(Default::default(), doc) }).unwrap();
+        let mut warnings = vec!();
         let (tx, rx) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        let val: TestJson = Decodable::decode(&mut dec).unwrap();
+        let val: TestJson = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
         assert_eq!(val, TestJson {
             json: AnyJson(J::from_str(r#"{"a": 1, "b": "test"}"#).unwrap()),
             });
+        assert_eq!(warnings.len(), 0);
     }
 
     #[deriving(PartialEq, Eq, Decodable, Show)]
@@ -554,10 +562,15 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "path: test/value",
             |doc| { process(Default::default(), doc) }).unwrap();
+        let mut warnings = vec!();
         let (tx, rx) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        let val: TestOption = Decodable::decode(&mut dec).unwrap();
+        let val: TestOption = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
         assert!(val.path == Some("test/value".to_string()));
+        assert_eq!(warnings.len(), 0);
     }
 
     #[test]
@@ -565,10 +578,15 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "path:",
             |doc| { process(Default::default(), doc) }).unwrap();
+        let mut warnings = vec!();
         let (tx, rx) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        let val: TestOption = Decodable::decode(&mut dec).unwrap();
+        let val: TestOption = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
         assert!(val.path == None);
+        assert_eq!(warnings.len(), 0);
     }
 
     #[test]
@@ -577,10 +595,15 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "{}",
             |doc| { process(Default::default(), doc) }).unwrap();
+        let mut warnings = vec!();
         let (tx, rx) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        let val: TestOption = Decodable::decode(&mut dec).unwrap();
+        let val: TestOption = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
         assert!(val.path == None);
+        assert_eq!(warnings.len(), 0);
     }
 
     #[deriving(PartialEq, Eq, Decodable)]
@@ -593,10 +616,15 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             "path: test/dir",
             |doc| { process(Default::default(), doc) }).unwrap();
+        let mut warnings = vec!();
         let (tx, rx) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        let val: TestPath = Decodable::decode(&mut dec).unwrap();
+        let val: TestPath = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
         assert!(val.path == Path::new("test/dir"));
+        assert_eq!(warnings.len(), 0);
     }
 
     #[deriving(PartialEq, Eq, Decodable, Show)]
@@ -610,9 +638,15 @@ mod test {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
             text,
             |doc| { process(Default::default(), doc) }).unwrap();
+        let mut warnings = vec!();
         let (tx, rx) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        let val: TestEnum = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
+        assert_eq!(warnings.len(), 0);
+        return val;
     }
 
     #[test]

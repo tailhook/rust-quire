@@ -331,7 +331,7 @@ mod test {
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = str_val.validate(ast);
         assert_eq!(warnings.len(), 0);
-        let (tx, rx) = channel();
+        let (tx, _) = channel();
         let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
@@ -384,7 +384,7 @@ mod test {
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = str_val.validate(ast);
         assert_eq!(warnings.len(), 0);
-        let (tx, rx) = channel();
+        let (tx, _) = channel();
         let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
@@ -421,7 +421,7 @@ mod test {
         let (ast, warnings) = str_val.validate(ast);
         println!("WARNINGS {}", warnings);
         assert_eq!(warnings.len(), 0);
-        let (tx, rx) = channel();
+        let (tx, _) = channel();
         let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
@@ -458,7 +458,7 @@ mod test {
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = validator.validate(ast);
         assert_eq!(warnings.len(), 0);
-        let (tx, rx) = channel();
+        let (tx, _) = channel();
         let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
@@ -522,7 +522,7 @@ mod test {
         let (ast, warnings) = validator.validate(ast);
         warnings.iter().all(|w| { println!("WARNING: {}", w); true });
         assert_eq!(warnings.len(), 0);
-        let (tx, rx) = channel();
+        let (tx, _) = channel();
         let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }
@@ -569,7 +569,7 @@ mod test {
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = validator.validate(ast);
         assert_eq!(warnings.len(), 0);
-        let (tx, rx) = channel();
+        let (tx, _) = channel();
         let mut dec = YamlDecoder::new(ast, tx);
         return Decodable::decode(&mut dec).unwrap();
     }

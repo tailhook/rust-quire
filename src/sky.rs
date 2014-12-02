@@ -1,9 +1,8 @@
 use std::rc::Rc;
 use std::io::stderr;
 use std::io::fs::File;
-use std::mem::transmute;
 use std::comm::channel;
-use serialize::{Decodable, Decoder};
+use serialize::{Decodable};
 
 use super::ast;
 pub use super::errors::Error;

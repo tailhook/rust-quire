@@ -248,12 +248,12 @@ impl<'a> Context<'a> {
                     (val, None) => {
                         LocalTag(val.to_string())
                     }
-                    ("", Some(val)) => {
+                    ("", Some(_)) => {
                         self.warnings.push(Error::preprocess_error(pos,
                             "Global tags are unsupported yet".to_string()));
                         NonSpecific
                     }
-                    (_, Some(val)) => {
+                    (_, Some(_)) => {
                         self.warnings.push(Error::preprocess_error(pos,
                             "Tag prefixes are unsupported yet".to_string()));
                         NonSpecific
