@@ -87,6 +87,14 @@ impl Ast {
             Null(_, ref tag, _) => tag,
         }
     }
+    pub fn with_tag(self, tag: Tag) -> Ast {
+        match self {
+            Map(pos, _, children) => Map(pos, tag, children),
+            List(pos,  _, children) => List(pos, tag, children),
+            Scalar(pos, _, style, value) => Scalar(pos, tag, style, value),
+            Null(pos, _, kind) => Null(pos, tag, kind),
+        }
+    }
 }
 
 struct Context<'a> {

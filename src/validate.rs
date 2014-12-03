@@ -200,6 +200,45 @@ impl<'a> Validator for Structure<'a> {
 }
 
 #[deriving(Default)]
+pub struct Enum<'a> {
+    pub descr: Option<String>,
+    pub options: Vec<(String, Box<Validator + 'a>)>,
+    pub optional: bool,
+    pub default_tag: Option<String>,
+}
+
+impl<'a> Validator for Enum<'a> {
+    fn default(&self, pos: Pos) -> Option<A::Ast> {
+        if self.default_tag.is_some() && self.optional {
+            return Some(A::Null(pos.clone(),
+                A::LocalTag(self.default_tag.as_ref().unwrap().clone()),
+                A::Implicit));
+        }
+        return None;
+    }
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+        let mut warnings = vec!();
+        let tag_name = match ast.tag() {
+            &A::LocalTag(ref tag_name) => {
+                tag_name.clone()
+            }
+            _ => unimplemented!(),
+        };
+        let pos = ast.pos().clone();
+        for &(ref k, ref validator) in self.options.iter() {
+            if k.as_slice() == tag_name.as_slice() {
+                let (value, wrn) = validator.validate(ast);
+                warnings.extend(wrn.into_iter());
+                return (value.with_tag(A::LocalTag(tag_name)), warnings);
+            }
+        }
+        warnings.push(Error::validation_error(&pos,
+            format!("The tag {} is not expected", tag_name)));
+        return (ast, warnings);
+    }
+}
+
+#[deriving(Default)]
 pub struct Mapping<'a, 'b> {
     pub descr: Option<String>,
     pub key_element: Box<Validator + 'a>,
@@ -280,7 +319,7 @@ impl<'a> Validator for Sequence<'a> {
     }
 }
 
-struct Anything;
+pub struct Anything;
 
 impl Validator for Anything {
     fn default(&self, _: Pos) -> Option<A::Ast> {
@@ -291,9 +330,26 @@ impl Validator for Anything {
     }
 }
 
+pub struct Nothing;
+
+impl Validator for Nothing {
+    fn default(&self, _: Pos) -> Option<A::Ast> {
+        return None;
+    }
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+        let mut wrn = vec!();
+        if let A::Null(_, _, _) = ast {
+        } else {
+            wrn.push(Error::parse_error(&ast.pos(),
+                format!("Null expected, {} found", ast)));
+        }
+        return (ast, wrn);
+    }
+}
+
 impl<'a> Default for Box<Validator + 'a> {
     fn default() -> Box<Validator + 'a> {
-        return box Anything as Box<Validator>;
+        return box Nothing as Box<Validator>;
     }
 }
 
@@ -310,6 +366,7 @@ mod test {
     use super::super::parser::parse;
     use super::super::errors::Error;
     use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
+    use super::{Enum, Nothing};
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
     struct TestStruct {
@@ -608,4 +665,85 @@ mod test {
         let res: Vec<uint> = parse_seq("- 0o144\n- 0b11001000\n- 0x12c");
         assert_eq!(res, m);
     }
+
+    #[deriving(PartialEq, Eq, Decodable, Show)]
+    enum TestEnum {
+        Alpha,
+        Beta,
+        Gamma(int),
+        Delta(TestStruct),
+    }
+
+    fn parse_enum(body: &str) -> TestEnum {
+        let validator = Enum {
+            options: vec!(
+                ("Alpha".to_string(), box Nothing as Box<Validator>),
+                ("Beta".to_string(), box Nothing as Box<Validator>),
+                ("Gamma".to_string(), box Numeric {
+                    optional: true,
+                    default: Some(7u),
+                    .. Default::default() } as Box<Validator>),
+                ("Delta".to_string(), box Structure { members: vec!(
+                    ("intkey".to_string(), box Numeric {
+                        default: Some(123u),
+                        .. Default::default() } as Box<Validator>),
+                    ("strkey".to_string(), box Scalar {
+                        default: Some("default_value".to_string()),
+                        .. Default::default() } as Box<Validator>),
+                    ), .. Default::default()} as Box<Validator>),
+            ), .. Default::default()
+        };
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        assert_eq!(warnings.len(), 0);
+        let (ast, warnings) = validator.validate(ast);
+        assert_eq!(warnings.len(), 0);
+        let (tx, _) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    fn test_enum_1() {
+        assert_eq!(parse_enum("!Alpha"), Alpha);
+    }
+
+    #[test]
+    fn test_enum_2() {
+        assert_eq!(parse_enum("!Beta"), Beta);
+    }
+
+    #[test]
+    fn test_enum_3() {
+        assert_eq!(parse_enum("!Alpha null"), Alpha);
+    }
+
+    #[test]
+    fn test_enum_4() {
+        assert_eq!(parse_enum("!Gamma 5"), Gamma(5));
+    }
+
+    #[test]
+    #[should_fail]
+    fn test_enum_5() {
+        parse_enum("!Gamma");
+    }
+
+    #[test]
+    fn test_enum_6() {
+        assert_eq!(parse_enum("!Delta\nintkey: 1\nstrkey: a"),
+            Delta(TestStruct {
+                intkey: 1,
+                strkey: "a".to_string(),
+            }));
+    }
+
+    #[test]
+    fn test_enum_7() {
+        assert_eq!(parse_enum("!Delta"), Delta(TestStruct {
+            intkey: 123,
+            strkey: "default_value".to_string(),
+            }));
+    }
+
 }
