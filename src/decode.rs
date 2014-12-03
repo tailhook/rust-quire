@@ -632,6 +632,7 @@ mod test {
         Alpha,
         Beta,
         Gamma(int),
+        Delta(TestStruct),
     }
 
     fn decode_enum(text: &str) -> TestEnum {
@@ -672,6 +673,14 @@ mod test {
     #[test]
     fn test_enum_5() {
         assert_eq!(decode_enum("!Gamma 5"), Gamma(5));
+    }
+
+    #[test]
+    fn test_enum_6() {
+        assert_eq!(decode_enum("!Delta\na: 1\nb: a"), Delta(TestStruct {
+            a: 1,
+            b: "a".to_string(),
+            }));
     }
 
 }

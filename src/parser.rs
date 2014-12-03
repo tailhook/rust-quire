@@ -324,7 +324,8 @@ fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         tokiter.tokens.slice(begin, tokiter.index)));
 }
 
-fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
+    tag: Option<&'x str>)
     -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
@@ -409,7 +410,7 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             }
         }
     }
-    return Ok(Map(None, None, children,
+    return Ok(Map(tag, None, children,
         tokiter.tokens.slice(begin, tokiter.index)));
 }
 
@@ -516,16 +517,6 @@ fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     let tok = tokiter.peek(0);
     match tok.kind {
         T::PlainString | T::SingleString | T::DoubleString => {
-            if tok.start.line == tok.end.line {
-                // TODO(tailhook) something wrong with this block
-                // Only one-line scalars are allowed to be mapping keys
-                let val = tokiter.peek(1);
-                if val.kind == T::MappingValue &&
-                        val.start.line == tok.end.line
-                {
-                    return parse_map(tokiter, aliases);
-                }
-            }
             tokiter.next();
             return Ok(Scalar(None, None, plain_value(tok), tok));
         }
@@ -562,7 +553,7 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 if val.kind == T::MappingValue &&
                         val.start.line == tok.end.line
                 {
-                    return parse_map(tokiter, aliases);
+                    return parse_map(tokiter, aliases, tag);
                 }
             }
             tokiter.next();
