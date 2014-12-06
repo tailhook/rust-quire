@@ -2,7 +2,7 @@ use std::from_str::FromStr;
 use std::fmt::Show;
 use std::num::{FromStrRadix,from_str_radix};
 use std::default::Default;
-use std::collections::TreeMap;
+use std::collections::{TreeMap, HashSet};
 use std::str::replace;
 
 use regex::Regex;
@@ -194,6 +194,17 @@ impl<'a> Validator for Structure<'a> {
                 }
             };
             map.insert(k.clone(), value);
+        }
+        let mut keys: HashSet<String>;
+        keys = map.keys()
+            .filter(|s| !s.as_slice().starts_with("_"))
+            .map(|s| s.clone()).collect();
+        for &(ref k, _) in self.members.iter() {
+            keys.remove(k);
+        }
+        if keys.len() > 0 {
+            warnings.push(Error::validation_error(&pos,
+                format!("Keys {} are not expected", keys)));
         }
         return (A::Map(pos, A::NonSpecific, map), warnings);
     }
@@ -458,6 +469,38 @@ mod test {
         assert_eq!(parse_dash_str("some_key: 7"), TestDash {
             some_key: 7,
         });
+    }
+
+    fn parse_with_warnings(body: &str) -> (TestDash, Vec<String>) {
+        let str_val = Structure { members: vec!(
+            ("some_key".to_string(), box Numeric {
+                default: Some(123u),
+                .. Default::default() } as Box<Validator>),
+        ), .. Default::default()};
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let (ast, warnings) = str_val.validate(ast);
+        let (tx, _) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
+        return (Decodable::decode(&mut dec).unwrap(),
+                warnings.iter().map(|x| x.to_string()).collect());
+    }
+
+    #[test]
+    fn test_underscore_keys() {
+        assert_eq!(parse_with_warnings("some-key: 13\n_another-key: 12"),
+            (TestDash {
+                some_key: 13,
+            }, vec!()));
+    }
+
+    #[test]
+    fn test_additional_keys() {
+        assert_eq!(parse_with_warnings("some-key: 13\nanother-key: 12"),
+            (TestDash {
+                some_key: 13,
+            }, vec!("<inline text>:1:1: Validation Error: \
+                     Keys {another-key} are not expected".to_string())));
     }
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
