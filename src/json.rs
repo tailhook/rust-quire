@@ -346,6 +346,13 @@ mod test {
     }
 
     #[test]
+    fn test_map_and_scalar() {
+        assert_yaml_eq_json(
+            "a:\n b:\n  hello\n  world\n c: end",
+            r#"{"a": {"b": "hello world", "c": "end"}}"#);
+    }
+
+    #[test]
     fn yaml_words_in_list() {
         assert_yaml_eq_json("- a\n b\n", r#"["a b"]"#);
     }

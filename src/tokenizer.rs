@@ -96,6 +96,7 @@ struct Tokenizer<'a, 'b: 'a> {
     error: Option<Error>,
     indent_levels: Vec<uint>,
     flow_level: uint,
+    doc_start: bool,
 }
 
 impl<'a> YamlIter<'a> {
@@ -178,6 +179,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             error: None,
             indent_levels: vec!(0),
             flow_level: 0,
+            doc_start: true,
         }
     }
 
@@ -201,7 +203,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
 
     fn read_plain(&mut self, start: Pos) {
         let mut minindent = *self.indent_levels.last().unwrap();
-        if !start.line_start {
+        if !self.doc_start {
             minindent += 1;
         }
         loop {
@@ -316,8 +318,11 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     }
 
     fn add_token(&mut self, kind: TokenType, start: Pos, end: Pos) {
-        if kind != Whitespace && kind != Comment && self.flow_level == 0 {
+        if kind != Whitespace && kind != Comment && kind != DocumentStart &&
+            self.flow_level == 0
+        {
             // always have "0" at bottom of the stack so just unwrap it
+            self.doc_start = false;
             let cur = *self.indent_levels.last().unwrap();
             if start.indent > cur {
                 self.result.push(Token {
@@ -820,12 +825,24 @@ fn test_plain6() {
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, "\n "),
              (Indent, ""), (PlainString, "a\n bc"), (Unindent, "")));
 }
+
 #[test]
 fn test_plain7() {
     let tokens = test_tokenize("a: a\nbc");
     assert_eq!(simple_tokens(tokens),
         vec!((PlainString, "a"), (MappingValue, ":"), (Whitespace, " "),
              (PlainString, "a"), (Whitespace, "\n"), (PlainString, "bc")));
+}
+
+#[test]
+fn test_plain8() {
+    let tokens = test_tokenize("b:\n 1\n 2\nc: end");
+    assert_eq!(simple_tokens(tokens),
+        vec!((PlainString, "b"), (MappingValue, ":"), (Whitespace, "\n "),
+             (Indent, ""), (PlainString, "1\n 2"), (Whitespace, "\n"),
+             (Unindent, ""), (PlainString, "c"), (MappingValue, ":"),
+             (Whitespace, " "), (PlainString, "end"),
+             ));
 }
 
 #[test]
