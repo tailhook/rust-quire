@@ -141,6 +141,72 @@ impl<T:PartialOrd+Show+FromStr+FromStrRadix> Validator for Numeric<T> {
 }
 
 #[deriving(Default)]
+pub struct Directory {
+    pub descr: Option<String>,
+    pub optional: bool,
+    pub default: Option<Path>,
+    pub absolute: Option<bool>,
+}
+
+impl Validator for Directory {
+    fn default(&self, pos: Pos) -> Option<A::Ast> {
+        if self.default.is_none() && self.optional {
+            return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
+        }
+        self.default.as_ref().map(|val| {
+            A::Scalar(pos.clone(), A::NonSpecific, A::Quoted,
+                      val.display().to_string()) })
+    }
+    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+        let mut warnings = vec!();
+        let (pos, kind, val) = match ast {
+            A::Scalar(pos, _, kind, string) => {
+                (pos, kind, string)
+            }
+            A::Null(_, _, _) if self.optional => {
+                return (ast, warnings);
+            }
+            ast => {
+                warnings.push(Error::validation_error(&ast.pos(),
+                    format!("Path expected")));
+                return (ast, warnings);
+            }
+        };
+        let path = Path::new(val);
+        match self.absolute {
+            Some(true) => {
+                if !path.is_absolute() {
+                    warnings.push(Error::validation_error(&pos,
+                        format!("Path must be absolute")));
+                }
+            }
+            Some(false) => {
+                if path.is_absolute() {
+                    warnings.push(Error::validation_error(&pos,
+                        format!("Path must not be absolute")));
+                } else {
+                    // Still for non-absolute paths we must check if
+                    // there are ../../something
+                    //
+                    // If you don't want this check, just set self.absolute
+                    // to None instead of Some(false)
+                    for cmp in path.str_components() {
+                        if cmp == Some("..") {
+                            warnings.push(Error::validation_error(&pos,
+                                format!("The /../ is not allowed in path")));
+                        }
+                    }
+                }
+            }
+            None => {}
+        };
+        return (A::Scalar(pos, A::NonSpecific, kind,
+                          path.display().to_string()),
+                warnings);
+    }
+}
+
+#[deriving(Default)]
 pub struct Structure<'a> {
     pub descr: Option<String>,
     pub members: Vec<(String, Box<Validator + 'a>)>,
@@ -377,7 +443,7 @@ mod test {
     use super::super::parser::parse;
     use super::super::errors::Error;
     use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
-    use super::{Enum, Nothing};
+    use super::{Enum, Nothing, Directory};
 
     #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
     struct TestStruct {
@@ -789,4 +855,102 @@ mod test {
             }));
     }
 
+    #[deriving(Clone, PartialEq, Eq, Decodable)]
+    struct TestPath {
+        path: Path,
+    }
+
+    fn parse_path(body: &str, abs: Option<bool>) -> TestPath {
+        let str_val = Structure { members: vec!(
+            ("path".to_string(), box Directory {
+                default: Some(Path::new("/test")),
+                absolute: abs,
+                .. Default::default() } as Box<Validator>),
+        ), .. Default::default()};
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        assert_eq!(warnings.len(), 0);
+        let (ast, warnings) = str_val.validate(ast);
+        for w in warnings.iter() {
+            fail!(w.to_string());
+        }
+        let (tx, _) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    #[should_fail(expected = "Path expected")]
+    fn test_path_null() {
+        assert!(parse_path("path:", None) == TestPath {
+            path: Path::new("/test"),
+        });
+    }
+
+    #[test]
+    fn test_path_abs() {
+        assert!(parse_path("path: /root/dir", None) == TestPath {
+            path: Path::new("/root/dir"),
+        });
+    }
+
+    #[test]
+    fn test_path_rel() {
+        assert!(parse_path("path: root/dir", None) == TestPath {
+            path: Path::new("root/dir"),
+        });
+    }
+
+    #[test]
+    fn test_path_down() {
+        assert!(parse_path("path: ../root/dir", None) == TestPath {
+            path: Path::new("../root/dir"),
+        });
+    }
+
+    #[test]
+    fn test_path_abs_abs() {
+        assert!(parse_path("path: /root/dir", Some(true)) == TestPath {
+            path: Path::new("/root/dir"),
+        });
+    }
+
+    #[test]
+    #[should_fail(expected = "must be absolute")]
+    fn test_path_rel_abs() {
+        assert!(parse_path("path: root/dir", Some(true)) == TestPath {
+            path: Path::new("root/dir"),
+        });
+    }
+
+    #[test]
+    #[should_fail(expected = "must be absolute")]
+    fn test_path_down_abs() {
+        assert!(parse_path("path: ../root/dir", Some(true)) == TestPath {
+            path: Path::new("../root/dir"),
+        });
+    }
+
+    #[test]
+    #[should_fail(expected = "mut not be absolute")]
+    fn test_path_abs_rel() {
+        assert!(parse_path("path: /root/dir", Some(false)) == TestPath {
+            path: Path::new("/root/dir"),
+        });
+    }
+
+    #[test]
+    fn test_path_rel_rel() {
+        assert!(parse_path("path: root/dir", Some(false)) == TestPath {
+            path: Path::new("root/dir"),
+        });
+    }
+
+    #[test]
+    #[should_fail(expected = "/../ is not allowed")]
+    fn test_path_down_rel() {
+        assert!(parse_path("path: ../root/dir", Some(false)) == TestPath {
+            path: Path::new("../root/dir"),
+        });
+    }
 }
