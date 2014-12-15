@@ -633,6 +633,7 @@ mod test {
         Beta,
         Gamma(int),
         Delta(TestStruct),
+        Sigma(Vec<int>),
     }
 
     fn decode_enum(text: &str) -> TestEnum {
@@ -676,11 +677,29 @@ mod test {
     }
 
     #[test]
-    fn test_enum_6() {
+    fn test_enum_map() {
         assert_eq!(decode_enum("!Delta\na: 1\nb: a"), Delta(TestStruct {
             a: 1,
             b: "a".to_string(),
             }));
+    }
+
+    #[test]
+    fn test_enum_map_flow() {
+        assert_eq!(decode_enum("!Delta {a: 2, b: b}"), Delta(TestStruct {
+            a: 2,
+            b: "b".to_string(),
+            }));
+    }
+
+    #[test]
+    fn test_enum_seq_flow() {
+        assert_eq!(decode_enum("!Sigma [1, 2]"), Sigma(vec!(1, 2)));
+    }
+
+    #[test]
+    fn test_enum_seq() {
+        assert_eq!(decode_enum("!Sigma\n- 1\n- 2"), Sigma(vec!(1, 2)));
     }
 
 }

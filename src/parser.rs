@@ -275,7 +275,8 @@ impl<'a> Show for Node<'a> {
 }
 
 
-fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
+    tag: Option<&'x str>)
     -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
@@ -320,7 +321,7 @@ fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             }
         }
     }
-    return Ok(List(None, None, children,
+    return Ok(List(tag, None, children,
         tokiter.tokens.slice(begin, tokiter.index)));
 }
 
@@ -375,7 +376,8 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
             T::SequenceEntry if tok.start.line > delim.end.line => {
                 // Allow sequences on the same indentation level as a key in
                 // mapping
-                let value = match parse_list(tokiter, aliases) {
+                let tag = maybe_parse_tag(tokiter);
+                let value = match parse_list(tokiter, aliases, tag) {
                     Ok(value) => value,
                     Err(err) => return Err(err),
                 };
@@ -414,7 +416,8 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
         tokiter.tokens.slice(begin, tokiter.index)));
 }
 
-fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
+    tag: Option<&'x str>)
     -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
@@ -443,11 +446,12 @@ fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 "Expected comma `,` or colon `:`".to_string())),
         }
     }
-    return Ok(List(None, None, children,
+    return Ok(List(tag, None, children,
         tokiter.tokens.slice(begin, tokiter.index)));
 }
 
-fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
+    tag: Option<&'x str>)
     -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
@@ -507,13 +511,14 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 "Expected comma `,` or closing bracket `}`".to_string())),
         }
     }
-    return Ok(Map(None, None, children,
+    return Ok(Map(tag, None, children,
         tokiter.tokens.slice(begin, tokiter.index)));
 }
 
 fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     -> Result<Node<'x>, Error>
 {
+    let tag = maybe_parse_tag(tokiter);
     let tok = tokiter.peek(0);
     match tok.kind {
         T::PlainString | T::SingleString | T::DoubleString => {
@@ -521,29 +526,34 @@ fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             return Ok(Scalar(None, None, plain_value(tok), tok));
         }
         T::FlowSeqStart => {
-            return parse_flow_list(tokiter, aliases);
+            return parse_flow_list(tokiter, aliases, tag);
         }
         T::FlowMapStart => {
-            return parse_flow_map(tokiter, aliases);
+            return parse_flow_map(tokiter, aliases, tag);
         }
         _ => return Err(Error::parse_error(&tok.start,
             "Expected plain string, sequence or mapping".to_string())),
     };
 }
 
-fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
-    -> Result<Node<'x>, Error>
-{
-    let mut tok = tokiter.peek(0);
+fn maybe_parse_tag<'x>(tokiter: &mut TokenIter<'x>) -> Option<&'x str> {
+    let tok = tokiter.peek(0);
     let mut tag = None;
     match tok.kind {
         T::Tag => {
             tag = Some(tok.value);
             tokiter.next();
-            tok = tokiter.peek(0);
         }
         _ => {}
     }
+    return tag;
+}
+
+fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+    -> Result<Node<'x>, Error>
+{
+    let mut tag = maybe_parse_tag(tokiter);
+    let mut tok = tokiter.peek(0);
     match tok.kind {
         T::PlainString | T::SingleString | T::DoubleString
         | T::Literal | T::Folded => {
@@ -563,13 +573,13 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             return Ok(ImplicitNull(tag, None, tok.start.clone()));
         }
         T::SequenceEntry => {
-            return parse_list(tokiter, aliases);
+            return parse_list(tokiter, aliases, tag);
         }
         T::FlowSeqStart => {
-            return parse_flow_list(tokiter, aliases);
+            return parse_flow_list(tokiter, aliases, tag);
         }
         T::FlowMapStart => {
-            return parse_flow_map(tokiter, aliases);
+            return parse_flow_map(tokiter, aliases, tag);
         }
         _ => return Err(Error::parse_error(&tok.start,
             "Expected scalar, sequence or mapping".to_string())),

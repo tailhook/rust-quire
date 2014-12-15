@@ -42,6 +42,7 @@ mod State {
 }
 
 mod line {
+    #[deriving(PartialEq, Eq)]
     pub enum State {
         Start,
         AfterIndent,  // Like Start, but already indented
@@ -115,7 +116,13 @@ impl<'a> Context<'a> {
 
     fn emit_null(&mut self, space:bool, style: null::Style) -> IoResult<()> {
         return match style {
-            null::Nothing => self.stream.write_char('\n'),
+            null::Nothing => {
+                if self.line == L::Start {
+                    Ok(())
+                } else {
+                    self.stream.write_char('\n')
+                }
+            }
             null::Tilde =>
                 self.stream.write_str(if space { " ~\n" } else { "~\n" }),
             null::Null =>
@@ -165,6 +172,9 @@ impl<'a> Context<'a> {
                 try!(self.stream.write_str(x));
                 if space {
                     try!(self.stream.write_char(' '));
+                } else {
+                    self.line = L::Start;
+                    return self.stream.write_char('\n');
                 }
             }
             None => {}
@@ -192,6 +202,10 @@ impl<'a> Context<'a> {
                 try!(self.ensure_line_start())
                 S::Fin }
             (S::New, MapStart(tag, anchor)) => {
+                try!(self.emit_tag_anchor(tag, anchor, false));
+                if tag.is_some() || anchor.is_some() {
+                    try!(self.ensure_line_start());
+                }
                 self.push_indent(S::Fin, 0);
                 S::MapKey }
             (S::MapKey, Scalar(tag, anchor, style, value)) => {
@@ -236,6 +250,10 @@ impl<'a> Context<'a> {
                 }
                 nstate }
             (S::New, SeqStart(tag, anchor)) => {
+                try!(self.emit_tag_anchor(tag, anchor, false));
+                if tag.is_some() || anchor.is_some() {
+                    try!(self.ensure_line_start());
+                }
                 self.push_indent(S::Fin, 0);
                 S::SeqItem }
             (S::SeqItem, Scalar(tag, anchor, style, value)) => {
@@ -265,7 +283,8 @@ impl<'a> Context<'a> {
     pub fn emit_node(&mut self, node: &Node) -> IoResult<()> {
         match node {
             &N::Map(tag, anchor, ref map, _) => {
-                try!(self.emit(MapStart(tag, anchor)));
+                try!(self.emit(MapStart(tag.map(|t| t.slice_from(1)),
+                                        anchor)));
                 for (k, v) in map.iter() {
                     try!(self.emit_node(k));
                     try!(self.emit_node(v));
@@ -273,7 +292,8 @@ impl<'a> Context<'a> {
                 try!(self.emit(MapEnd));
             }
             &N::List(tag, anchor, ref items, _) => {
-                try!(self.emit(SeqStart(tag, anchor)));
+                try!(self.emit(SeqStart(tag.map(|t| t.slice_from(1)),
+                                        anchor)));
                 for i in items.iter() {
                     try!(self.emit_node(i));
                 }
@@ -286,7 +306,6 @@ impl<'a> Context<'a> {
             }
             &N::ImplicitNull(ref tag, ref _anchor, ref _token) => {
                 // TODO(tailhook) fix anchor
-                println!("TAGTAG {}", tag);
                 try!(self.emit(Null(tag.map(|t| t.slice_from(1)),
                     None, null::Nothing)));
             }
@@ -297,16 +316,17 @@ impl<'a> Context<'a> {
 
     pub fn emit_ast(&mut self, node: &A::Ast) -> IoResult<()> {
         match node {
-            &A::Map(_, ref _tag, ref map) => {
-                try!(self.emit(MapStart(None, None)));
+            &A::Map(_, ref tag, ref map) => {
+                try!(self.emit(MapStart(tag_as_string(tag), None)));
                 for (k, v) in map.iter() {
-                    try!(self.emit(Scalar(None, None, Auto, k.as_slice())));
+                    try!(self.emit(Scalar(None,
+                                          None, Auto, k.as_slice())));
                     try!(self.emit_ast(v));
                 }
                 try!(self.emit(MapEnd));
             }
-            &A::List(_, ref _tag, ref items) => {
-                try!(self.emit(SeqStart(None, None)));
+            &A::List(_, ref tag, ref items) => {
+                try!(self.emit(SeqStart(tag_as_string(tag), None)));
                 for i in items.iter() {
                     try!(self.emit_ast(i));
                 }
@@ -514,7 +534,7 @@ mod test {
     fn test_empty() {
         emit_and_compare([
             Null(None, None, null::Nothing),
-        ], "\n");
+        ], "");
     }
 
     #[test]
@@ -600,6 +620,21 @@ mod test {
     #[test]
     fn yaml_list_map() {
         assert_yaml_eq_yaml("- a: b\n  c: d", "- a: b\n  c: d\n");
+    }
+
+    #[test]
+    fn yaml_tag_map() {
+        assert_yaml_eq_yaml("!Tag {a: b}", "!Tag\na: b\n");
+    }
+
+    #[test]
+    fn yaml_tag_map2() {
+        assert_yaml_eq_yaml("!Tag {a: b, c: d}", "!Tag\na: b\nc: d\n");
+    }
+
+    #[test]
+    fn yaml_tag_list() {
+        assert_yaml_eq_yaml("!Tag [a, b, c]", "!Tag\n- a\n- b\n- c\n");
     }
 
 
