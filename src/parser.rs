@@ -297,21 +297,6 @@ fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
                 children.push(ImplicitNull(None, None, tok.start.clone()));
                 break;
             }
-            T::Indent => {
-                tokiter.next().unwrap();
-                let value = match parse_node(tokiter, aliases) {
-                    Ok(value) => value,
-                    Err(err) => return Err(err),
-                };
-                children.push(value);
-                let etok = tokiter.peek(0);
-                match etok.kind {
-                    T::Unindent => {}
-                    _ => return Err(Error::parse_error(
-                        &etok.start, "Expected unindent".to_string())),
-                }
-                tokiter.next().unwrap();
-            }
             _ => {
                 let value = match parse_node(tokiter, aliases) {
                     Ok(value) => value,
@@ -340,8 +325,9 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
             T::Unindent => break,
             T::PlainString | T::SingleString | T::DoubleString
             => Scalar(None, None, plain_value(ktoken), ktoken),
-            _ => return Err(Error::parse_error(
-                &ktoken.start, "Expected mapping key or unindent".to_string())),
+            _ => return Err(Error::parse_error(&ktoken.start,
+                format!("Expected mapping key or unindent, got {}",
+                        ktoken.kind))),
         };
         tokiter.next().unwrap();
         let delim = tokiter.peek(0);
@@ -355,24 +341,6 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
         tokiter.next().unwrap();
         let tok = tokiter.peek(0);
         match tok.kind {
-            T::Indent => {
-                tokiter.next().unwrap();
-                let value = match parse_node(tokiter, aliases) {
-                    Ok(value) => value,
-                    Err(err) => return Err(err),
-                };
-                if !children.insert(key, value) {
-                    return Err(Error::parse_error(&ktoken.start,
-                        "Duplicate key".to_string()));
-                }
-                let etok = tokiter.peek(0);
-                match etok.kind {
-                    T::Unindent => {}
-                    _ => return Err(Error::parse_error(&etok.start,
-                        "Expected unindent".to_string())),
-                }
-                tokiter.next();
-            }
             T::SequenceEntry if tok.start.line > delim.end.line => {
                 // Allow sequences on the same indentation level as a key in
                 // mapping
@@ -554,7 +522,13 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 {
     let mut tag = maybe_parse_tag(tokiter);
     let mut tok = tokiter.peek(0);
-    match tok.kind {
+    let mut indent = false;
+    if tok.kind == T::Indent {
+        tokiter.next();
+        tok = tokiter.peek(0);
+        indent = true;
+    }
+    let result = match tok.kind {
         T::PlainString | T::SingleString | T::DoubleString
         | T::Literal | T::Folded => {
             if tok.start.line == tok.end.line {
@@ -563,27 +537,41 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 if val.kind == T::MappingValue &&
                         val.start.line == tok.end.line
                 {
-                    return parse_map(tokiter, aliases, tag);
+                    parse_map(tokiter, aliases, tag)
+                } else {
+                    tokiter.next();
+                    Ok(Scalar(tag, None, plain_value(tok), tok))
                 }
+            } else {
+                tokiter.next();
+                Ok(Scalar(tag, None, plain_value(tok), tok))
             }
-            tokiter.next();
-            return Ok(Scalar(tag, None, plain_value(tok), tok));
         }
         T::Eof => {
-            return Ok(ImplicitNull(tag, None, tok.start.clone()));
+            Ok(ImplicitNull(tag, None, tok.start.clone()))
         }
         T::SequenceEntry => {
-            return parse_list(tokiter, aliases, tag);
+            parse_list(tokiter, aliases, tag)
         }
         T::FlowSeqStart => {
-            return parse_flow_list(tokiter, aliases, tag);
+            parse_flow_list(tokiter, aliases, tag)
         }
         T::FlowMapStart => {
-            return parse_flow_map(tokiter, aliases, tag);
+            parse_flow_map(tokiter, aliases, tag)
         }
-        _ => return Err(Error::parse_error(&tok.start,
+        _ => Err(Error::parse_error(&tok.start,
             "Expected scalar, sequence or mapping".to_string())),
     };
+    if result.is_ok() && indent {
+        let end = tokiter.peek(0);
+        if end.kind != T::Unindent {
+            return Err(Error::parse_error(&end.start,
+                format!("Expected unindent, got {}", end.kind)));
+        } else {
+            tokiter.next();
+        }
+    }
+    return result;
 }
 
 fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
@@ -601,36 +589,20 @@ fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         }
         tokiter.next();
     }
-    let res;
-    if let T::Indent = tokiter.peek(0).kind {
-        tokiter.next();
-        res =  match parse_node(tokiter, aliases) {
-            Ok(node) => node,
-            Err(e) => return Err(e),
-        };
-        if let T::Unindent = tokiter.peek(0).kind {
-            tokiter.next();
-        } else {
-            return Err(Error::parse_error(&tokiter.peek(0).start,
-                "Expected unindent".to_string()));
-        }
-    } else {
-        res =  match parse_node(tokiter, aliases) {
-            Ok(node) => node,
-            Err(e) => return Err(e),
-        };
-    }
+    let res =  match parse_node(tokiter, aliases) {
+        Ok(node) => node,
+        Err(e) => return Err(e),
+    };
     loop {
         let tok = match tokiter.next() {
             Some(tok) => tok,
             None => break,
         };
-        println!("Tok kind {}", tok.kind);
         match tok.kind {
             T::DocumentEnd => {}
             _ => {
                 return Err(Error::parse_error(&tok.start,
-                    "Expected document end".to_string()));
+                    format!("Expected document end, got {}", tok.kind)));
             }
         }
     }

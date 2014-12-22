@@ -724,6 +724,42 @@ fn test_tokenize_map_two_nulls() {
 }
 
 #[test]
+fn test_tag_map() {
+    let tokens = test_tokenize("a: !Tag\n a:  b");
+    let strings = simple_tokens(tokens);
+    assert_eq!(strings, vec!(
+        (PlainString, "a"),
+        (MappingValue, ":"),
+        (Whitespace, " "),
+        (Tag, "!Tag"),
+        (Whitespace, "\n "),
+        (Indent, ""),
+        (PlainString, "a"),
+        (MappingValue, ":"),
+        (Whitespace, "  "),
+        (PlainString, "b"),
+        (Unindent, ""),
+        ));
+}
+
+#[test]
+fn test_map_map() {
+    let tokens = test_tokenize("a:\n a:  b");
+    let strings = simple_tokens(tokens);
+    assert_eq!(strings, vec!(
+        (PlainString, "a"),
+        (MappingValue, ":"),
+        (Whitespace, "\n "),
+        (Indent, ""),
+        (PlainString, "a"),
+        (MappingValue, ":"),
+        (Whitespace, "  "),
+        (PlainString, "b"),
+        (Unindent, ""),
+        ));
+}
+
+#[test]
 fn test_list() {
     let tokens = test_tokenize("-");
     assert_eq!(simple_tokens(tokens),

@@ -234,7 +234,12 @@ impl<'a> Context<'a> {
                 S::MapKey }
             (S::MapSimpleKeyValue, MapStart(tag, anchor)) => {
                 try!(self.stream.write_char(':'));
-                self.line = L::AfterScalar;
+                if tag.is_some() || anchor.is_some() {
+                    try!(self.stream.write_str(" "));
+                    try!(self.emit_tag_anchor(tag, anchor, false));
+                } else {
+                    self.line = L::AfterScalar;
+                }
                 self.push_indent(S::MapKey, 2);
                 S::MapKey }
             (S::MapSimpleKeyValue, SeqStart(tag, anchor)) => {
@@ -263,6 +268,10 @@ impl<'a> Context<'a> {
                 try!(self.emit_scalar(style, value));
                 S::SeqItem }
             (S::SeqItem, MapStart(tag, anchor)) => {
+                try!(self.emit_tag_anchor(tag, anchor, false));
+                if tag.is_some() || anchor.is_some() {
+                    try!(self.ensure_line_start());
+                }
                 try!(self.ensure_indented());
                 try!(self.stream.write_str("- "));
                 self.line = L::AfterIndent;
@@ -625,6 +634,11 @@ mod test {
     #[test]
     fn yaml_tag_map() {
         assert_yaml_eq_yaml("!Tag {a: b}", "!Tag\na: b\n");
+    }
+
+    #[test]
+    fn yaml_tag_map_map() {
+        assert_yaml_eq_yaml("a: !Tag\n a: b", "a: !Tag\n  a: b\n");
     }
 
     #[test]
