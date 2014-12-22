@@ -21,3 +21,4 @@ pub mod decode;
 pub mod validate;
 pub mod sky;
 pub mod macros;
+#[cfg(test)] mod test_errors;

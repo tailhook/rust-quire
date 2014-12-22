@@ -13,7 +13,7 @@ pub enum Error {
     ParseError(ErrorPos, String),
     ValidationError(ErrorPos, String),
     PreprocessError(ErrorPos, String),
-    DecodeError(ErrorPos, String),
+    DecodeError(ErrorPos, String, String),
 }
 
 impl Error {
@@ -32,9 +32,10 @@ impl Error {
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             message);
     }
-    pub fn decode_error(pos: &Pos, message: String) -> Error {
+    pub fn decode_error(pos: &Pos, path: &String, message: String) -> Error {
         return DecodeError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
+            path.clone(),
             message);
     }
     pub fn preprocess_error(pos: &Pos, message: String) -> Error {
@@ -49,7 +50,6 @@ impl Show for Error {
         match *self {
             TokenizerError(ErrorPos(ref filename, line, offset), ref message)
             | ParseError(ErrorPos(ref filename, line, offset), ref message)
-            | DecodeError(ErrorPos(ref filename, line, offset), ref message)
             | ValidationError(ErrorPos(ref filename, line, offset), ref message)
             | PreprocessError(ErrorPos(ref filename, line, offset), ref message)
             => {
@@ -62,10 +62,24 @@ impl Show for Error {
                 match *self {
                     TokenizerError(_, _) => try!("Tokenizer Error".fmt(fmt)),
                     ParseError(_, _) => try!("Parse Error".fmt(fmt)),
-                    DecodeError(_, _) => try!("Decode Error".fmt(fmt)),
                     PreprocessError(_, _) => try!("Preprocess Error".fmt(fmt)),
                     ValidationError(_, _) => try!("Validation Error".fmt(fmt)),
+                    DecodeError(_, _, _) => unreachable!(),
                 }
+                try!(": ".fmt(fmt));
+                try!(message.fmt(fmt));
+            }
+            DecodeError(ErrorPos(ref filename, line, offset),
+                ref path, ref message)
+            => {
+
+                try!(filename.fmt(fmt));
+                try!(":".fmt(fmt));
+                try!(line.fmt(fmt));
+                try!(":".fmt(fmt));
+                try!(offset.fmt(fmt));
+                try!(": Decode error at ".fmt(fmt));
+                try!(path.fmt(fmt));
                 try!(": ".fmt(fmt));
                 try!(message.fmt(fmt));
             }
