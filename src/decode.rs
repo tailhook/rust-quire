@@ -207,8 +207,10 @@ impl Decoder<Error> for YamlDecoder {
                 }
             }
             Node(A::Scalar(ref pos, _, _, ref value)) => {
+                let programmatic_name = value.replace("-", "_");
                 for (i, name) in names.iter().enumerate() {
-                    if *name == value.as_slice() {
+                    if *name == value.as_slice() ||
+                        *name == programmatic_name.as_slice() {
                         idx = Some(i);
                     }
                 }
@@ -641,9 +643,11 @@ mod test {
     }
 
     #[deriving(PartialEq, Eq, Decodable, Show)]
+    #[allow(non_camel_case_types)]
     enum TestEnum {
         Alpha,
         Beta,
+        beta_gamma,
         Gamma(int),
         Delta(TestStruct),
         Sigma(Vec<int>),
@@ -672,6 +676,11 @@ mod test {
     #[test]
     fn test_enum_2() {
         assert_eq!(decode_enum("Beta"), Beta);
+    }
+
+    #[test]
+    fn test_enum_2_e() {
+        assert_eq!(decode_enum("beta-gamma"), beta_gamma);
     }
 
     #[test]
