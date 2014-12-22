@@ -792,6 +792,16 @@ fn test_list_map() {
 }
 
 #[test]
+fn test_list_tag() {
+    let tokens = test_tokenize("- !Tag a");
+    assert_eq!(simple_tokens(tokens),
+        vec!((SequenceEntry, "-"), (Whitespace, " "),
+             (Indent, ""),
+             (Tag, "!Tag"), (Whitespace, " "), (PlainString, "a"),
+             (Unindent, "")));
+}
+
+#[test]
 fn test_map_key() {
     let tokens = test_tokenize("?");
     assert_eq!(simple_tokens(tokens),

@@ -520,10 +520,17 @@ fn maybe_parse_tag<'x>(tokiter: &mut TokenIter<'x>) -> Option<&'x str> {
 fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     -> Result<Node<'x>, Error>
 {
-    let mut tag = maybe_parse_tag(tokiter);
-    let mut tok = tokiter.peek(0);
     let mut indent = false;
-    if tok.kind == T::Indent {
+    let mut tok = tokiter.peek(0);
+
+    if tok.kind == T::Indent {  // Indent in list is before tag
+        tokiter.next();
+        tok = tokiter.peek(0);
+        indent = true;
+    }
+    let mut tag = maybe_parse_tag(tokiter);
+    tok = tokiter.peek(0);
+    if !indent && tok.kind == T::Indent {  // Otherwise indent is after tag
         tokiter.next();
         tok = tokiter.peek(0);
         indent = true;
@@ -560,7 +567,8 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             parse_flow_map(tokiter, aliases, tag)
         }
         _ => Err(Error::parse_error(&tok.start,
-            "Expected scalar, sequence or mapping".to_string())),
+            format!("Expected scalar, sequence or mapping, got {}",
+                    tok.kind))),
     };
     if result.is_ok() && indent {
         let end = tokiter.peek(0);
