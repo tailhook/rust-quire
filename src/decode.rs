@@ -370,7 +370,14 @@ impl Decoder<Error> for YamlDecoder {
             }
             Byte(_) => unimplemented!(),
             Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
-            Key(_, _) => unimplemented!(),
+            Key(_, ref val) => {
+                let bytes = val.as_bytes();
+                return f(&mut YamlDecoder {
+                    state: ByteSeq(bytes.to_vec()),
+                    sender: self.sender.clone(),
+                    path: self.path.clone(),
+                }, bytes.len());
+            }
         };
         let len = items.len();
         return f(&mut YamlDecoder {
@@ -639,6 +646,29 @@ mod test {
         };
         warnings.extend(rx.iter());
         assert!(val.path == Path::new("test/dir"));
+        assert_eq!(warnings.len(), 0);
+    }
+
+    #[deriving(PartialEq, Eq, Decodable)]
+    struct TestPathMap {
+        paths: TreeMap<Path, int>,
+    }
+
+    #[test]
+    fn decode_path_map() {
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            "paths: {test/dir: 1}",
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let mut warnings = vec!();
+        let (tx, rx) = channel();
+        let val: TestPathMap = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
+        let tree: TreeMap<Path, int>;
+        tree = vec!((Path::new("test/dir"), 1)).into_iter().collect();
+        assert!(val.paths == tree);
         assert_eq!(warnings.len(), 0);
     }
 
