@@ -652,6 +652,11 @@ mod test {
     }
 
     #[test]
+    fn yaml_tag_map3() {
+        assert_yaml_eq_yaml("!Tag { a: b, c: d }", "!Tag\na: b\nc: d\n");
+    }
+
+    #[test]
     fn yaml_tag_list() {
         assert_yaml_eq_yaml("!Tag [a, b, c]", "!Tag\n- a\n- b\n- c\n");
     }

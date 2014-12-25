@@ -243,8 +243,16 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         if pos.line == niter.position.line ||
                                 niter.position.indent >= minindent
                         {
-                            match self.iter.chars.peek() {
-                                Some(&(_, '\t')) => {
+                            match self.iter.chars.peek().map(|&(_, x)| x) {
+                                Some('[') | Some(']') | Some('{') | Some('}')
+                                | Some(',') if self.flow_level > 0 => {
+                                    self.add_token(PlainString,
+                                        start, pos.clone());
+                                    self.add_token(Whitespace, pos,
+                                        niter.position);
+                                    return;
+                                }
+                                Some('\t') => {
                                     self.error = Some(
                                         Error::tokenizer_error(
                                         &self.iter.position,
@@ -252,7 +260,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                                             quoted string".to_string()));
                                     break;
                                 }
-                                Some(&(_, '#')) => {
+                                Some('#') => {
                                     self.add_token(PlainString,
                                         start, pos.clone());
                                     self.add_token(Whitespace, pos,
@@ -739,6 +747,27 @@ fn test_tag_map() {
         (Whitespace, "  "),
         (PlainString, "b"),
         (Unindent, ""),
+        ));
+}
+
+#[test]
+fn test_tag_map_flow() {
+    let tokens = test_tokenize("a: !Tag { a:  b }");
+    let strings = simple_tokens(tokens);
+    assert_eq!(strings, vec!(
+        (PlainString, "a"),
+        (MappingValue, ":"),
+        (Whitespace, " "),
+        (Tag, "!Tag"),
+        (Whitespace, " "),
+        (FlowMapStart, "{"),
+        (Whitespace, " "),
+        (PlainString, "a"),
+        (MappingValue, ":"),
+        (Whitespace, "  "),
+        (PlainString, "b"),
+        (Whitespace, " "),
+        (FlowMapEnd, "}"),
         ));
 }
 
