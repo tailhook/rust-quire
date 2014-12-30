@@ -11,6 +11,16 @@ use super::errors::Error;
 pub use super::tokenizer::Pos;
 use super::ast as A;
 
+
+static NUMERIC_SUFFIXES: &'static [(&'static str, u64)] = &[
+    ("k", 1000),
+    ("M", 1000000),
+    ("G", 1000000000),
+    ("ki", 1024),
+    ("Mi", 1048576),
+    ("Gi", 1024*1024*1024),
+    ];
+
 pub trait Validator {
     fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>);
     fn default(&self, pos: Pos) -> Option<A::Ast>;
@@ -81,19 +91,32 @@ pub struct Numeric<T> {
     pub max: Option<T>,
 }
 
-fn from_numeric<T:FromStr+FromStrRadix>(src: &str) -> Option<T> {
-    if let Some(x) = FromStr::from_str(src) {
-        return Some(x);
+fn from_numeric<T:FromStr+FromStrRadix+Mul<T, T>+FromPrimitive>(mut src: &str)
+    -> Option<T>
+{
+    let mut mult = 1;
+    for &(suffix, value) in NUMERIC_SUFFIXES.iter() {
+        if suffix.len() < src.len() &&
+            src.slice_from(src.len() - suffix.len()) == suffix
+        {
+            mult = value;
+            src = src.slice_to(src.len() - suffix.len());
+            break;
+        }
     }
-    match src.slice_to(2) {
-        "0x" => { return from_str_radix(src.slice_from(2), 16); }
-        "0o" => { return from_str_radix(src.slice_from(2), 8); }
-        "0b" => { return from_str_radix(src.slice_from(2), 2); }
-        _    => { return None; }
+    let mut val: Option<T> = FromStr::from_str(src);
+    if val.is_none() && src.len() > 2 {
+        val = match src.slice_to(2) {
+            "0x" => from_str_radix(src.slice_from(2), 16),
+            "0o" => from_str_radix(src.slice_from(2), 8),
+            "0b" => from_str_radix(src.slice_from(2), 2),
+            _    => None,
+        };
     }
+    return val.and_then(|x| FromPrimitive::from_u64(mult).map(|m| x*m));
 }
 
-impl<T:PartialOrd+Show+FromStr+FromStrRadix> Validator for Numeric<T> {
+impl<T:PartialOrd+Show+FromStr+FromStrRadix+Mul<T, T>+FromPrimitive> Validator for Numeric<T> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
         if self.default.is_none() && self.optional {
             return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
@@ -499,6 +522,14 @@ mod test {
         assert_eq!(parse_str("strkey: strvalue"), TestStruct {
             intkey: 123,
             strkey: "strvalue".to_string(),
+        });
+    }
+
+    #[test]
+    fn test_unit() {
+        assert_eq!(parse_str("intkey: 100M"), TestStruct {
+            intkey: 100000000,
+            strkey: "default_value".to_string(),
         });
     }
 
