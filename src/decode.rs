@@ -31,8 +31,8 @@ impl<D:Decoder<E> + 'static, E> Decodable<D, E> for AnyJson {
             Node(ref node) => {
                 return Ok(AnyJson(node.to_json()));
             }
-            Byte(_) => unimplemented!(),
-            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
+            Byte(_, _) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_, _) => unreachable!(),
             Key(_, ref val) => return Ok(AnyJson(J::String(val.clone()))),
         }
     }
@@ -57,8 +57,8 @@ enum ParserState {
     Node(A::Ast),
     Map(Vec<(String, A::Ast)>),  // used only in read_map_elt_key/elt_val
     Seq(Vec<A::Ast>),  // used only in read_seq_elt
-    ByteSeq(Vec<u8>),  // used for decoding Path
-    Byte(u8),     // used for decoding Path
+    ByteSeq(Pos, Vec<u8>),  // used for decoding Path
+    Byte(Pos, u8),     // used for decoding Path
     Key(Pos, String),
 }
 
@@ -96,8 +96,15 @@ impl YamlDecoder {
                 return Err(Error::decode_error(&node.pos(), &self.path,
                     format!("Expected scalar, got {}", node)));
             }
-            Byte(_) => unimplemented!(),
-            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
+            Byte(ref pos, _) => {
+                // The string is a sequence of bytes to make Path (which
+                // decodes from a sequence of bytes) work
+                // But if string specified instead of sequence of scalars
+                // we should emit an error
+                return Err(Error::decode_error(pos, &self.path,
+                    format!("Expected sequence, got string")));
+            }
+            Map(_) | Seq(_) | ByteSeq(_, _) => unreachable!(),
         }
     }
 }
@@ -113,8 +120,8 @@ impl Decoder<Error> for YamlDecoder {
                 return Ok(())
             }
             Key(_, _) => unimplemented!(),
-            Byte(_) => unimplemented!(),
-            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
+            Byte(_, _) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_, _) => unreachable!(),
         }
     }
 
@@ -129,7 +136,7 @@ impl Decoder<Error> for YamlDecoder {
         Ok(try!(self.from_str()))
     }
     fn read_u8 (&mut self)  -> DecodeResult<u8> {
-        if let Byte(x) = self.state {
+        if let Byte(_, x) = self.state {
             return Ok(x);
         }
         Ok(try!(self.from_str()))
@@ -271,8 +278,8 @@ impl Decoder<Error> for YamlDecoder {
                 return Err(Error::decode_error(&node.pos(), &self.path,
                     "Mapping expected".to_string()));
             }
-            Byte(_) => unimplemented!(),
-            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
+            Byte(_, _) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_, _) => unreachable!(),
             Key(_, _) => unimplemented!(),
         };
         return f(self);
@@ -340,8 +347,8 @@ impl Decoder<Error> for YamlDecoder {
             Node(A::Null(_, _, _)) => f(self, false),
             Node(_) => f(self, true),
             Key(_, _) => unimplemented!(),
-            Byte(_) => unimplemented!(),
-            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
+            Byte(_, _) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_, _) => unreachable!(),
         }
     }
 
@@ -355,10 +362,10 @@ impl Decoder<Error> for YamlDecoder {
                 swap(children, &mut ch);
                 ch
             }
-            Node(A::Scalar(_, _, _, ref val)) => {
+            Node(A::Scalar(ref pos, _, _, ref val)) => {
                 let bytes = val.as_bytes();
                 return f(&mut YamlDecoder {
-                    state: ByteSeq(bytes.to_vec()),
+                    state: ByteSeq(pos.clone(), bytes.to_vec()),
                     sender: self.sender.clone(),
                     path: self.path.clone(),
                 }, bytes.len());
@@ -368,12 +375,12 @@ impl Decoder<Error> for YamlDecoder {
                 return Err(Error::decode_error(&node.pos(), &self.path,
                     "Sequence expected".to_string()));
             }
-            Byte(_) => unimplemented!(),
-            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
-            Key(_, ref val) => {
+            Byte(_, _) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_, _) => unreachable!(),
+            Key(ref pos, ref val) => {
                 let bytes = val.as_bytes();
                 return f(&mut YamlDecoder {
-                    state: ByteSeq(bytes.to_vec()),
+                    state: ByteSeq(pos.clone(), bytes.to_vec()),
                     sender: self.sender.clone(),
                     path: self.path.clone(),
                 }, bytes.len());
@@ -400,9 +407,9 @@ impl Decoder<Error> for YamlDecoder {
                     path: format!("{}[{}]", self.path, idx),
                 });
             }
-            ByteSeq(ref vec) => {
+            ByteSeq(ref pos, ref vec) => {
                 return f(&mut YamlDecoder {
-                    state: Byte(vec[idx]),
+                    state: Byte(pos.clone(), vec[idx]),
                     sender: self.sender.clone(),
                     path: format!("{}[{}]", self.path, idx),
                 });
@@ -426,8 +433,8 @@ impl Decoder<Error> for YamlDecoder {
                 return Err(Error::decode_error(&node.pos(), &self.path,
                     "Mapping expected".to_string()));
             }
-            Byte(_) => unimplemented!(),
-            Map(_) | Seq(_) | ByteSeq(_) => unreachable!(),
+            Byte(_, _) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_, _) => unreachable!(),
             Key(_, _) => unimplemented!(),
         };
         let len = items.len();
@@ -471,8 +478,8 @@ impl Decoder<Error> for YamlDecoder {
     fn error(&mut self, err: &str) -> Error {
         let pos = match self.state {
             Node(ref node) => node.pos().clone(),
-            Byte(_) => unimplemented!(),
-            Map(_) | Seq(_) | ByteSeq(_) => unimplemented!(),
+            Byte(_, _) => unimplemented!(),
+            Map(_) | Seq(_) | ByteSeq(_, _) => unimplemented!(),
             Key(ref pos, _) => pos.clone(),
         };
         return Error::decode_error(&pos, &self.path, err.to_string())
@@ -530,6 +537,19 @@ mod test {
         warnings.extend(rx.iter());
         assert_eq!(val, vec!("a".to_string(), "b".to_string()));
         assert_eq!(warnings.len(), 0);
+    }
+
+    #[test]
+    fn decode_list_error() {
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            "test",
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let (tx, _) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
+        let res: Result<Vec<String>, String> = Decodable::decode(&mut dec)
+                                               .map_err(|e| format!("{}", e));
+        assert_eq!(res, Err("<inline text>:1:1: Decode error at [0]: \
+                             Expected sequence, got string".to_string()));
     }
 
     #[test]
