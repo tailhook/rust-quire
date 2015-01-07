@@ -233,10 +233,14 @@ impl Validator for Directory {
 pub struct Structure<'a> {
     pub descr: Option<String>,
     pub members: Vec<(String, Box<Validator + 'a>)>,
+    pub optional: bool,
 }
 
 impl<'a> Validator for Structure<'a> {
     fn default(&self, pos: Pos) -> Option<A::Ast> {
+        if self.optional {
+            return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
+        }
         let mut map = TreeMap::new();
         for &(ref k, ref validator) in self.members.iter() {
             match validator.default(pos.clone()) {
@@ -812,6 +816,7 @@ mod test {
         Beta,
         Gamma(int),
         Delta(TestStruct),
+        Epsilon(Option<TestStruct>),
     }
 
     fn parse_enum(body: &str) -> TestEnum {
@@ -829,6 +834,16 @@ mod test {
                         .. Default::default() } as Box<Validator>),
                     ("strkey".to_string(), box Scalar {
                         default: Some("default_value".to_string()),
+                        .. Default::default() } as Box<Validator>),
+                    ), .. Default::default()} as Box<Validator>),
+                ("Epsilon".to_string(), box Structure {
+                    optional: true,
+                    members: vec!(
+                    ("intkey".to_string(), box Numeric {
+                        default: Some(457u),
+                        .. Default::default() } as Box<Validator>),
+                    ("strkey".to_string(), box Scalar {
+                        default: Some("epsilon".to_string()),
                         .. Default::default() } as Box<Validator>),
                     ), .. Default::default()} as Box<Validator>),
             ), .. Default::default()
@@ -885,6 +900,30 @@ mod test {
             strkey: "default_value".to_string(),
             }));
     }
+
+    #[test]
+    fn test_enum_opt_struct() {
+        assert_eq!(parse_enum("!Epsilon\nintkey: 457\nstrkey: a"),
+            Epsilon(Some(TestStruct {
+                intkey: 457,
+                strkey: "a".to_string(),
+            })));
+    }
+
+    #[test]
+    fn test_enum_opt_struct_2() {
+        assert_eq!(parse_enum("!Epsilon"), Epsilon(None));
+    }
+
+    #[test]
+    fn test_enum_opt_struct_3() {
+        assert_eq!(parse_enum("!Epsilon {}"),
+            Epsilon(Some(TestStruct {
+                intkey: 457,
+                strkey: "epsilon".to_string(),
+            })));
+    }
+
 
     #[deriving(Clone, PartialEq, Eq, Decodable)]
     struct TestPath {
