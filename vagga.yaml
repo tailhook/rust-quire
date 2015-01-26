@@ -1,0 +1,19 @@
+containers:
+
+  build:
+    setup:
+    - !Ubuntu trusty
+    - !Install [make, gcc]
+    - !TarInstall
+      url: http://static.rust-lang.org/dist/rust-1.0.0-alpha-x86_64-unknown-linux-gnu.tar.gz
+      script: ./install.sh --prefix=/usr
+
+commands:
+
+  make: !Command
+    container: build
+    run: [make]
+
+  test: !Command
+    container: build
+    run: [make, test]

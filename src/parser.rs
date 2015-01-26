@@ -1,19 +1,23 @@
 use std::iter::Peekable;
 use std::str::Chars;
 use std::rc::Rc;
-use std::fmt::{Show, Formatter, FormatError};
-
-use collections::treemap::TreeMap;
+use std::fmt::String as Show;
+use std::fmt::Error as FormatError;
+use std::fmt::{Formatter};
+use std::cmp::{Ordering};
+use std::cmp::Ordering::{Less, Equal, Greater};
+use std::collections::BTreeMap;
 
 use super::tokenizer::{Token, Pos};
 use super::errors::Error;
 use super::tokenizer::tokenize;
-use super::tokenizer as T;
+use super::tokenizer::TokenType as T;
+use self::Node::*;
 
-type Aliases<'x> = TreeMap<&'x str, &'x Node<'x>>;
+type Aliases<'x> = BTreeMap<&'x str, &'x Node<'x>>;
 
 pub struct TokenIter<'a> {
-    index: uint,
+    index: usize,
     tokens: &'a[Token<'a>],
     eof_token: &'a Token<'a>,
 }
@@ -28,7 +32,7 @@ impl<'a> TokenIter<'a> {
             eof_token: last,
         };
     }
-    fn peek(&mut self, index: uint) -> &'a Token<'a> {
+    fn peek(&mut self, index: usize) -> &'a Token<'a> {
         let mut num = index;
         for idx in range(self.index, self.tokens.len()) {
             let tok = self.tokens.get(idx).unwrap();
@@ -63,7 +67,7 @@ impl<'a> TokenIter<'a> {
 }
 
 fn process_newline<'x>(iter: &mut Peekable<char, Chars<'x>>, res: &mut String,
-    cut_limit: uint)
+    cut_limit: usize)
 {
     while res.len() > cut_limit {
         match res.pop() {
@@ -135,10 +139,10 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                             Some('"') => res.push('"'),
                             Some('/') => res.push('/'),
                             Some('\\') => res.push('\\'),
-                            Some('N') => res.push('\x85'),
-                            Some('_') => res.push('\xa0'),
-                            Some('L') => res.push('\u2028'),
-                            Some('P') => res.push('\u2029'),
+                            Some('N') => res.push('\u{85}'),
+                            Some('_') => res.push('\u{a0}'),
+                            Some('L') => res.push('\u{2028}'),
+                            Some('P') => res.push('\u{2029}'),
                             Some('x') => {
                                 unimplemented!();
                             },
@@ -196,7 +200,7 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                 let mut indent = 0;
                 for line in lines {
                     if indent == 0 {
-                        let trimmed = line.trim_left_chars(' ');
+                        let trimmed = line.trim_left_matches(' ');
                         indent = line.len() - trimmed.len();
                     }
                     res.push_str(line.slice(indent, line.len()));
@@ -219,12 +223,12 @@ pub struct Directive<'a>(&'a Token<'a>);
 pub struct Document<'a> {
     pub directives: Vec<Directive<'a>>,
     pub root: Node<'a>,
-    pub aliases: TreeMap<&'a str, &'a Node<'a>>,
+    pub aliases: BTreeMap<&'a str, &'a Node<'a>>,
 }
 
 pub enum Node<'a> {
     Map(Option<&'a str>, Option<&'a str>,
-        TreeMap<Node<'a>, Node<'a>>, &'a[Token<'a>]),
+        BTreeMap<Node<'a>, Node<'a>>, &'a[Token<'a>]),
     List(Option<&'a str>, Option<&'a str>, Vec<Node<'a>>, &'a[Token<'a>]),
     Scalar(Option<&'a str>, Option<&'a str>, String, &'a Token<'a>),
     // Explicit null is a Scalar at this state of parsing
@@ -232,22 +236,26 @@ pub enum Node<'a> {
     Alias(&'a str, &'a Token<'a>),
 }
 
-impl<'a> PartialOrd for Node<'a> {
-    fn partial_cmp(&self, other: &Node) -> Option<Ordering> {
-        return Some(self.cmp(other));
+fn _compare(a: &Node, b: &Node) -> Ordering {
+    match (a, b) {
+        (&Scalar(_, _, ref a, _), &Scalar(_, _, ref b, _))
+        => a.cmp(b),
+        (&ImplicitNull(_, _, _), &Scalar(_, _, _, _)) => Less,
+        (&Scalar(_, _, _, _), &ImplicitNull(_, _, _)) => Greater,
+        (&ImplicitNull(_, _, _), &ImplicitNull(_, _, _)) => Equal,
+        _ => unimplemented!(),
     }
 }
 
 impl<'a> Ord for Node<'a> {
     fn cmp(&self, other: &Node) -> Ordering {
-        return match (self, other) {
-            (&Scalar(_, _, ref a, _), &Scalar(_, _, ref b, _))
-            => a.cmp(b),
-            (&ImplicitNull(_, _, _), &Scalar(_, _, _, _)) => Less,
-            (&Scalar(_, _, _, _), &ImplicitNull(_, _, _)) => Greater,
-            (&ImplicitNull(_, _, _), &ImplicitNull(_, _, _)) => Equal,
-            _ => unimplemented!(),
-        }
+        return _compare(self, other);
+    }
+}
+
+impl<'a> PartialOrd for Node<'a> {
+    fn partial_cmp<'x>(&self, other: &Node<'x>) -> Option<Ordering> {
+        return Some(_compare(self, other));
     }
 }
 
@@ -315,7 +323,7 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
     -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
-    let mut children = TreeMap::new();
+    let mut children = BTreeMap::new();
     loop {
         // TODO(tailhook) implement complex keys
         // TODO(tailhook) implement aliases and anchors
@@ -326,7 +334,7 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
             T::PlainString | T::SingleString | T::DoubleString
             => Scalar(None, None, plain_value(ktoken), ktoken),
             _ => return Err(Error::parse_error(&ktoken.start,
-                format!("Expected mapping key or unindent, got {}",
+                format!("Expected mapping key or unindent, got {:?}",
                         ktoken.kind))),
         };
         tokiter.next().unwrap();
@@ -349,7 +357,7 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
                     Ok(value) => value,
                     Err(err) => return Err(err),
                 };
-                if !children.insert(key, value) {
+                if children.insert(key, value).is_some() {
                     return Err(Error::parse_error(&ktoken.start,
                         "Duplicate key".to_string()));
                 }
@@ -365,14 +373,14 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
                     Ok(value) => value,
                     Err(err) => return Err(err),
                 };
-                if !children.insert(key, value) {
+                if children.insert(key, value).is_some() {
                     return Err(Error::parse_error(&ktoken.start,
                         "Duplicate key".to_string()));
                 }
             }
             _ => {
                 let value = ImplicitNull(None, None, delim.end.clone());
-                if !children.insert(key, value) {
+                if children.insert(key, value).is_some() {
                     return Err(Error::parse_error(&ktoken.start,
                         "Duplicate key".to_string()));
                 }
@@ -423,7 +431,7 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
     -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
-    let mut children = TreeMap::new();
+    let mut children = BTreeMap::new();
     tokiter.next();
     loop {
         // TODO(tailhook) implement complex keys
@@ -442,8 +450,8 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
         match tok.kind {
             T::FlowMapEnd => {
                 // Value is null
-                if !children.insert(key,
-                    ImplicitNull(None, None, tok.start.clone())) {
+                if children.insert(key,
+                    ImplicitNull(None, None, tok.start.clone())).is_some() {
                     return Err(Error::parse_error(&ktoken.start,
                         "Duplicate key".to_string()));
                 }
@@ -451,8 +459,8 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
             }
             T::FlowEntry => {
                 // Value is null
-                if !children.insert(key,
-                    ImplicitNull(None, None, tok.start.clone())) {
+                if children.insert(key,
+                    ImplicitNull(None, None, tok.start.clone())).is_some() {
                     return Err(Error::parse_error(&ktoken.start,
                         "Duplicate key".to_string()));
                 }
@@ -467,7 +475,7 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
             Ok(value) => value,
             Err(err) => return Err(err),
         };
-        if !children.insert(key, value) {
+        if children.insert(key, value).is_some() {
             return Err(Error::parse_error(&ktoken.start,
                 "Duplicate key".to_string()));
         }
@@ -567,14 +575,14 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             parse_flow_map(tokiter, aliases, tag)
         }
         _ => Err(Error::parse_error(&tok.start,
-            format!("Expected scalar, sequence or mapping, got {}",
+            format!("Expected scalar, sequence or mapping, got {:?}",
                     tok.kind))),
     };
     if result.is_ok() && indent {
         let end = tokiter.peek(0);
         if end.kind != T::Unindent {
             return Err(Error::parse_error(&end.start,
-                format!("Expected unindent, got {}", end.kind)));
+                format!("Expected unindent, got {:?}", end.kind)));
         } else {
             tokiter.next();
         }
@@ -610,7 +618,7 @@ fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
             T::DocumentEnd => {}
             _ => {
                 return Err(Error::parse_error(&tok.start,
-                    format!("Expected document end, got {}", tok.kind)));
+                    format!("Expected document end, got {:?}", tok.kind)));
             }
         }
     }
@@ -621,7 +629,7 @@ fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 pub fn parse_tokens<'x>(tokens: &'x Vec<Token<'x>>)
     -> Result<Document<'x>, Error>
 {
-    let mut aliases = TreeMap::new();
+    let mut aliases = BTreeMap::new();
     let mut iter = TokenIter::new(tokens);
     let (directives, root) = match parse_root(&mut iter, &mut aliases) {
         Ok((directives, root)) => (directives, root),
@@ -634,8 +642,9 @@ pub fn parse_tokens<'x>(tokens: &'x Vec<Token<'x>>)
         });
 }
 
-pub fn parse<'x, T>(name: Rc<String>, data: &str, process: |Document| -> T)
+pub fn parse<'x, T, F>(name: Rc<String>, data: &str, process: F)
     -> Result<T, Error>
+    where F: FnOnce(Document) -> T
 {
     let tokens = match tokenize(name, data) {
         Ok(lst) => lst,

@@ -1,16 +1,19 @@
 use std::vec::Vec;
-use std::str::CharOffsets;
-use std::iter::Peekable;
+use std::str::CharIndices;
 use std::rc::Rc;
-use std::fmt::{Show, Formatter, FormatError};
+use std::fmt::String as Show;
+use std::fmt::Error as FormatError;
+use std::fmt::{Formatter};
+use std::clone::Clone;
 
 use super::chars::is_whitespace;
 use super::chars::is_printable;
 use super::chars::is_tag_char;
 use super::chars::is_flow_indicator;
 use super::errors::Error;
+use self::TokenType::*;
 
-#[deriving(PartialEq, Show)]
+#[derive(PartialEq, Show, Copy)]
 pub enum TokenType {
     Eof,
     DocumentStart,
@@ -39,14 +42,14 @@ pub enum TokenType {
 }
 
 
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct Pos {
     pub filename: Rc<String>,
-    pub indent: uint,
-    pub line: uint,
+    pub indent: usize,
+    pub line: usize,
     pub line_start: bool,
-    pub line_offset: uint,
-    pub offset: uint,
+    pub line_offset: usize,
+    pub offset: usize,
 }
 
 impl Show for Pos {
@@ -70,7 +73,8 @@ pub struct Token<'tok> {
 
 struct YamlIter<'a> {
     buf: &'a str,
-    chars: Peekable<(uint, char), CharOffsets<'a>>,
+    chars: CharIndices<'a>,
+    next_value: Option<(usize, char)>,
     position: Pos,
     value: Option<char>,
     error: Option<Error>,
@@ -81,7 +85,8 @@ impl<'a> Clone for YamlIter<'a> {
     fn clone(&self) -> YamlIter<'a> {
         return YamlIter {
             buf: self.buf,
-            chars: self.chars,
+            next_value: self.next_value,
+            chars: self.chars.clone(),
             position: self.position.clone(),
             value: self.value,
             error: self.error.clone(),
@@ -94,16 +99,18 @@ struct Tokenizer<'a, 'b: 'a> {
     data: &'b str,
     iter: YamlIter<'b>,
     error: Option<Error>,
-    indent_levels: Vec<uint>,
-    flow_level: uint,
+    indent_levels: Vec<usize>,
+    flow_level: usize,
     doc_start: bool,
 }
 
 impl<'a> YamlIter<'a> {
     fn new<'x>(filename: Rc<String>, buf: &'x str) -> YamlIter<'x> {
+        let mut iter = buf.char_indices();
         return YamlIter {
             buf: buf,
-            chars: buf.char_indices().peekable(),
+            next_value: iter.next(),
+            chars: iter,
             position: Pos {
                 filename: filename,
                 indent: 0,
@@ -118,19 +125,21 @@ impl<'a> YamlIter<'a> {
     }
 }
 
-impl<'a> Iterator<(Pos, char)> for YamlIter<'a> {
+impl<'a> Iterator for YamlIter<'a> {
+    type Item = (Pos, char);
     fn next(&mut self) -> Option<(Pos, char)> {
         let pos = self.position.clone();  // Current position is returned one
         let npos = &mut self.position;  // Store new position in self
-        match self.chars.next() {
+        match self.next_value {
             None => {
                 self.value = None;
                 return None;
             }
             Some((_, value)) => {
                 self.value = Some(value);
-                npos.offset = match self.chars.peek() {
-                    Some(&(off, _)) => off,
+                self.next_value = self.chars.next();
+                npos.offset = match self.next_value {
+                    Some((off, _)) => off,
                     None => self.buf.len(),
                 };
                 match value {
@@ -186,8 +195,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
     fn skip_whitespace(&self) -> YamlIter<'b> {
         let mut iter = self.iter.clone();
         loop {
-            match iter.chars.peek() {
-                Some(&(_, ch)) => match ch {
+            match iter.next_value {
+                Some((_, ch)) => match ch {
                     ' ' | '\n' | '\r' => {}
                     _ => break,
                 },
@@ -207,8 +216,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             minindent += 1;
         }
         loop {
-            match self.iter.chars.peek() {
-                Some(&(_, ch)) => match ch {
+            match self.iter.next_value {
+                Some((_, ch)) => match ch {
                     '[' | ']' | '{' | '}' | ',' if self.flow_level > 0 => {
                         let pos = self.iter.position.clone();
                         self.add_token(PlainString, start, pos);
@@ -219,7 +228,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         let pos = self.iter.position.clone();
                         let mut niter = self.iter.clone();
                         niter.next();
-                        match niter.chars.peek().map(|&(_, x)| x) {
+                        match niter.next_value.map(|(_, x)| x) {
                             None | Some(' ') | Some('\t')
                             | Some('\n') | Some('\r') => {
                                 self.add_token(PlainString, start, pos);
@@ -243,7 +252,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         if pos.line == niter.position.line ||
                                 niter.position.indent >= minindent
                         {
-                            match self.iter.chars.peek().map(|&(_, x)| x) {
+                            match self.iter.next_value.map(|(_, x)| x) {
                                 Some('[') | Some(']') | Some('{') | Some('}')
                                 | Some(',') if self.flow_level > 0 => {
                                     self.add_token(PlainString,
@@ -432,12 +441,12 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 Some((start, ':')) => { // key, plainstring
                     // TODO(tailhook) in flow context space is not required
                     if self.flow_level > 0 {
-                        match self.iter.chars.peek() {
-                            Some(&(_, ' ')) | Some(&(_, '\t'))
-                            | Some(&(_, '\r')) | Some(&(_, '\n'))
-                            | Some(&(_, '{')) | Some(&(_, '}'))
-                            | Some(&(_, '[')) | Some(&(_, ']'))
-                            | Some(&(_, ',')) => {
+                        match self.iter.next_value {
+                            Some((_, ' ')) | Some((_, '\t'))
+                            | Some((_, '\r')) | Some((_, '\n'))
+                            | Some((_, '{')) | Some((_, '}'))
+                            | Some((_, '[')) | Some((_, ']'))
+                            | Some((_, ',')) => {
                                 let end = self.iter.position.clone();
                                 self.add_token(MappingValue, start, end);
                             }
@@ -512,8 +521,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     let end = self.iter.position.clone();
                     self.add_token(DoubleString, start, end.clone());
                     // This is YAML 1.2 hack to be superset of json
-                    match self.iter.chars.peek() {
-                        Some(&(_, ':')) => {
+                    match self.iter.next_value {
+                        Some((_, ':')) => {
                             self.iter.next();
                             let mvalend = self.iter.position.clone();
                             self.add_token(MappingValue, end, mvalend);
@@ -546,8 +555,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 }
                 Some((start, '!')) => {
                     loop {
-                        match self.iter.chars.peek() {
-                            Some(&(_, ch)) if is_whitespace(ch) => break,
+                        match self.iter.next_value {
+                            Some((_, ch)) if is_whitespace(ch) => break,
                             None => break,
                             _ => {}
                         }
@@ -563,8 +572,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 }
                 Some((start, '&')) => {
                     loop {
-                        match self.iter.chars.peek() {
-                            Some(&(_, ch)) if is_whitespace(ch) => break,
+                        match self.iter.next_value {
+                            Some((_, ch)) if is_whitespace(ch) => break,
                             None => break,
                             _ => {}
                         }
@@ -586,8 +595,8 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 }
                 Some((start, '*')) => {
                     loop {
-                        match self.iter.chars.peek() {
-                            Some(&(_, ch)) if is_whitespace(ch) => break,
+                        match self.iter.next_value {
+                            Some((_, ch)) if is_whitespace(ch) => break,
                             None => break,
                             _ => {}
                         }
@@ -702,7 +711,7 @@ fn simple_tokens<'x>(res: Result<Vec<Token<'x>>, Error>)
             }).collect();
         }
         Err(value) => {
-            fail!("Error: {}", value);
+            panic!("Error: {}", value);
         }
     }
 }

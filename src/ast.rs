@@ -1,14 +1,21 @@
+use std::fmt::String as Show;
+use std::fmt::Error as FormatError;
+use std::fmt::{Formatter};
 use std::default::Default;
-use std::collections::TreeMap;
-use std::fmt::{Show, Formatter, FormatError};
+use std::collections::BTreeMap;
 
 use super::tokenizer::Pos;
 use super::errors::Error;
-use super::parser as P;
-use super::tokenizer as T;
+use super::parser::Node as P;
+use super::parser::{Directive, Node, Document};
+use super::tokenizer::TokenType as T;
+use self::Ast::*;
+use self::NullKind::*;
+use self::ScalarKind::*;
+use self::Tag::*;
 
 
-#[deriving(Clone)]
+#[derive(Clone, Copy)]
 pub struct Options {
     pub merges: bool,
     pub aliases: bool,
@@ -35,7 +42,7 @@ pub enum NullKind {
     Explicit,
 }
 
-#[deriving(Show)]
+#[derive(Show)]
 pub enum Tag {
     NonSpecific,
     LocalTag(String),
@@ -52,7 +59,7 @@ impl Tag {
 }
 
 pub enum Ast {
-    Map(Pos, Tag, TreeMap<String, Ast>),
+    Map(Pos, Tag, BTreeMap<String, Ast>),
     List(Pos, Tag, Vec<Ast>),
     Scalar(Pos, Tag, ScalarKind, String),
     Null(Pos, Tag, NullKind),
@@ -100,12 +107,12 @@ impl Ast {
 struct Context<'a> {
     options: Options,
     warnings: Vec<Error>,
-    directives: Vec<P::Directive<'a>>,
-    aliases: TreeMap<&'a str, &'a P::Node<'a>>,
+    directives: Vec<Directive<'a>>,
+    aliases: BTreeMap<&'a str, &'a Node<'a>>,
 }
 
 
-fn pos_for_node<'x>(node: &P::Node<'x>) -> Pos {
+fn pos_for_node<'x>(node: &Node<'x>) -> Pos {
     match *node {
         P::Map(_, _, _, ref tokens) => tokens[0].start.clone(),
         P::List(_, _, _, ref tokens) => tokens[0].start.clone(),
@@ -116,12 +123,12 @@ fn pos_for_node<'x>(node: &P::Node<'x>) -> Pos {
 }
 
 impl<'a> Context<'a> {
-    fn process(&mut self, node: &P::Node<'a>) -> Ast {
+    fn process(&mut self, node: &Node<'a>) -> Ast {
         match *node {
             P::Map(ref origtag, _, _, ref tokens) => {
                 let pos = tokens[0].start.clone();
                 let tag = self.string_to_tag(&pos, origtag);
-                let mut mapping = TreeMap::new();
+                let mut mapping = BTreeMap::new();
                 self.merge_mapping(&mut mapping, node);
 
                 return Map(pos, tag, mapping);
@@ -139,17 +146,17 @@ impl<'a> Context<'a> {
                 let tag = self.string_to_tag(&pos, tag);
                 if tok.kind == T::PlainString {
                     if val.as_slice() == "~" || val.as_slice() == "null" {
-                        return Null(tok.start.clone(), tag, Explicit);
+                        return Ast::Null(tok.start.clone(), tag, Explicit);
                     } else {
-                        return Scalar(pos, tag, Plain, val.clone());
+                        return Ast::Scalar(pos, tag, Plain, val.clone());
                     }
                 } else {
-                    return Scalar(pos, tag, Quoted, val.clone());
+                    return Ast::Scalar(pos, tag, Quoted, val.clone());
                 }
             }
             P::ImplicitNull(ref tag, _, ref pos) => {
                 let tag = self.string_to_tag(pos, tag);
-                return Null(pos.clone(), tag, Implicit);
+                return Ast::Null(pos.clone(), tag, Implicit);
             }
             P::Alias(_, _) => {
                 unimplemented!();
@@ -157,8 +164,8 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn merge_mapping(&mut self, target: &mut TreeMap<String, Ast>,
-        node: &P::Node<'a>)
+    fn merge_mapping(&mut self, target: &mut BTreeMap<String, Ast>,
+        node: &Node<'a>)
     {
         match *node {
             P::Map(_, _, ref children, _) => {
@@ -212,7 +219,7 @@ impl<'a> Context<'a> {
     }
 
     fn merge_sequence(&mut self, target: &mut Vec<Ast>,
-        node: &P::Node<'a>)
+        node: &Node<'a>)
     {
         match *node {
             P::List(_, _, ref children, _) => {
@@ -274,7 +281,7 @@ impl<'a> Context<'a> {
 }
 
 
-pub fn process(opt: Options, doc: P::Document)
+pub fn process(opt: Options, doc: Document)
     -> (Ast, Vec<Error>)
 {
     let mut ctx = Context {

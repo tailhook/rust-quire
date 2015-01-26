@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use std::io::stderr;
 use std::io::fs::File;
-use std::comm::channel;
+use std::sync::mpsc::channel;
 use serialize::{Decodable};
 
 use super::ast;
@@ -11,7 +11,7 @@ use super::decode::YamlDecoder;
 use super::validate::Validator;
 
 
-pub fn parse_config<T: Decodable<YamlDecoder, Error>>(
+pub fn parse_config<T: Decodable>(
     filename: &Path, validator: &Validator, options: ast::Options)
     -> Result<T, String>
 {
@@ -38,7 +38,7 @@ pub fn parse_config<T: Decodable<YamlDecoder, Error>>(
     if options.print_warnings {
         let mut err = stderr();
         for warning in warnings.iter() {
-            (writeln!(err, "config: {}", warning)).ok();
+            (writeln!(&mut err, "config: {:?}", warning)).ok();
         }
     }
     match res {

@@ -1,31 +1,40 @@
+use std::ops::Deref;
+use std::any::Any;
 use std::mem::swap;
-use std::any::{Any, AnyMutRefExt};
-use std::fmt::{Show, Formatter, FormatError};
+use std::fmt::Show;
+use std::fmt::Error as FormatError;
+use std::fmt::{Formatter};
+use std::str::FromStr;
 use std::default::Default;
-use std::from_str::FromStr;
-use std::intrinsics::TypeId;
+use std::sync::mpsc::Sender;
+use std::intrinsics::get_tydesc;
 use serialize::{Decoder, Decodable};
-use serialize::json::ToJson;
-use serialize::json as J;
+use serialize::json::{Json, ToJson, from_str};
+use serialize::json::Json as J;
 
-use super::ast as A;
+use super::ast::Ast as A;
+use super::ast::Tag as T;
+use super::ast::NullKind;
+use super::ast::Ast;
 use super::errors::Error;
 use super::tokenizer::Pos;
+use self::ParserState::*;
 
 
 pub type DecodeResult<T> = Result<T, Error>;
 
-struct AnyJson(J::Json);
+struct AnyJson(Json);
 
-impl Deref<J::Json> for AnyJson {
-    fn deref<'x>(&'x self) -> &'x J::Json {
+impl Deref for AnyJson {
+    type Target = Json;
+    fn deref<'x>(&'x self) -> &'x Json {
         let AnyJson(ref val) = *self;
         return val;
     }
 }
 
-impl<D:Decoder<E> + 'static, E> Decodable<D, E> for AnyJson {
-    fn decode(dec: &mut D) -> Result<AnyJson, E> {
+impl Decodable for AnyJson {
+    fn decode<D: Decoder<Error=Error> + 'static>(dec: &mut D) -> Result<AnyJson, Error> {
         let dec: &mut YamlDecoder = (dec as &mut Any).downcast_mut().unwrap();
         match dec.state {
             Node(ref node) => {
@@ -54,9 +63,9 @@ impl Show for AnyJson {
 }
 
 enum ParserState {
-    Node(A::Ast),
-    Map(Vec<(String, A::Ast)>),  // used only in read_map_elt_key/elt_val
-    Seq(Vec<A::Ast>),  // used only in read_seq_elt
+    Node(Ast),
+    Map(Vec<(String, Ast)>),  // used only in read_map_elt_key/elt_val
+    Seq(Vec<Ast>),  // used only in read_seq_elt
     ByteSeq(Pos, Vec<u8>),  // used for decoding Path
     Byte(Pos, u8),     // used for decoding Path
     Key(Pos, String),
@@ -70,7 +79,7 @@ pub struct YamlDecoder {
 
 impl YamlDecoder {
 
-    pub fn new(ast: A::Ast, sender: Sender<Error>)
+    pub fn new(ast: Ast, sender: Sender<Error>)
         -> YamlDecoder
     {
         return YamlDecoder {
@@ -87,8 +96,8 @@ impl YamlDecoder {
                     Some(x) => Ok(x),
                     None => {
                         return Err(Error::decode_error(pos, &self.path,
-                            format!("Can't parse value of type: {}",
-                                    TypeId::of::<T>())));
+                            format!("Can't parse value of type {}",
+                                unsafe { (*get_tydesc::<T>()).name })));
                     }
                 }
             }
@@ -110,7 +119,8 @@ impl YamlDecoder {
 }
 
 
-impl Decoder<Error> for YamlDecoder {
+impl Decoder for YamlDecoder {
+    type Error = Error;
     fn read_nil(&mut self) -> DecodeResult<()> {
         match self.state {
             Node(A::Null(_, _, _)) => return Ok(()),
@@ -141,7 +151,7 @@ impl Decoder<Error> for YamlDecoder {
         }
         Ok(try!(self.from_str()))
     }
-    fn read_uint(&mut self) -> DecodeResult<uint> {
+    fn read_uint(&mut self) -> DecodeResult<usize> {
         Ok(try!(self.from_str()))
     }
 
@@ -157,7 +167,7 @@ impl Decoder<Error> for YamlDecoder {
     fn read_i8 (&mut self) -> DecodeResult<i8 > {
         Ok(try!(self.from_str()))
     }
-    fn read_int(&mut self) -> DecodeResult<int> {
+    fn read_int(&mut self) -> DecodeResult<isize> {
         Ok(try!(self.from_str()))
     }
 
@@ -183,22 +193,24 @@ impl Decoder<Error> for YamlDecoder {
         Ok(try!(self.from_str()))
     }
 
-    fn read_enum<T>(&mut self, _name: &str,
-        f: |&mut YamlDecoder| -> DecodeResult<T>) -> DecodeResult<T>
+    fn read_enum<T, F>(&mut self, _name: &str,
+        f: F) -> DecodeResult<T>
+        where F: FnOnce(&mut Self) -> DecodeResult<T>
     {
         return f(self);
     }
 
-    fn read_enum_variant<T>(&mut self,
-        names: &[&str], f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+    fn read_enum_variant<T, F>(&mut self,
+        names: &[&str], mut f: F)
         -> DecodeResult<T>
+        where F: FnMut(&mut Self, usize) -> DecodeResult<T>
     {
         let mut idx = None;
         match self.state {
             Node(ref node) if node.tag().is_specific() => {
                 match node.tag() {
-                    &A::NonSpecific => unreachable!(),
-                    &A::LocalTag(ref tag) => {
+                    &T::NonSpecific => unreachable!(),
+                    &T::LocalTag(ref tag) => {
                         for (i, name) in names.iter().enumerate() {
                             if *name == tag.as_slice() {
                                 idx = Some(i);
@@ -207,10 +219,10 @@ impl Decoder<Error> for YamlDecoder {
                         if idx.is_none() {
                             return Err(Error::decode_error(&node.pos(),
                                 &self.path,
-                                format!("{} is not one of {}", tag, names)));
+                                format!("{} is not one of {:?}", tag, names)));
                         }
                     }
-                    &A::GlobalTag(_) => unimplemented!(),
+                    &T::GlobalTag(_) => unimplemented!(),
                 }
             }
             Node(A::Scalar(ref pos, _, _, ref value)) => {
@@ -223,7 +235,7 @@ impl Decoder<Error> for YamlDecoder {
                 }
                 if idx.is_none() {
                     return Err(Error::decode_error(pos, &self.path,
-                        format!("{} is not one of {}", value, names)));
+                        format!("{} is not one of {:?}", value, names)));
                 }
             }
             Node(ref node) => {
@@ -235,9 +247,9 @@ impl Decoder<Error> for YamlDecoder {
         return f(self, idx.unwrap());
     }
 
-    fn read_enum_variant_arg<T>(&mut self, idx: uint,
-        f: |&mut YamlDecoder| -> DecodeResult<T>)
+    fn read_enum_variant_arg<T, F>(&mut self, idx: usize, mut f: F)
         -> DecodeResult<T>
+        where F: FnOnce(&mut Self) -> DecodeResult<T>
     {
         if idx == 0 {
             return f(self);
@@ -245,30 +257,29 @@ impl Decoder<Error> for YamlDecoder {
         unimplemented!();
     }
 
-    fn read_enum_struct_variant<T>(&mut self,
-        names: &[&str], f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+    fn read_enum_struct_variant<T, F>(&mut self, names: &[&str], f: F)
         -> DecodeResult<T>
     {
         unimplemented!();
     }
 
 
-    fn read_enum_struct_variant_field<T>(&mut self,
-        _name: &str, _idx: uint, _f: |&mut YamlDecoder| -> DecodeResult<T>)
+    fn read_enum_struct_variant_field<T, F>(&mut self,
+        _name: &str, _idx: usize, _f: F)
         -> DecodeResult<T>
     {
         unimplemented!();
     }
 
-    fn read_struct<T>(&mut self,
-        _name: &str, _len: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
+    fn read_struct<T, F>(&mut self, _name: &str, _len: usize, f: F)
         -> DecodeResult<T>
+        where F: FnOnce(&mut Self) -> DecodeResult<T>
     {
         match self.state {
             Node(A::Map(_, _, _)) => {}
             Node(A::Null(ref pos, _, _)) => {
                 return f(&mut YamlDecoder {
-                    state: Node(A::Map(pos.clone(), A::NonSpecific,
+                    state: Node(A::Map(pos.clone(), T::NonSpecific,
                         Default::default())),
                     sender: self.sender.clone(),
                     path: self.path.clone(),
@@ -285,16 +296,17 @@ impl Decoder<Error> for YamlDecoder {
         return f(self);
     }
 
-    fn read_struct_field<T>(&mut self,
-        name: &str, _idx: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
+    fn read_struct_field<T, F>(&mut self,
+        name: &str, _idx: usize, f: F)
         -> DecodeResult<T>
+        where F: FnOnce(&mut Self) -> DecodeResult<T>
     {
         if let Node(A::Map(ref pos, _, ref mut children)) = self.state {
-            match children.pop(&name.to_string()) {
+            match children.remove(&name.to_string()) {
                 None => {
                     return f(&mut YamlDecoder {
-                        state: Node(A::Null(pos.clone(), A::NonSpecific,
-                            A::Implicit)),
+                        state: Node(A::Null(pos.clone(), T::NonSpecific,
+                            NullKind::Implicit)),
                         sender: self.sender.clone(),
                         path: format!("{}.{}", self.path, name),
                     });
@@ -311,37 +323,33 @@ impl Decoder<Error> for YamlDecoder {
         unreachable!();
     }
 
-    fn read_tuple<T>(&mut self,
-        _f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+    fn read_tuple<T, F>(&mut self, _len: usize, _f: F)
         -> DecodeResult<T>
     {
         unimplemented!();
     }
 
-    fn read_tuple_arg<T>(&mut self,
-        idx: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
+    fn read_tuple_arg<T, F>(&mut self, _idx: usize, _f: F)
         -> DecodeResult<T>
     {
         unimplemented!();
     }
 
-    fn read_tuple_struct<T>(&mut self,
-        name: &str, f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+    fn read_tuple_struct<T, F>(&mut self, _name: &str, _len: usize, _f: F)
         -> DecodeResult<T>
     {
         unimplemented!();
     }
 
-    fn read_tuple_struct_arg<T>(&mut self,
-        idx: uint, f: |&mut YamlDecoder| -> DecodeResult<T>)
+    fn read_tuple_struct_arg<T, F>(&mut self, _idx: usize, _f: F)
         -> DecodeResult<T>
     {
         unimplemented!();
     }
 
-    fn read_option<T>(&mut self,
-        f: |&mut YamlDecoder, bool| -> DecodeResult<T>)
+    fn read_option<T, F>(&mut self, f: F)
         -> DecodeResult<T>
+        where F: FnOnce(&mut Self, bool) -> Result<T, Error>
     {
         match self.state {
             Node(A::Null(_, _, _)) => f(self, false),
@@ -352,9 +360,9 @@ impl Decoder<Error> for YamlDecoder {
         }
     }
 
-    fn read_seq<T>(&mut self,
-        f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+    fn read_seq<T, F>(&mut self, f: F)
         -> DecodeResult<T>
+        where F: FnOnce(&mut Self, usize) -> Result<T, Error>
     {
         let items = match self.state {
             Node(A::List(_, _, ref mut children)) => {
@@ -394,13 +402,13 @@ impl Decoder<Error> for YamlDecoder {
         }, len);
     }
 
-    fn read_seq_elt<T>(&mut self, idx: uint,
-        f: |&mut YamlDecoder| -> DecodeResult<T>)
+    fn read_seq_elt<T, F>(&mut self, idx: usize, f: F)
         -> DecodeResult<T>
+        where F: FnOnce(&mut Self) -> Result<T, Error>
     {
         match self.state {
             Seq(ref mut els) => {
-                let val = els.remove(0).unwrap();
+                let val = els.remove(0);
                 return f(&mut YamlDecoder {
                     state: Node(val),
                     sender: self.sender.clone(),
@@ -418,9 +426,9 @@ impl Decoder<Error> for YamlDecoder {
         }
     }
 
-    fn read_map<T>(&mut self,
-        f: |&mut YamlDecoder, uint| -> DecodeResult<T>)
+    fn read_map<T, F>(&mut self, f: F)
         -> DecodeResult<T>
+        where F: FnOnce(&mut Self, usize) -> Result<T, Error>
     {
         let items = match self.state {
             Node(A::Map(_, _, ref mut children)) => {
@@ -445,9 +453,9 @@ impl Decoder<Error> for YamlDecoder {
         }, len);
     }
 
-    fn read_map_elt_key<T>(&mut self, _idx: uint,
-        f: |&mut YamlDecoder| -> DecodeResult<T>)
+    fn read_map_elt_key<T, F>(&mut self, _idx: usize, f: F)
         -> DecodeResult<T>
+        where F: FnOnce(&mut Self) -> Result<T, Error>
     {
         if let Map(ref mut vec) = self.state {
             let (ref key, ref val) = (*vec)[0];
@@ -460,16 +468,16 @@ impl Decoder<Error> for YamlDecoder {
         unreachable!();
     }
 
-    fn read_map_elt_val<T>(&mut self, _idx: uint,
-        f: |&mut YamlDecoder| -> DecodeResult<T>)
+    fn read_map_elt_val<T, F>(&mut self, _idx: usize, f: F)
         -> DecodeResult<T>
+        where F: FnOnce(&mut Self) -> Result<T, Error>
     {
         if let Map(ref mut els) = self.state {
-            let (key, val) = els.remove(0).unwrap();
+            let (key, val) = els.remove(0);
             return f(&mut YamlDecoder {
                 state: Node(val),
                 sender: self.sender.clone(),
-                path: self.path.clone() + "." + key,
+                path: self.path.clone() + "." + key.as_slice(),
             });
         }
         unreachable!();
@@ -490,17 +498,21 @@ impl Decoder<Error> for YamlDecoder {
 mod test {
     use std::rc::Rc;
     use std::default::Default;
-    use std::collections::TreeMap;
+    use std::collections::BTreeMap;
+    use std::sync::mpsc::channel;
+    use serialize::{Decodable, Decoder};
+    use serialize::json::{from_str};
+    use serialize::json as J;
+
     use super::YamlDecoder;
     use super::super::parser::parse;
     use super::super::ast::process;
-    use serialize::{Decodable, Decoder};
     use super::AnyJson;
-    use serialize::json as J;
+    use self::TestEnum::*;
 
-    #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Show, PartialEq, Eq, Decodable)]
     struct TestStruct {
-        a: uint,
+        a: usize,
         b: String,
     }
 
@@ -559,19 +571,19 @@ mod test {
             |doc| { process(Default::default(), doc) }).unwrap();
         let mut warnings = vec!();
         let (tx, rx) = channel();
-        let val: TreeMap<String, int> = {
+        let val: BTreeMap<String, isize> = {
             let mut dec = YamlDecoder::new(ast, tx);
             Decodable::decode(&mut dec).unwrap()
         };
         warnings.extend(rx.iter());
-        let mut res =  TreeMap::new();
+        let mut res =  BTreeMap::new();
         res.insert("a".to_string(), 1);
         res.insert("b".to_string(), 2);
         assert_eq!(val, res);
         assert_eq!(warnings.len(), 0);
     }
 
-    #[deriving(Show, PartialEq, Eq, Decodable)]
+    #[derive(Show, PartialEq, Eq, Decodable)]
     struct TestJson {
         json: AnyJson,
     }
@@ -589,12 +601,12 @@ mod test {
         };
         warnings.extend(rx.iter());
         assert_eq!(val, TestJson {
-            json: AnyJson(J::from_str(r#"{"a": 1, "b": "test"}"#).unwrap()),
+            json: AnyJson(from_str(r#"{"a": 1, "b": "test"}"#).unwrap()),
             });
         assert_eq!(warnings.len(), 0);
     }
 
-    #[deriving(PartialEq, Eq, Decodable, Show)]
+    #[derive(PartialEq, Eq, Decodable, Show)]
     struct TestOption {
         path: Option<String>,
     }
@@ -648,7 +660,7 @@ mod test {
         assert_eq!(warnings.len(), 0);
     }
 
-    #[deriving(PartialEq, Eq, Decodable)]
+    #[derive(PartialEq, Eq, Decodable)]
     struct TestPath {
         path: Path,
     }
@@ -669,9 +681,9 @@ mod test {
         assert_eq!(warnings.len(), 0);
     }
 
-    #[deriving(PartialEq, Eq, Decodable)]
+    #[derive(PartialEq, Eq, Decodable)]
     struct TestPathMap {
-        paths: TreeMap<Path, int>,
+        paths: BTreeMap<Path, isize>,
     }
 
     #[test]
@@ -686,21 +698,21 @@ mod test {
             Decodable::decode(&mut dec).unwrap()
         };
         warnings.extend(rx.iter());
-        let tree: TreeMap<Path, int>;
+        let tree: BTreeMap<Path, isize>;
         tree = vec!((Path::new("test/dir"), 1)).into_iter().collect();
         assert!(val.paths == tree);
         assert_eq!(warnings.len(), 0);
     }
 
-    #[deriving(PartialEq, Eq, Decodable, Show)]
+    #[derive(PartialEq, Eq, Decodable, Show)]
     #[allow(non_camel_case_types)]
     enum TestEnum {
         Alpha,
         Beta,
         beta_gamma,
-        Gamma(int),
+        Gamma(isize),
         Delta(TestStruct),
-        Sigma(Vec<int>),
+        Sigma(Vec<isize>),
     }
 
     fn decode_enum(text: &str) -> TestEnum {

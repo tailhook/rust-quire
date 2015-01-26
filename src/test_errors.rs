@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use std::default::Default;
+use std::sync::mpsc::channel;
 use serialize::Decodable;
 
 use super::decode::YamlDecoder;
@@ -7,12 +8,12 @@ use super::ast::process;
 use super::parser::parse;
 
 
-#[deriving(Decodable, PartialEq, Eq, Show)]
+#[derive(Decodable, PartialEq, Eq, Show)]
 struct Struct1 {
     list: Vec<Struct2>,
 }
 
-#[deriving(Decodable, PartialEq, Eq, Show)]
+#[derive(Decodable, PartialEq, Eq, Show)]
 struct Struct2 {
     value: String,
 }
@@ -31,7 +32,7 @@ fn decode_struct(data: &str) -> Result<Struct1, String> {
     };
     warnings.extend(rx.iter());
     if warnings.len() > 0 {
-        return Err(format!("{}", warnings));
+        return Err(format!("{:?}", warnings));
     } else {
         return Ok(val);
     }

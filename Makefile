@@ -1,11 +1,7 @@
-LIBNAME := $(shell rustc --print-file-name src/lib.rs)
+all: libquire.rlib quire_tool
 
 
-all: quire-lib quire_tool
-
-quire-lib: $(LIBNAME)
-
-$(LIBNAME): src/lib.rs src/*.rs
+libquire.rlib: src/lib.rs src/*.rs
 	rustc -g -o $@ $<
 
 test: quire_test
@@ -14,10 +10,10 @@ test: quire_test
 quire_test: src/lib.rs src/*.rs
 	rustc $< --test -g -o quire_test
 
-argparse:
-	make -C rust-argparse argparse-lib
+rust-argparse/libargparse.rlib:
+	make -C rust-argparse libargparse.rlib
 
-quire_tool: quire-tool.rs argparse quire-lib
+quire_tool: quire-tool.rs rust-argparse/libargparse.rlib libquire.rlib
 	rustc $< -L . -L rust-argparse
 
 .PHONY: test

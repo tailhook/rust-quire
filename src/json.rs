@@ -1,27 +1,29 @@
-use std::from_str::FromStr;
+use std::str::FromStr;
 
-use collections::treemap::TreeMap;
+use std::collections::BTreeMap;
 use serialize::json::{ToJson, Json};
-use serialize::json as J;
+use serialize::json::Json as J;
 
-use super::ast as A;
+use super::ast::Ast;
+use super::ast::Ast as A;
+use super::ast::ScalarKind::{Quoted, Plain};
 
 
-impl ToJson for A::Ast {
+impl ToJson for Ast {
     fn to_json(&self) -> Json {
         return match *self {
             A::Map(_, _, ref tm) => {
-                let mut ob = TreeMap::new();
+                let mut ob = BTreeMap::new();
                 for (k, v) in tm.iter() {
                     ob.insert(k.clone(), v.to_json());
                 }
                 J::Object(ob)
             },
             A::List(_, _, ref lst) => {
-                J::List(lst.iter().map(|ref val| val.to_json()).collect())
+                J::Array(lst.iter().map(|ref val| val.to_json()).collect())
             }
             A::Null(_, _, _) => J::Null,
-            A::Scalar(_, _, A::Plain, ref val) => {
+            A::Scalar(_, _, Plain, ref val) => {
                 match FromStr::from_str(val.as_slice()) {
                     Some(x) => return J::U64(x),
                     None => {}
@@ -39,7 +41,7 @@ impl ToJson for A::Ast {
                 }
                 J::String(val.clone())
             }
-            A::Scalar(_, _, A::Quoted, ref val) => {
+            A::Scalar(_, _, Quoted, ref val) => {
                 J::String(val.clone())
             }
         };

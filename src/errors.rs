@@ -1,13 +1,16 @@
-use std::fmt::Show;
-use std::fmt::Formatter;
-use std::fmt::FormatError;
+use std::fmt::String as Show;
+use std::fmt::Error as FormatError;
+use std::fmt::{Formatter};
 
 use super::tokenizer::Pos;
 
-#[deriving(Send, Clone)]
-pub struct ErrorPos(String, uint, uint);
+use self::Error::{TokenizerError, ParseError, ValidationError,
+           PreprocessError, DecodeError};
 
-#[deriving(Send, Clone)]
+#[derive(Clone, Show)]
+pub struct ErrorPos(String, usize, usize);
+
+#[derive(Clone, Show)]
 pub enum Error {
     TokenizerError(ErrorPos, String),
     ParseError(ErrorPos, String),
@@ -15,6 +18,8 @@ pub enum Error {
     PreprocessError(ErrorPos, String),
     DecodeError(ErrorPos, String, String),
 }
+
+unsafe impl Send for Error {}
 
 impl Error {
     pub fn parse_error(pos: &Pos, message: String) -> Error {

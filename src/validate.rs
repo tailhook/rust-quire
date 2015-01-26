@@ -1,15 +1,18 @@
-use std::from_str::FromStr;
-use std::fmt::Show;
-use std::num::{FromStrRadix,from_str_radix};
+use std::str::FromStr;
+use std::ops::Mul;
+use std::fmt::String as Show;
+use std::num::{FromStrRadix, from_str_radix, FromPrimitive};
 use std::default::Default;
-use std::collections::{TreeMap, HashSet};
-use std::str::replace;
+use std::collections::{BTreeMap, HashSet};
 
 use regex::Regex;
 
 use super::errors::Error;
 pub use super::tokenizer::Pos;
-use super::ast as A;
+use super::ast::Ast as A;
+use super::ast::Tag as T;
+use super::ast::{Ast, NullKind};
+use super::ast::ScalarKind::{Quoted, Plain};
 
 
 static NUMERIC_SUFFIXES: &'static [(&'static str, u64)] = &[
@@ -22,29 +25,29 @@ static NUMERIC_SUFFIXES: &'static [(&'static str, u64)] = &[
     ];
 
 pub trait Validator {
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>);
-    fn default(&self, pos: Pos) -> Option<A::Ast>;
+    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>);
+    fn default(&self, pos: Pos) -> Option<Ast>;
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 pub struct Scalar {
     pub descr: Option<String>,
     pub optional: bool,
     pub default: Option<String>,
-    pub min_length: Option<uint>,
-    pub max_length: Option<uint>,
+    pub min_length: Option<usize>,
+    pub max_length: Option<usize>,
     pub regex: Option<Regex>,
 }
 
 impl Validator for Scalar {
-    fn default(&self, pos: Pos) -> Option<A::Ast> {
+    fn default(&self, pos: Pos) -> Option<Ast> {
         if self.default.is_none() && self.optional {
-            return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
+            return Some(A::Null(pos.clone(), T::NonSpecific, NullKind::Implicit));
         }
         self.default.as_ref().map(|val| {
-            A::Scalar(pos.clone(), A::NonSpecific, A::Quoted, val.clone()) })
+            A::Scalar(pos.clone(), T::NonSpecific, Quoted, val.clone()) })
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, kind, val) = match ast {
             A::Scalar(pos, _, kind, string) => {
@@ -78,11 +81,11 @@ impl Validator for Scalar {
                             regex)));
             }
         });
-        return (A::Scalar(pos, A::NonSpecific, kind, val), warnings);
+        return (A::Scalar(pos, T::NonSpecific, kind, val), warnings);
     }
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 pub struct Numeric<T> {
     pub descr: Option<String>,
     pub optional: bool,
@@ -91,8 +94,9 @@ pub struct Numeric<T> {
     pub max: Option<T>,
 }
 
-fn from_numeric<T:FromStr+FromStrRadix+Mul<T, T>+FromPrimitive>(mut src: &str)
-    -> Option<T>
+fn from_numeric<T>(mut src: &str) -> Option<T>
+    where T: FromStr+FromStrRadix+Mul<T, Output=T>+FromPrimitive+Copy
+
 {
     let mut mult = 1;
     for &(suffix, value) in NUMERIC_SUFFIXES.iter() {
@@ -116,20 +120,24 @@ fn from_numeric<T:FromStr+FromStrRadix+Mul<T, T>+FromPrimitive>(mut src: &str)
     return val.and_then(|x| FromPrimitive::from_u64(mult).map(|m| x*m));
 }
 
-impl<T:PartialOrd+Show+FromStr+FromStrRadix+Mul<T, T>+FromPrimitive> Validator for Numeric<T> {
-    fn default(&self, pos: Pos) -> Option<A::Ast> {
+impl<T> Validator for Numeric<T>
+    where T: PartialOrd+Show+FromStr+FromStrRadix+Mul<T, Output=T>
+        +FromPrimitive+Copy
+{
+
+    fn default(&self, pos: Pos) -> Option<Ast> {
         if self.default.is_none() && self.optional {
-            return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
+            return Some(A::Null(pos.clone(), T::NonSpecific, NullKind::Implicit));
         }
         self.default.as_ref().map(|val| {
-            A::Scalar(pos.clone(), A::NonSpecific, A::Quoted, val.to_string())
+            A::Scalar(pos.clone(), T::NonSpecific, Quoted, val.to_string())
         })
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, val): (Pos, T)  = match ast {
             A::Scalar(pos, tag, kind, string)
-            => match from_numeric(string.as_slice()) {
+            => match from_numeric::<T>(string.as_slice()) {
                 Some(val) => (pos, val),
                 None => {
                     warnings.push(Error::validation_error(&pos,
@@ -158,12 +166,12 @@ impl<T:PartialOrd+Show+FromStr+FromStrRadix+Mul<T, T>+FromPrimitive> Validator f
                     format!("Value must be at most {}", max)));
             }
         });
-        return (A::Scalar(pos, A::NonSpecific, A::Plain, val.to_string()),
+        return (A::Scalar(pos, T::NonSpecific, Plain, val.to_string()),
                 warnings);
     }
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 pub struct Directory {
     pub descr: Option<String>,
     pub optional: bool,
@@ -172,15 +180,15 @@ pub struct Directory {
 }
 
 impl Validator for Directory {
-    fn default(&self, pos: Pos) -> Option<A::Ast> {
+    fn default(&self, pos: Pos) -> Option<Ast> {
         if self.default.is_none() && self.optional {
-            return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
+            return Some(A::Null(pos.clone(), T::NonSpecific, NullKind::Implicit));
         }
         self.default.as_ref().map(|val| {
-            A::Scalar(pos.clone(), A::NonSpecific, A::Quoted,
+            A::Scalar(pos.clone(), T::NonSpecific, Quoted,
                       val.display().to_string()) })
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, kind, val) = match ast {
             A::Scalar(pos, _, kind, string) => {
@@ -223,13 +231,13 @@ impl Validator for Directory {
             }
             None => {}
         };
-        return (A::Scalar(pos, A::NonSpecific, kind,
+        return (A::Scalar(pos, T::NonSpecific, kind,
                           path.display().to_string()),
                 warnings);
     }
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 pub struct Structure<'a> {
     pub descr: Option<String>,
     pub members: Vec<(String, Box<Validator + 'a>)>,
@@ -237,11 +245,11 @@ pub struct Structure<'a> {
 }
 
 impl<'a> Validator for Structure<'a> {
-    fn default(&self, pos: Pos) -> Option<A::Ast> {
+    fn default(&self, pos: Pos) -> Option<Ast> {
         if self.optional {
-            return Some(A::Null(pos.clone(), A::NonSpecific, A::Implicit));
+            return Some(A::Null(pos.clone(), T::NonSpecific, NullKind::Implicit));
         }
-        let mut map = TreeMap::new();
+        let mut map = BTreeMap::new();
         for &(ref k, ref validator) in self.members.iter() {
             match validator.default(pos.clone()) {
                 Some(val) => {
@@ -250,15 +258,15 @@ impl<'a> Validator for Structure<'a> {
                 None => continue,
             }
         }
-        return Some(A::Map(pos, A::NonSpecific, map));
+        return Some(A::Map(pos, T::NonSpecific, map));
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, mut map) = match ast {
             A::Map(pos, _, items) => {
                 (pos, items)
             }
-            A::Null(pos, _, A::Implicit) => {
+            A::Null(pos, _, NullKind::Implicit) => {
                 return (self.default(pos).unwrap(), warnings);
             }
             ast => {
@@ -268,8 +276,8 @@ impl<'a> Validator for Structure<'a> {
             }
         };
         for &(ref k, ref validator) in self.members.iter() {
-            let value = match map.pop(k)
-                .or(map.pop(&replace(k.as_slice(), "_", "-"))) {
+            let value = match map.remove(k)
+                .or(map.remove(&k.as_slice().replace("_", "-"))) {
                 Some(src) => {
                     let (value, wrn) = validator.validate(src);
                     warnings.extend(wrn.into_iter());
@@ -297,13 +305,13 @@ impl<'a> Validator for Structure<'a> {
         }
         if keys.len() > 0 {
             warnings.push(Error::validation_error(&pos,
-                format!("Keys {} are not expected", keys)));
+                format!("Keys {:?} are not expected", keys)));
         }
-        return (A::Map(pos, A::NonSpecific, map), warnings);
+        return (A::Map(pos, T::NonSpecific, map), warnings);
     }
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 pub struct Enum<'a> {
     pub descr: Option<String>,
     pub options: Vec<(String, Box<Validator + 'a>)>,
@@ -312,18 +320,18 @@ pub struct Enum<'a> {
 }
 
 impl<'a> Validator for Enum<'a> {
-    fn default(&self, pos: Pos) -> Option<A::Ast> {
+    fn default(&self, pos: Pos) -> Option<Ast> {
         if self.default_tag.is_some() && self.optional {
             return Some(A::Null(pos.clone(),
-                A::LocalTag(self.default_tag.as_ref().unwrap().clone()),
-                A::Implicit));
+                T::LocalTag(self.default_tag.as_ref().unwrap().clone()),
+                NullKind::Implicit));
         }
         return None;
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
         let tag_name = match ast.tag() {
-            &A::LocalTag(ref tag_name) => {
+            &T::LocalTag(ref tag_name) => {
                 tag_name.clone()
             }
             _ => unimplemented!(),
@@ -333,7 +341,7 @@ impl<'a> Validator for Enum<'a> {
             if k.as_slice() == tag_name.as_slice() {
                 let (value, wrn) = validator.validate(ast);
                 warnings.extend(wrn.into_iter());
-                return (value.with_tag(A::LocalTag(tag_name)), warnings);
+                return (value.with_tag(T::LocalTag(tag_name)), warnings);
             }
         }
         warnings.push(Error::validation_error(&pos,
@@ -342,7 +350,7 @@ impl<'a> Validator for Enum<'a> {
     }
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 pub struct Mapping<'a, 'b> {
     pub descr: Option<String>,
     pub key_element: Box<Validator + 'a>,
@@ -350,17 +358,17 @@ pub struct Mapping<'a, 'b> {
 }
 
 impl<'a, 'b> Validator for Mapping<'a, 'b> {
-    fn default(&self, pos: Pos) -> Option<A::Ast> {
-        return Some(A::Map(pos, A::NonSpecific, TreeMap::new()));
+    fn default(&self, pos: Pos) -> Option<Ast> {
+        return Some(A::Map(pos, T::NonSpecific, BTreeMap::new()));
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, map) = match ast {
             A::Map(pos, _, items) => {
                 (pos, items)
             }
-            A::Null(pos, _, A::Implicit) => {
-                return (A::Map(pos, A::NonSpecific, TreeMap::new()), warnings);
+            A::Null(pos, _, NullKind::Implicit) => {
+                return (A::Map(pos, T::NonSpecific, BTreeMap::new()), warnings);
             }
             ast => {
                 warnings.push(Error::validation_error(&ast.pos(),
@@ -368,10 +376,10 @@ impl<'a, 'b> Validator for Mapping<'a, 'b> {
                 return (ast, warnings);
             }
         };
-        let mut res = TreeMap::new();
+        let mut res = BTreeMap::new();
         for (k, v) in map.into_iter() {
             let (key, wrn) = match self.key_element.validate(
-                A::Scalar(v.pos().clone(), A::NonSpecific, A::Plain, k)) {
+                A::Scalar(v.pos().clone(), T::NonSpecific, Plain, k)) {
                 (A::Scalar(_, _, _, val), wrn) => (val, wrn),
                 _ => unreachable!(),
             };
@@ -380,29 +388,29 @@ impl<'a, 'b> Validator for Mapping<'a, 'b> {
             warnings.extend(wrn.into_iter());
             res.insert(key, value);
         }
-        return (A::Map(pos, A::NonSpecific, res), warnings);
+        return (A::Map(pos, T::NonSpecific, res), warnings);
     }
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 pub struct Sequence<'a> {
     pub descr: Option<String>,
     pub element: Box<Validator + 'a>,
-    pub from_scalar: Option<fn (scalar: A::Ast) -> Vec<A::Ast>>,
+    pub from_scalar: Option<fn (scalar: Ast) -> Vec<Ast>>,
 }
 
 impl<'a> Validator for Sequence<'a> {
-    fn default(&self, pos: Pos) -> Option<A::Ast> {
-        return Some(A::List(pos, A::NonSpecific, Vec::new()));
+    fn default(&self, pos: Pos) -> Option<Ast> {
+        return Some(A::List(pos, T::NonSpecific, Vec::new()));
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
         let (pos, children) = match (ast, self.from_scalar) {
             (A::List(pos, _, items), _) => {
                 (pos, items)
             }
-            (A::Null(pos, _, A::Implicit), _) => {
-                return (A::List(pos, A::NonSpecific, Vec::new()), warnings);
+            (A::Null(pos, _, NullKind::Implicit), _) => {
+                return (A::List(pos, T::NonSpecific, Vec::new()), warnings);
             }
             (ast@A::Scalar(_, _, _, _), Some(fun)) => {
                 (ast.pos().clone(), fun(ast))
@@ -419,17 +427,17 @@ impl<'a> Validator for Sequence<'a> {
             warnings.extend(wrn.into_iter());
             res.push(value);
         }
-        return (A::List(pos, A::NonSpecific, res), warnings);
+        return (A::List(pos, T::NonSpecific, res), warnings);
     }
 }
 
 pub struct Anything;
 
 impl Validator for Anything {
-    fn default(&self, _: Pos) -> Option<A::Ast> {
+    fn default(&self, _: Pos) -> Option<Ast> {
         return None;
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         return (ast, Vec::new());
     }
 }
@@ -437,10 +445,10 @@ impl Validator for Anything {
 pub struct Nothing;
 
 impl Validator for Nothing {
-    fn default(&self, _: Pos) -> Option<A::Ast> {
+    fn default(&self, _: Pos) -> Option<Ast> {
         return None;
     }
-    fn validate(&self, ast: A::Ast) -> (A::Ast, Vec<Error>) {
+    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut wrn = vec!();
         if let A::Null(_, _, _) = ast {
         } else {
@@ -453,16 +461,17 @@ impl Validator for Nothing {
 
 impl<'a> Default for Box<Validator + 'a> {
     fn default() -> Box<Validator + 'a> {
-        return box Nothing as Box<Validator>;
+        return Box::new(Nothing) as Box<Validator>;
     }
 }
 
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
+    use std::sync::mpsc::channel;
     use std::default::Default;
     use serialize::Decodable;
-    use std::collections::TreeMap;
+    use std::collections::BTreeMap;
     use std::collections::HashMap;
 
     use super::super::decode::YamlDecoder;
@@ -471,21 +480,22 @@ mod test {
     use super::super::errors::Error;
     use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
     use super::{Enum, Nothing, Directory};
+    use self::TestEnum::*;
 
-    #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Show, PartialEq, Eq, Decodable)]
     struct TestStruct {
-        intkey: uint,
+        intkey: usize,
         strkey: String,
     }
 
     fn parse_str(body: &str) -> TestStruct {
         let str_val = Structure { members: vec!(
-            ("intkey".to_string(), box Numeric {
-                default: Some(123u),
-                .. Default::default() } as Box<Validator>),
-            ("strkey".to_string(), box Scalar {
+            ("intkey".to_string(), Box::new(Numeric {
+                default: Some(123us),
+                .. Default::default() }) as Box<Validator>),
+            ("strkey".to_string(), Box::new(Scalar {
                 default: Some("default_value".to_string()),
-                .. Default::default() } as Box<Validator>),
+                .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
@@ -537,16 +547,16 @@ mod test {
         });
     }
 
-    #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Show, PartialEq, Eq, Decodable)]
     struct TestDash {
-        some_key: uint,
+        some_key: usize,
     }
 
     fn parse_dash_str(body: &str) -> TestDash {
         let str_val = Structure { members: vec!(
-            ("some_key".to_string(), box Numeric {
-                default: Some(123u),
-                .. Default::default() } as Box<Validator>),
+            ("some_key".to_string(), Box::new(Numeric {
+                default: Some(123us),
+                .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
@@ -574,9 +584,9 @@ mod test {
 
     fn parse_with_warnings(body: &str) -> (TestDash, Vec<String>) {
         let str_val = Structure { members: vec!(
-            ("some_key".to_string(), box Numeric {
-                default: Some(123u),
-                .. Default::default() } as Box<Validator>),
+            ("some_key".to_string(), Box::new(Numeric {
+                default: Some(123us),
+                .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
@@ -601,26 +611,27 @@ mod test {
             (TestDash {
                 some_key: 13,
             }, vec!("<inline text>:1:1: Validation Error: \
-                     Keys {another-key} are not expected".to_string())));
+                 Keys HashSet {\"another-key\"} are not expected"
+                 .to_string())));
     }
 
-    #[deriving(Clone, Show, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Show, PartialEq, Eq, Decodable)]
     struct TestOpt {
-        some_key: Option<uint>,
+        some_key: Option<usize>,
     }
 
     fn parse_opt_str(body: &str) -> TestOpt {
         let str_val = Structure { members: vec!(
-            ("some_key".to_string(), box Numeric {
-                default: None::<uint>,
+            ("some_key".to_string(), Box::new(Numeric {
+                default: None::<usize>,
                 optional: true,
-                .. Default::default() } as Box<Validator>),
+                .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = str_val.validate(ast);
-        println!("WARNINGS {}", warnings);
+        println!("WARNINGS {:?}", warnings);
         assert_eq!(warnings.len(), 0);
         let (tx, _) = channel();
         let mut dec = YamlDecoder::new(ast, tx);
@@ -648,10 +659,12 @@ mod test {
         });
     }
 
-    fn parse_map<T:Decodable<YamlDecoder, Error>>(body: &str) -> T {
+    fn parse_map<T:Decodable>(body: &str) -> T {
         let validator = Mapping {
-            key_element: box Scalar { .. Default::default()},
-            value_element: box Numeric::<uint> { default: Some(0u), .. Default::default()},
+            key_element: Box::new(Scalar { .. Default::default()}),
+            value_element: Box::new(Numeric::<usize> {
+                default: Some(0us),
+                .. Default::default()}),
             .. Default::default()
         };
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
@@ -666,18 +679,18 @@ mod test {
 
     #[test]
     fn test_map_1() {
-        let mut m = TreeMap::new();
+        let mut m = BTreeMap::new();
         m.insert("a".to_string(), 1);
-        let res: TreeMap<String, uint> = parse_map("a: 1");
+        let res: BTreeMap<String, usize> = parse_map("a: 1");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_map_2() {
-        let mut m = TreeMap::new();
+        let mut m = BTreeMap::new();
         m.insert("a".to_string(), 1);
         m.insert("bc".to_string(), 2);
-        let res: TreeMap<String, uint> = parse_map("a: 1\nbc: 2");
+        let res: BTreeMap<String, usize> = parse_map("a: 1\nbc: 2");
         assert_eq!(res, m);
     }
 
@@ -686,34 +699,34 @@ mod test {
         let mut m = HashMap::new();
         m.insert("a".to_string(), 1);
         m.insert("bc".to_string(), 2);
-        let res: HashMap<String, uint> = parse_map("a: 1\nbc: 2");
+        let res: HashMap<String, usize> = parse_map("a: 1\nbc: 2");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_map_empty() {
-        let m = TreeMap::new();
-        let res: TreeMap<String, uint> = parse_map("{}");
+        let m = BTreeMap::new();
+        let res: BTreeMap<String, usize> = parse_map("{}");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_map_null() {
-        let m = TreeMap::new();
-        let res: TreeMap<String, uint> = parse_map("");
+        let m = BTreeMap::new();
+        let res: BTreeMap<String, usize> = parse_map("");
         assert_eq!(res, m);
     }
 
-    fn parse_complex_map<T:Decodable<YamlDecoder, Error>>(body: &str)
+    fn parse_complex_map<T:Decodable>(body: &str)
         -> T
     {
         let validator = Mapping {
-            key_element: box Scalar { .. Default::default()},
-            value_element: box Structure { members: vec!(
-                ("some_key".to_string(), box Numeric {
-                    default: Some(123u),
-                    .. Default::default() } as Box<Validator>),
-            ), .. Default::default()} as Box<Validator>,
+            key_element: Box::new(Scalar { .. Default::default()}),
+            value_element: Box::new(Structure { members: vec!(
+                ("some_key".to_string(), Box::new(Numeric {
+                    default: Some(123us),
+                    .. Default::default() }) as Box<Validator>),
+            ),.. Default::default()}) as Box<Validator>,
             .. Default::default()
         };
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
@@ -730,39 +743,41 @@ mod test {
 
     #[test]
     fn test_cmap_1() {
-        let mut m = TreeMap::new();
+        let mut m = BTreeMap::new();
         m.insert("a".to_string(), TestDash {
             some_key: 13,
         });
-        let res: TreeMap<String, TestDash>;
+        let res: BTreeMap<String, TestDash>;
         res = parse_complex_map("a:\n some_key: 13");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_cmap_2() {
-        let mut m = TreeMap::new();
+        let mut m = BTreeMap::new();
         m.insert("a".to_string(), TestDash {
             some_key: 123,
         });
-        let res: TreeMap<String, TestDash>;
+        let res: BTreeMap<String, TestDash>;
         res = parse_complex_map("a:\n");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_cmap_3() {
-        let mut m = TreeMap::new();
+        let mut m = BTreeMap::new();
         m.insert("a".to_string(), TestDash {
             some_key: 123,
         });
-        let res: TreeMap<String, TestDash> = parse_complex_map("a: {}");
+        let res: BTreeMap<String, TestDash> = parse_complex_map("a: {}");
         assert_eq!(res, m);
     }
 
-    fn parse_seq(body: &str) -> Vec<uint> {
+    fn parse_seq(body: &str) -> Vec<usize> {
         let validator = Sequence {
-            element: box Numeric { default: None::<uint>, .. Default::default()},
+            element: Box::new(Numeric {
+                default: None::<usize>,
+                .. Default::default()}),
             .. Default::default()
         };
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
@@ -778,43 +793,43 @@ mod test {
     #[test]
     fn test_seq_1() {
         let m = vec!(1);
-        let res: Vec<uint> = parse_seq("- 1");
+        let res: Vec<usize> = parse_seq("- 1");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_seq_2() {
         let m = vec!(1, 2);
-        let res: Vec<uint> = parse_seq("- 1\n- 2");
+        let res: Vec<usize> = parse_seq("- 1\n- 2");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_seq_empty() {
         let m = Vec::new();
-        let res: Vec<uint> = parse_seq("[]");
+        let res: Vec<usize> = parse_seq("[]");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_seq_null() {
         let m = Vec::new();
-        let res: Vec<uint> = parse_seq("");
+        let res: Vec<usize> = parse_seq("");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_numeric() {
         let m = vec!(100, 200, 300);
-        let res: Vec<uint> = parse_seq("- 0o144\n- 0b11001000\n- 0x12c");
+        let res: Vec<usize> = parse_seq("- 0o144\n- 0b11001000\n- 0x12c");
         assert_eq!(res, m);
     }
 
-    #[deriving(PartialEq, Eq, Decodable, Show)]
+    #[derive(PartialEq, Eq, Decodable, Show)]
     enum TestEnum {
         Alpha,
         Beta,
-        Gamma(int),
+        Gamma(isize),
         Delta(TestStruct),
         Epsilon(Option<TestStruct>),
     }
@@ -822,30 +837,30 @@ mod test {
     fn parse_enum(body: &str) -> TestEnum {
         let validator = Enum {
             options: vec!(
-                ("Alpha".to_string(), box Nothing as Box<Validator>),
-                ("Beta".to_string(), box Nothing as Box<Validator>),
-                ("Gamma".to_string(), box Numeric {
+                ("Alpha".to_string(), Box::new(Nothing) as Box<Validator>),
+                ("Beta".to_string(), Box::new(Nothing) as Box<Validator>),
+                ("Gamma".to_string(), Box::new(Numeric {
                     optional: true,
-                    default: Some(7u),
-                    .. Default::default() } as Box<Validator>),
-                ("Delta".to_string(), box Structure { members: vec!(
-                    ("intkey".to_string(), box Numeric {
-                        default: Some(123u),
-                        .. Default::default() } as Box<Validator>),
-                    ("strkey".to_string(), box Scalar {
+                    default: Some(7us),
+                    .. Default::default() }) as Box<Validator>),
+                ("Delta".to_string(), Box::new(Structure { members: vec!(
+                    ("intkey".to_string(), Box::new(Numeric {
+                        default: Some(123us),
+                        .. Default::default() }) as Box<Validator>),
+                    ("strkey".to_string(), Box::new(Scalar {
                         default: Some("default_value".to_string()),
-                        .. Default::default() } as Box<Validator>),
-                    ), .. Default::default()} as Box<Validator>),
-                ("Epsilon".to_string(), box Structure {
+                        .. Default::default()}) as Box<Validator>),
+                    ), .. Default::default()}) as Box<Validator>),
+                ("Epsilon".to_string(), Box::new(Structure {
                     optional: true,
                     members: vec!(
-                    ("intkey".to_string(), box Numeric {
-                        default: Some(457u),
-                        .. Default::default() } as Box<Validator>),
-                    ("strkey".to_string(), box Scalar {
+                    ("intkey".to_string(), Box::new(Numeric {
+                        default: Some(457us),
+                        .. Default::default() }) as Box<Validator>),
+                    ("strkey".to_string(), Box::new(Scalar {
                         default: Some("epsilon".to_string()),
-                        .. Default::default() } as Box<Validator>),
-                    ), .. Default::default()} as Box<Validator>),
+                        .. Default::default() }) as Box<Validator>),
+                    ), .. Default::default()}) as Box<Validator>),
             ), .. Default::default()
         };
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
@@ -925,24 +940,24 @@ mod test {
     }
 
 
-    #[deriving(Clone, PartialEq, Eq, Decodable)]
+    #[derive(Clone, PartialEq, Eq, Decodable)]
     struct TestPath {
         path: Path,
     }
 
     fn parse_path(body: &str, abs: Option<bool>) -> TestPath {
         let str_val = Structure { members: vec!(
-            ("path".to_string(), box Directory {
+            ("path".to_string(), Box::new(Directory {
                 default: Some(Path::new("/test")),
                 absolute: abs,
-                .. Default::default() } as Box<Validator>),
+                .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = str_val.validate(ast);
         for w in warnings.iter() {
-            fail!(w.to_string());
+            panic!(w.to_string());
         }
         let (tx, _) = channel();
         let mut dec = YamlDecoder::new(ast, tx);
@@ -1002,7 +1017,7 @@ mod test {
     }
 
     #[test]
-    #[should_fail(expected = "mut not be absolute")]
+    #[should_fail(expected = "must not be absolute")]
     fn test_path_abs_rel() {
         assert!(parse_path("path: /root/dir", Some(false)) == TestPath {
             path: Path::new("/root/dir"),
