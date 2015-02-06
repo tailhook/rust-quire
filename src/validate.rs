@@ -332,20 +332,29 @@ impl<'a> Validator for Enum<'a> {
         let mut warnings = vec!();
         let tag_name = match ast.tag() {
             &T::LocalTag(ref tag_name) => {
-                tag_name.clone()
+                Some(tag_name.clone())
+            }
+            &T::NonSpecific => {
+                warnings.push(Error::validation_error(&ast.pos(),
+                    format!("One of the tags {:?} expected",
+                        self.options.iter().map(|&(ref k, _)| k)
+                            .collect::<Vec<&String>>())));
+                None
             }
             _ => unimplemented!(),
         };
-        let pos = ast.pos().clone();
-        for &(ref k, ref validator) in self.options.iter() {
-            if k.as_slice() == tag_name.as_slice() {
-                let (value, wrn) = validator.validate(ast);
-                warnings.extend(wrn.into_iter());
-                return (value.with_tag(T::LocalTag(tag_name)), warnings);
+        if let Some(tag_name) = tag_name {
+            let pos = ast.pos().clone();
+            for &(ref k, ref validator) in self.options.iter() {
+                if k.as_slice() == tag_name.as_slice() {
+                    let (value, wrn) = validator.validate(ast);
+                    warnings.extend(wrn.into_iter());
+                    return (value.with_tag(T::LocalTag(tag_name)), warnings);
+                }
             }
+            warnings.push(Error::validation_error(&pos,
+                format!("The tag {} is not expected", tag_name)));
         }
-        warnings.push(Error::validation_error(&pos,
-            format!("The tag {} is not expected", tag_name)));
         return (ast, warnings);
     }
 }
@@ -938,7 +947,6 @@ mod test {
                 strkey: "epsilon".to_string(),
             })));
     }
-
 
     #[derive(Clone, PartialEq, Eq, Decodable)]
     struct TestPath {
