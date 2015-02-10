@@ -38,7 +38,7 @@ pub fn parse_config<T: Decodable>(
     if options.print_warnings {
         let mut err = stderr();
         for warning in warnings.iter() {
-            (writeln!(&mut err, "config: {:?}", warning)).ok();
+            (writeln!(&mut err, "config: {}", warning)).ok();
         }
     }
     match res {
