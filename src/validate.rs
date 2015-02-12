@@ -843,8 +843,8 @@ mod test {
         Epsilon(Option<TestStruct>),
     }
 
-    fn parse_enum(body: &str) -> TestEnum {
-        let validator = Enum {
+    fn enum_validator<'x>() -> Box<Validator + 'x> {
+        Box::new(Enum {
             options: vec!(
                 ("Alpha".to_string(), Box::new(Nothing) as Box<Validator>),
                 ("Beta".to_string(), Box::new(Nothing) as Box<Validator>),
@@ -871,7 +871,11 @@ mod test {
                         .. Default::default() }) as Box<Validator>),
                     ), .. Default::default()}) as Box<Validator>),
             ), .. Default::default()
-        };
+        }) as Box<Validator>
+    }
+
+    fn parse_enum(body: &str) -> TestEnum {
+        let validator = enum_validator();
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
@@ -1045,5 +1049,30 @@ mod test {
         assert!(parse_path("path: ../root/dir", Some(false)) == TestPath {
             path: Path::new("../root/dir"),
         });
+    }
+
+    fn parse_enum_list(body: &str) -> Vec<TestEnum> {
+        let validator = Sequence {
+            element: enum_validator(),
+            .. Default::default() };
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        assert_eq!(warnings.len(), 0);
+        let (ast, warnings) = validator.validate(ast);
+        assert_eq!(warnings.len(), 0);
+        let (tx, _) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    fn test_enum_list_null() {
+        assert_eq!(parse_enum_list("- !Delta\n- !Epsilon"), vec!(
+            Delta(TestStruct {
+                intkey: 123,
+                strkey: "default_value".to_string(),
+                }),
+            Epsilon(None)
+            ));
     }
 }

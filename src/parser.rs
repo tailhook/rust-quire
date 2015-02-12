@@ -562,7 +562,7 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 Ok(Scalar(tag, None, plain_value(tok), tok))
             }
         }
-        T::Eof => {
+        T::Eof | T::Unindent => {
             Ok(ImplicitNull(tag, None, tok.start.clone()))
         }
         T::SequenceEntry => {

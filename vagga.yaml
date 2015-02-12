@@ -16,5 +16,6 @@ commands:
     run: [make]
 
   test: !Command
+    environ: { RUST_BACKTRACE: 1 }
     container: build
     run: [make, test]
