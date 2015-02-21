@@ -66,7 +66,7 @@ impl<'a> TokenIter<'a> {
     }
 }
 
-fn process_newline<'x>(iter: &mut Peekable<char, Chars<'x>>, res: &mut String,
+fn process_newline<'x>(iter: &mut Peekable<Chars<'x>>, res: &mut String,
     cut_limit: usize)
 {
     while res.len() > cut_limit {
@@ -275,8 +275,8 @@ impl<'a> PartialEq for Node<'a> {
 impl<'a> Show for Node<'a> {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), FormatError> {
         match self {
-            &Scalar(_, _, ref a, _) => format!("<Scalar {}>", a).fmt(fmt),
-            &ImplicitNull(_, _, _) => "<Null>".fmt(fmt),
+            &Scalar(_, _, ref a, _) => write!(fmt, "<Scalar {}>", a),
+            &ImplicitNull(_, _, _) => write!(fmt, "<Null>"),
             _ => unimplemented!(),
         }
     }

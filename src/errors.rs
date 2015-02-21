@@ -7,10 +7,10 @@ use super::tokenizer::Pos;
 use self::Error::{TokenizerError, ParseError, ValidationError,
            PreprocessError, DecodeError};
 
-#[derive(Clone, Show)]
+#[derive(Clone, Debug)]
 pub struct ErrorPos(String, usize, usize);
 
-#[derive(Clone, Show)]
+#[derive(Clone, Debug)]
 pub enum Error {
     TokenizerError(ErrorPos, String),
     ParseError(ErrorPos, String),
@@ -58,38 +58,32 @@ impl Show for Error {
             | ValidationError(ErrorPos(ref filename, line, offset), ref message)
             | PreprocessError(ErrorPos(ref filename, line, offset), ref message)
             => {
-                try!(filename.fmt(fmt));
-                try!(":".fmt(fmt));
-                try!(line.fmt(fmt));
-                try!(":".fmt(fmt));
-                try!(offset.fmt(fmt));
-                try!(": ".fmt(fmt));
-                match *self {
-                    TokenizerError(_, _) => try!("Tokenizer Error".fmt(fmt)),
-                    ParseError(_, _) => try!("Parse Error".fmt(fmt)),
-                    PreprocessError(_, _) => try!("Preprocess Error".fmt(fmt)),
-                    ValidationError(_, _) => try!("Validation Error".fmt(fmt)),
+                let prefix = match *self {
+                    TokenizerError(_, _) => "Tokenizer Error",
+                    ParseError(_, _) => "Parse Error",
+                    PreprocessError(_, _) => "Preprocess Error",
+                    ValidationError(_, _) => "Validation Error",
                     DecodeError(_, _, _) => unreachable!(),
-                }
-                try!(": ".fmt(fmt));
-                try!(message.fmt(fmt));
+                };
+                write!(fmt, "{filename}:{line}:{offset}: {prefix}: {text}",
+                    filename=filename,
+                    line=line,
+                    offset=offset,
+                    prefix=prefix,
+                    text=message)
             }
             DecodeError(ErrorPos(ref filename, line, offset),
                 ref path, ref message)
             => {
-
-                try!(filename.fmt(fmt));
-                try!(":".fmt(fmt));
-                try!(line.fmt(fmt));
-                try!(":".fmt(fmt));
-                try!(offset.fmt(fmt));
-                try!(": Decode error at ".fmt(fmt));
-                try!(path.fmt(fmt));
-                try!(": ".fmt(fmt));
-                try!(message.fmt(fmt));
+                write!(fmt, "{filename}:{line}:{offset}: \
+                    Decode error at {path}: {text}",
+                    filename=filename,
+                    line=line,
+                    offset=offset,
+                    path=path,
+                    text=message)
             }
         }
-        return Ok(());
     }
 }
 

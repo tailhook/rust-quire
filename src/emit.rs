@@ -1,5 +1,4 @@
-use std::io::{IoResult, IoError, MemWriter};
-use std::io::Writer;
+use std::old_io::{IoResult, IoError, Writer};
 use std::string::ToString;
 use serialize::{Encodable, Encoder};
 
@@ -361,8 +360,8 @@ impl<'a> Context<'a> {
         return Ok(());
     }
 
-    fn to_buffer<'x, T: Encodable>(
-        val: &T, wr: &'x mut MemWriter)
+    fn to_buffer<'x, T: Encodable, W: Writer>(
+        val: &T, wr: &'x mut W)
     {
         let mut encoder = Context::new(wr);
         val.encode(&mut encoder).unwrap();
@@ -564,7 +563,6 @@ impl<'a> Encoder for Context<'a> {
 
 #[cfg(test)]
 mod test {
-    use std::io::{MemWriter};
     use std::str::{from_utf8};
     use std::rc::Rc;
     use std::default::Default;
@@ -577,15 +575,14 @@ mod test {
     use super::ScalarStyle;
 
     fn emit_and_compare(list: &[Opcode], output: &str) {
-        let mut buf = MemWriter::new();
+        let mut bytes = Vec::new();
         {
-            let mut ctx = Context::new(&mut buf);
+            let mut ctx = Context::new(&mut bytes);
             for op in list.iter() {
                 ctx.emit(*op).unwrap();
             }
         }
-        let bytes = buf.into_inner();
-        let value = from_utf8(bytes.as_slice()).unwrap();
+        let value = from_utf8(&bytes[..]).unwrap();
         assert_eq!(value, output);
     }
 
@@ -616,28 +613,26 @@ mod test {
     }
 
     fn assert_yaml_eq_yaml(source: &'static str, output: &'static str) {
-        let mut buf = MemWriter::new();
+        let mut bytes = Vec::new();
         let filen = Rc::new("<inline test>".to_string());
         parse(filen.clone(), source, |doc| {
-            let mut ctx = Context::new(&mut buf);
+            let mut ctx = Context::new(&mut bytes);
             ctx.emit_node(&doc.root).unwrap();
         }).unwrap();
-        let bytes = buf.into_inner();
-        let value = from_utf8(bytes.as_slice()).unwrap();
+        let value = from_utf8(&bytes[..]).unwrap();
         assert_eq!(value, output);
 
-        let mut buf = MemWriter::new();
+        let mut bytes = Vec::new();
         let (ast, _) = parse(filen, source, |doc| {
             process(Default::default(), doc)
         }).unwrap();
 
         {
-            let mut ctx = Context::new(&mut buf);
+            let mut ctx = Context::new(&mut bytes);
             ctx.emit_ast(&ast).unwrap();
         }
 
-        let bytes = buf.into_inner();
-        let value = from_utf8(bytes.as_slice()).unwrap();
+        let value = from_utf8(&bytes[..]).unwrap();
         assert_eq!(value, output);
     }
 
@@ -714,19 +709,17 @@ mod test {
 
     #[test]
     fn encode_int() {
-        let mut buf = MemWriter::new();
-        Context::to_buffer(&1us, &mut buf);
-        let bytes = buf.into_inner();
-        let value = from_utf8(bytes.as_slice()).unwrap();
+        let mut bytes = Vec::new();
+        Context::to_buffer(&1us, &mut bytes);
+        let value = from_utf8(&bytes[..]).unwrap();
         assert_eq!(value, "1\n");
     }
 
     #[test]
     fn encode_seq() {
-        let mut buf = MemWriter::new();
-        Context::to_buffer(&vec!(1us, 2us), &mut buf);
-        let bytes = buf.into_inner();
-        let value = from_utf8(bytes.as_slice()).unwrap();
+        let mut bytes = Vec::new();
+        Context::to_buffer(&vec!(1us, 2us), &mut bytes);
+        let value = from_utf8(&bytes[..]).unwrap();
         assert_eq!(value, "- 1\n- 2\n");
     }
 
@@ -738,13 +731,12 @@ mod test {
 
     #[test]
     fn encode_struct() {
-        let mut buf = MemWriter::new();
+        let mut bytes = Vec::new();
         Context::to_buffer(&Something{
             key1: -123,
             key2: "hello".to_string(),
-            }, &mut buf);
-        let bytes = buf.into_inner();
-        let value = from_utf8(bytes.as_slice()).unwrap();
+            }, &mut bytes);
+        let value = from_utf8(&bytes[..]).unwrap();
         assert_eq!(value, "key1: -123\nkey2: hello\n");
     }
 }

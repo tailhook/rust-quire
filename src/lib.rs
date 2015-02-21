@@ -3,7 +3,7 @@
 
 extern crate collections;
 extern crate serialize;
-extern crate regex;
+extern crate core;
 
 pub use sky::parse_config;
 pub use ast::Options;

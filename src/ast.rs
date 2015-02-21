@@ -42,7 +42,7 @@ pub enum NullKind {
     Explicit,
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum Tag {
     NonSpecific,
     LocalTag(String),
@@ -68,12 +68,11 @@ pub enum Ast {
 impl Show for Ast {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), FormatError> {
         match *self {
-            Map(_, _, _) => try!("Map".fmt(fmt)),
-            List(_, _, _) => try!("List".fmt(fmt)),
-            Scalar(_, _, _, _) => try!("Scalar".fmt(fmt)),
-            Null(_, _, _) => try!("Null".fmt(fmt)),
+            Map(_, _, _) => write!(fmt, "Map"),
+            List(_, _, _) => write!(fmt, "List"),
+            Scalar(_, _, _, _) => write!(fmt, "Scalar"),
+            Null(_, _, _) => write!(fmt, "Null"),
         }
-        return Ok(());
     }
 }
 

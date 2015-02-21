@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::fmt::String as Show;
 use std::fmt::Error as FormatError;
 use std::fmt::{Formatter};
+use core::iter::Iterator;
 use std::clone::Clone;
 
 use super::chars::is_whitespace;
@@ -13,7 +14,7 @@ use super::chars::is_flow_indicator;
 use super::errors::Error;
 use self::TokenType::*;
 
-#[derive(PartialEq, Show, Copy)]
+#[derive(PartialEq, Debug, Copy)]
 pub enum TokenType {
     Eof,
     DocumentStart,
@@ -54,13 +55,10 @@ pub struct Pos {
 
 impl Show for Pos {
     fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
-        try!(self.filename.fmt(fmt));
-        try!(':'.fmt(fmt));
-        try!(self.line.fmt(fmt));
-        try!(':'.fmt(fmt));
-        try!(self.line_offset.fmt(fmt));
-        try!(':'.fmt(fmt));
-        return Ok(());
+        write!(fmt, "{filename}:{line}:{offset}:",
+            filename=self.filename,
+            line=self.line,
+            offset=self.line_offset)
     }
 }
 
@@ -486,7 +484,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             .to_string()));
                         break;
                     }
-                    for (_, ch) in self.iter {
+                    for (_, ch) in &mut self.iter {
                         if ch == '\r' || ch == '\n' {
                             break;
                         }
@@ -507,7 +505,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 }
                 Some((start, '"')) => {
                     let mut prev = '"';
-                    for (_, ch) in self.iter {
+                    for (_, ch) in &mut self.iter {
                         if ch == '"' && prev != '\\' {
                             break;
                         }
@@ -531,7 +529,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     }
                 }
                 Some((start, '\'')) => {
-                    for (_, ch) in self.iter {
+                    for (_, ch) in &mut self.iter {
                         if ch == '\'' {
                             break;
                         }
@@ -545,7 +543,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     self.add_token(SingleString, start, end);
                 }
                 Some((start, '#')) => {
-                    for (_, ch) in self.iter {
+                    for (_, ch) in &mut self.iter {
                         if ch == '\r' || ch == '\n' {
                             break;
                         }

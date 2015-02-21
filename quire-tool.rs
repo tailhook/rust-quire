@@ -2,13 +2,14 @@ extern crate quire;
 extern crate argparse;
 extern crate serialize;
 
-use std::os;
 use std::rc::Rc;
+use std::fs::File;
+use std::io::Read;
+use std::env::set_exit_status;
 use std::str::from_utf8;
-use std::io::fs::File;
 use std::default::Default;
-use std::io::stdio::stderr;
-use std::io::stdio::stdout;
+use std::old_io::stdio::stderr;
+use std::old_io::stdio::stdout;
 
 use serialize::json::{ToJson, as_json, as_pretty_json};
 
@@ -32,33 +33,33 @@ fn main() {
     let parse_result = {
         let mut ap = ArgumentParser::new();
         ap.refer(&mut action)
-            .add_option(&["-J", "--to-json"],
-                Box::new(StoreConst(Action::AsJson)),
+            .add_option(&["-J", "--to-json"], StoreConst(Action::AsJson),
                 "Print parsed YAML as a JSON")
-            .add_option(&["-Y", "--to-yaml"],
-                Box::new(StoreConst(Action::AsYaml)),
+            .add_option(&["-Y", "--to-yaml"], StoreConst(Action::AsYaml),
                 "Print parsed YAML as a YAML
                  (probably with some transormations)")
             .required();
         ap.refer(&mut pretty)
-            .add_option(&["-p", "--pretty"], Box::new(StoreConst(true)),
+            .add_option(&["-p", "--pretty"], StoreConst(true),
                         "Pretty print result");
         ap.refer(&mut filename)
-            .add_option(&["-f", "--filename"], Box::new(Store::<Path>),
+            .add_option(&["-f", "--filename"], Store,
                         "File name of the YAML file to parse")
-            .add_argument("filename", Box::new(Store::<Path>),
+            .add_argument("filename", Store,
                           "File name of the YAML file to parse")
             .required();
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
-                os::set_exit_status(x);
+                set_exit_status(x);
                 return;
             }
         }
     };
 
-    let data = File::open(&filename).read_to_end()
+    let mut data = Vec::new();
+    File::open(&filename)
+        .and_then(|mut f| f.read_to_end(&mut data))
         .ok().expect("Can't read file");
     let string = from_utf8(data.as_slice())
         .ok().expect("File is not utf-8 encoded");

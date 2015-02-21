@@ -1,11 +1,9 @@
 use std::str::FromStr;
 use std::ops::Mul;
-use std::fmt::String as Show;
+use std::fmt::Display;
 use std::num::{FromStrRadix, from_str_radix, FromPrimitive};
 use std::default::Default;
 use std::collections::{BTreeMap, HashSet};
-
-use regex::Regex;
 
 use super::errors::Error;
 pub use super::tokenizer::Pos;
@@ -36,7 +34,6 @@ pub struct Scalar {
     pub default: Option<String>,
     pub min_length: Option<usize>,
     pub max_length: Option<usize>,
-    pub regex: Option<Regex>,
 }
 
 impl Validator for Scalar {
@@ -74,13 +71,6 @@ impl Validator for Scalar {
                     format!("Value must be at most {} characters", maxl)));
             }
         });
-        self.regex.as_ref().map(|regex| {
-            if regex.is_match(val.as_slice()) {
-                warnings.push(Error::validation_error(&pos,
-                    format!("Value must match regular expression {}",
-                            regex)));
-            }
-        });
         return (A::Scalar(pos, T::NonSpecific, kind, val), warnings);
     }
 }
@@ -108,12 +98,12 @@ fn from_numeric<T>(mut src: &str) -> Option<T>
             break;
         }
     }
-    let mut val: Option<T> = FromStr::from_str(src);
-    if val.is_none() && src.len() > 2 {
-        val = match src.slice_to(2) {
-            "0x" => from_str_radix(src.slice_from(2), 16),
-            "0o" => from_str_radix(src.slice_from(2), 8),
-            "0b" => from_str_radix(src.slice_from(2), 2),
+    let mut val: Option<T> = FromStr::from_str(src).ok();
+    if val.is_some() && src.len() > 2 {
+        val = match &src[..2] {
+            "0x" => from_str_radix(src.slice_from(2), 16).ok(),
+            "0o" => from_str_radix(src.slice_from(2), 8).ok(),
+            "0b" => from_str_radix(src.slice_from(2), 2).ok(),
             _    => None,
         };
     }
@@ -121,7 +111,7 @@ fn from_numeric<T>(mut src: &str) -> Option<T>
 }
 
 impl<T> Validator for Numeric<T>
-    where T: PartialOrd+Show+FromStr+FromStrRadix+Mul<T, Output=T>
+    where T: PartialOrd+Display+FromStr+FromStrRadix+Mul<T, Output=T>
         +FromPrimitive+Copy
 {
 
@@ -491,7 +481,7 @@ mod test {
     use super::{Enum, Nothing, Directory};
     use self::TestEnum::*;
 
-    #[derive(Clone, Show, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, Decodable)]
     struct TestStruct {
         intkey: usize,
         strkey: String,
@@ -556,7 +546,7 @@ mod test {
         });
     }
 
-    #[derive(Clone, Show, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, Decodable)]
     struct TestDash {
         some_key: usize,
     }
@@ -624,7 +614,7 @@ mod test {
                  .to_string())));
     }
 
-    #[derive(Clone, Show, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, Decodable)]
     struct TestOpt {
         some_key: Option<usize>,
     }
@@ -834,7 +824,7 @@ mod test {
         assert_eq!(res, m);
     }
 
-    #[derive(PartialEq, Eq, Decodable, Show)]
+    #[derive(PartialEq, Eq, Decodable, Debug)]
     enum TestEnum {
         Alpha,
         Beta,

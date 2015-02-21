@@ -1,6 +1,7 @@
 use std::rc::Rc;
-use std::io::stderr;
-use std::io::fs::File;
+use std::io::Read;
+use std::old_io::stderr;
+use std::fs::File;
 use std::sync::mpsc::channel;
 use serialize::{Decodable};
 
@@ -18,7 +19,8 @@ pub fn parse_config<T: Decodable>(
     let mut file = try!(File::open(filename)
         .map_err(|e| format!("Error opening config {}: {}",
             filename.display(), e)));
-    let body = try!(file.read_to_string()
+    let mut body = String::new();
+    try!(file.read_to_string(&mut body)
         .map_err(|e| format!("Error reading config {}: {}",
             filename.display(), e)));
     let (ast, mut warnings) = try!(parse(

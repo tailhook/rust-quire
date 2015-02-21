@@ -2,6 +2,7 @@ use std::ops::Deref;
 use std::any::Any;
 use std::mem::swap;
 use std::fmt::Show;
+use std::fmt::Display;
 use std::fmt::Error as FormatError;
 use std::fmt::{Formatter};
 use std::str::FromStr;
@@ -34,7 +35,9 @@ impl Deref for AnyJson {
 }
 
 impl Decodable for AnyJson {
-    fn decode<D: Decoder<Error=Error> + 'static>(dec: &mut D) -> Result<AnyJson, Error> {
+    fn decode<D: Decoder + 'static>(dec: &mut D)
+        -> Result<AnyJson, <Self as Decodable>::Error>
+    {
         let dec: &mut YamlDecoder = (dec as &mut Any).downcast_mut().unwrap();
         match dec.state {
             Node(ref node) => {
@@ -58,7 +61,7 @@ impl Eq for AnyJson {}
 impl Show for AnyJson {
     fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
         let AnyJson(ref selfj) = *self;
-        selfj.fmt(fmt)
+        write!(fmt, "{}", selfj)
     }
 }
 
@@ -89,15 +92,19 @@ impl YamlDecoder {
         }
     }
 
-    fn from_str<T: FromStr+Default+'static>(&mut self) -> DecodeResult<T> {
+    fn from_str<T, E>(&mut self) -> DecodeResult<T>
+        where T: FromStr<Err=E>+Default+'static,
+              E: Display
+    {
         match self.state {
             Node(A::Scalar(ref pos, _, _, ref val)) | Key(ref pos, ref val) => {
-                match FromStr::from_str(val.as_slice()) {
-                    Some(x) => Ok(x),
-                    None => {
+                match FromStr::from_str(&val[..]) {
+                    Ok(x) => Ok(x),
+                    Err(err) => {
                         return Err(Error::decode_error(pos, &self.path,
-                            format!("Can't parse value of type {}",
-                                unsafe { (*get_tydesc::<T>()).name })));
+                            format!("Can't parse value of type {}: {}",
+                                unsafe { (*get_tydesc::<T>()).name },
+                                err)));
                     }
                 }
             }
@@ -190,7 +197,24 @@ impl Decoder for YamlDecoder {
 
     fn read_str(&mut self) -> DecodeResult<String> {
         // TODO(tailhook) Is it fast enought?
-        Ok(try!(self.from_str()))
+        match self.state {
+            Node(A::Scalar(ref pos, _, _, ref val)) | Key(ref pos, ref val) => {
+                return Ok(val.clone());
+            }
+            Node(ref node) => {
+                return Err(Error::decode_error(&node.pos(), &self.path,
+                    format!("Expected scalar, got {}", node)));
+            }
+            Byte(ref pos, _) => {
+                // The string is a sequence of bytes to make Path (which
+                // decodes from a sequence of bytes) work
+                // But if string specified instead of sequence of scalars
+                // we should emit an error
+                return Err(Error::decode_error(pos, &self.path,
+                    format!("Expected sequence, got string")));
+            }
+            Map(_) | Seq(_) | ByteSeq(_, _) => unreachable!(),
+        }
     }
 
     fn read_enum<T, F>(&mut self, _name: &str,
