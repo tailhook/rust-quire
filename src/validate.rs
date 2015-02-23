@@ -1,6 +1,6 @@
 use std::str::FromStr;
 use std::ops::Mul;
-use std::fmt::Display;
+use std::fmt::{Display, Debug};
 use std::num::{FromStrRadix, from_str_radix, FromPrimitive};
 use std::default::Default;
 use std::collections::{BTreeMap, HashSet};
@@ -85,7 +85,7 @@ pub struct Numeric<T> {
 }
 
 fn from_numeric<T>(mut src: &str) -> Option<T>
-    where T: FromStr+FromStrRadix+Mul<T, Output=T>+FromPrimitive+Copy
+    where T: FromStr+FromStrRadix+Mul<T, Output=T>+FromPrimitive+Copy+Display
 
 {
     let mut mult = 1;
@@ -99,11 +99,11 @@ fn from_numeric<T>(mut src: &str) -> Option<T>
         }
     }
     let mut val: Option<T> = FromStr::from_str(src).ok();
-    if val.is_some() && src.len() > 2 {
+    if val.is_none() && src.len() > 2 {
         val = match &src[..2] {
-            "0x" => from_str_radix(src.slice_from(2), 16).ok(),
-            "0o" => from_str_radix(src.slice_from(2), 8).ok(),
-            "0b" => from_str_radix(src.slice_from(2), 2).ok(),
+            "0x" => from_str_radix(&src[2..], 16).ok(),
+            "0o" => from_str_radix(&src[2..], 8).ok(),
+            "0b" => from_str_radix(&src[2..], 2).ok(),
             _    => None,
         };
     }
@@ -498,8 +498,14 @@ mod test {
         ), .. Default::default()};
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
+        for w in warnings.iter() {
+            println!("WARNING: {}", w);
+        }
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = str_val.validate(ast);
+        for w in warnings.iter() {
+            println!("WARNING: {}", w);
+        }
         assert_eq!(warnings.len(), 0);
         let (tx, _) = channel();
         let mut dec = YamlDecoder::new(ast, tx);
