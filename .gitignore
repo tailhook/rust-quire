@@ -3,3 +3,6 @@
 /libquire.so
 /libquire.rlib
 /.vagga
+
+Cargo.lock
+/target

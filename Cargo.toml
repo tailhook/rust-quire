@@ -1,0 +1,14 @@
+[package]
+
+name = "quire"
+description = "A YAML-based configuration parsing library"
+license = "MIT"
+readme = "README.rst"
+keywords = ["config", "yaml", "parser"]
+homepage = "http://github.com/tailhook/rust-quire"
+version = "0.1.0"
+authors = ["paul@colomiets.name"]
+
+[dependencies.argparse]
+path = 'rust-argparse'
+
