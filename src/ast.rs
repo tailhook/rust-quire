@@ -1,4 +1,4 @@
-use std::fmt::String as Show;
+use std::fmt::Display;
 use std::fmt::Error as FormatError;
 use std::fmt::{Formatter};
 use std::default::Default;
@@ -65,7 +65,7 @@ pub enum Ast {
     Null(Pos, Tag, NullKind),
 }
 
-impl Show for Ast {
+impl Display for Ast {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), FormatError> {
         match *self {
             Map(_, _, _) => write!(fmt, "Map"),

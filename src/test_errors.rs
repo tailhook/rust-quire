@@ -8,12 +8,12 @@ use super::ast::process;
 use super::parser::parse;
 
 
-#[derive(Decodable, PartialEq, Eq, Show)]
+#[derive(Decodable, PartialEq, Eq, Debug)]
 struct Struct1 {
     list: Vec<Struct2>,
 }
 
-#[derive(Decodable, PartialEq, Eq, Show)]
+#[derive(Decodable, PartialEq, Eq, Debug)]
 struct Struct2 {
     value: String,
 }

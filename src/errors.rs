@@ -1,4 +1,4 @@
-use std::fmt::String as Show;
+use std::fmt::Display;
 use std::fmt::Error as FormatError;
 use std::fmt::{Formatter};
 
@@ -50,7 +50,7 @@ impl Error {
     }
 }
 
-impl Show for Error {
+impl Display for Error {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), FormatError> {
         match *self {
             TokenizerError(ErrorPos(ref filename, line, offset), ref message)

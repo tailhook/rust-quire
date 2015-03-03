@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::str::Chars;
 use std::rc::Rc;
-use std::fmt::String as Show;
+use std::fmt::Debug;
 use std::fmt::Error as FormatError;
 use std::fmt::{Formatter};
 use std::cmp::{Ordering};
@@ -272,7 +272,7 @@ impl<'a> PartialEq for Node<'a> {
     }
 }
 
-impl<'a> Show for Node<'a> {
+impl<'a> Debug for Node<'a> {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), FormatError> {
         match self {
             &Scalar(_, _, ref a, _) => write!(fmt, "<Scalar {}>", a),

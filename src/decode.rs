@@ -1,7 +1,6 @@
 use std::ops::Deref;
 use std::any::Any;
 use std::mem::swap;
-use std::fmt::Show;
 use std::fmt::Display;
 use std::fmt::Error as FormatError;
 use std::fmt::{Formatter};
@@ -24,6 +23,7 @@ use self::ParserState::*;
 
 pub type DecodeResult<T> = Result<T, Error>;
 
+#[derive(Debug)]
 struct AnyJson(Json);
 
 impl Deref for AnyJson {
@@ -58,7 +58,7 @@ impl PartialEq for AnyJson {
     }
 }
 impl Eq for AnyJson {}
-impl Show for AnyJson {
+impl Display for AnyJson {
     fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
         let AnyJson(ref selfj) = *self;
         write!(fmt, "{}", selfj)
@@ -534,7 +534,7 @@ mod test {
     use super::AnyJson;
     use self::TestEnum::*;
 
-    #[derive(Clone, Show, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, Decodable)]
     struct TestStruct {
         a: usize,
         b: String,
@@ -608,11 +608,11 @@ mod test {
     }
 
 
-    #[derive(PartialEq, Eq, Decodable, Show)]
+    #[derive(PartialEq, Eq, Decodable, Debug)]
     struct TestOption {
         path: Option<String>,
     }
-    #[derive(Show, PartialEq, Eq, Decodable)]
+    #[derive(Debug, PartialEq, Eq, Decodable)]
     struct TestJson {
         json: AnyJson,
     }
@@ -731,7 +731,7 @@ mod test {
         assert_eq!(warnings.len(), 0);
     }
 
-    #[derive(PartialEq, Eq, Decodable, Show)]
+    #[derive(PartialEq, Eq, Decodable, Debug)]
     #[allow(non_camel_case_types)]
     enum TestEnum {
         Alpha,

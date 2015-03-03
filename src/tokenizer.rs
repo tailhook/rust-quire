@@ -1,7 +1,7 @@
 use std::vec::Vec;
 use std::str::CharIndices;
 use std::rc::Rc;
-use std::fmt::String as Show;
+use std::fmt::Display;
 use std::fmt::Error as FormatError;
 use std::fmt::{Formatter};
 use core::iter::Iterator;
@@ -53,7 +53,7 @@ pub struct Pos {
     pub offset: usize,
 }
 
-impl Show for Pos {
+impl Display for Pos {
     fn fmt(&self, fmt:&mut Formatter) -> Result<(), FormatError> {
         write!(fmt, "{filename}:{line}:{offset}:",
             filename=self.filename,
