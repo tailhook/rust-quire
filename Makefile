@@ -1,4 +1,4 @@
-all: libquire.rlib quire_tool
+all: libquire.rlib quire-tool
 
 
 libquire.rlib: src/lib.rs src/*.rs
@@ -13,7 +13,7 @@ quire_test: src/lib.rs src/*.rs
 rust-argparse/libargparse.rlib:
 	make -C rust-argparse libargparse.rlib
 
-quire_tool: quire-tool.rs rust-argparse/libargparse.rlib libquire.rlib
+quire-tool: quire-tool.rs rust-argparse/libargparse.rlib libquire.rlib
 	rustc $< -L . -L rust-argparse
 
 .PHONY: test
