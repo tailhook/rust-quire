@@ -1,3 +1,5 @@
+#![feature(rustc_private, old_io, io, fs, env, old_path)]
+
 extern crate quire;
 extern crate argparse;
 extern crate serialize;
@@ -30,7 +32,7 @@ fn main() {
     let mut action = Action::NoAction;
     let mut pretty = false;
     let mut filename = Path::new("");
-    let parse_result = {
+    {
         let mut ap = ArgumentParser::new();
         ap.refer(&mut action)
             .add_option(&["-J", "--to-json"], StoreConst(Action::AsJson),
@@ -61,13 +63,13 @@ fn main() {
     File::open(&filename)
         .and_then(|mut f| f.read_to_end(&mut data))
         .ok().expect("Can't read file");
-    let string = from_utf8(data.as_slice())
+    let string = from_utf8(&data)
         .ok().expect("File is not utf-8 encoded");
     let mut out = stdout();
 
     let (ast, warnings) = match parse(
         Rc::new(format!("{}", filename.display())),
-        string.as_slice(),
+        &string,
         |doc| { process(Default::default(), doc) })
     {
         Ok(pair) => pair,
