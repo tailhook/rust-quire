@@ -24,15 +24,15 @@ impl ToJson for Ast {
             }
             A::Null(_, _, _) => J::Null,
             A::Scalar(_, _, Plain, ref val) => {
-                match FromStr::from_str(val.as_slice()) {
+                match FromStr::from_str(val) {
                     Ok(x) => return J::U64(x),
                     Err(_) => {}
                 }
-                match FromStr::from_str(val.as_slice()) {
+                match FromStr::from_str(val) {
                     Ok(x) => return J::I64(x),
                     Err(_) => {}
                 }
-                match FromStr::from_str(val.as_slice()) {
+                match FromStr::from_str(val) {
                     Ok(x) => return J::F64(x),
                     Err(_) => {}
                 }

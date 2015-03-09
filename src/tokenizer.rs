@@ -344,7 +344,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     kind: Indent,
                     start: start.clone(),
                     end: start.clone(),
-                    value: self.data.slice(start.offset, start.offset),
+                    value: &self.data[start.offset..start.offset],
                     });
                 self.indent_levels.push(start.indent);
             } else if start.indent < cur {
@@ -353,7 +353,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                         kind: Unindent,
                         start: start.clone(),
                         end: start.clone(),
-                        value: self.data.slice(start.offset, start.offset),
+                        value: &self.data[start.offset..start.offset],
                         });
                     self.indent_levels.pop();
                 }
@@ -368,7 +368,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             kind: kind,
             start: start.clone(),
             end: end.clone(),
-            value: self.data.slice(start.offset, end.offset),
+            value: &self.data[start.offset..end.offset],
             });
     }
 
@@ -665,7 +665,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                     kind: Unindent,
                     start: pos.clone(),
                     end: pos.clone(),
-                    value: self.data.slice(pos.offset, pos.offset),
+                    value: &self.data[pos.offset..pos.offset],
                     });
             }
         }
@@ -673,7 +673,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
             kind: Eof,
             start: pos.clone(),
             end: pos.clone(),
-            value: self.data.slice(pos.offset, pos.offset),
+            value: &self.data[pos.offset..pos.offset],
             });
         return self.error.clone().or(self.iter.error.clone());
     }
@@ -703,7 +703,7 @@ fn simple_tokens<'x>(res: Result<Vec<Token<'x>>, Error>)
     match res {
         Ok(vec) => {
             assert_eq!(vec.last().unwrap().kind, Eof);
-            return vec.slice(0, vec.len()-1).iter().map(
+            return (&vec[0..(vec.len()-1)]).iter().map(
             |ref tok| {
                 return (tok.kind, tok.value);
             }).collect();
@@ -982,7 +982,7 @@ fn test_directive() {
         vec!((PlainString, "a%bc")));
     let err = test_tokenize(" %bc").err().unwrap();
     // TODO(pc) add testcase with percent sign at start of token
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:2: \
+    assert_eq!(&format!("{}", err)[..], "<inline_test>:1:2: \
         Tokenizer Error: Directive must start at start of line");
 }
 

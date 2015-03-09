@@ -133,7 +133,7 @@ impl Decoder for YamlDecoder {
             Node(A::Null(_, _, _)) => return Ok(()),
             Node(ref node) => {
                 self.sender.send(Error::decode_error(&node.pos(), &self.path,
-                    format!("Expected null")));
+                    format!("Expected null"))).unwrap();
                 return Ok(())
             }
             Key(_, _) => unimplemented!(),
@@ -236,7 +236,7 @@ impl Decoder for YamlDecoder {
                     &T::NonSpecific => unreachable!(),
                     &T::LocalTag(ref tag) => {
                         for (i, name) in names.iter().enumerate() {
-                            if *name == tag.as_slice() {
+                            if *name == &tag[..] {
                                 idx = Some(i);
                             }
                         }
@@ -252,8 +252,8 @@ impl Decoder for YamlDecoder {
             Node(A::Scalar(ref pos, _, _, ref value)) => {
                 let programmatic_name = value.replace("-", "_");
                 for (i, name) in names.iter().enumerate() {
-                    if *name == value.as_slice() ||
-                        *name == programmatic_name.as_slice() {
+                    if *name == &value[..] ||
+                        *name == &programmatic_name[..] {
                         idx = Some(i);
                     }
                 }
@@ -501,7 +501,7 @@ impl Decoder for YamlDecoder {
             return f(&mut YamlDecoder {
                 state: Node(val),
                 sender: self.sender.clone(),
-                path: self.path.clone() + "." + key.as_slice(),
+                path: self.path.clone() + "." + &key[..],
             });
         }
         unreachable!();
@@ -525,8 +525,6 @@ mod test {
     use std::collections::BTreeMap;
     use std::sync::mpsc::channel;
     use serialize::{Decodable, Decoder};
-    use serialize::json::{from_str};
-    use serialize::json as J;
 
     use super::YamlDecoder;
     use super::super::parser::parse;

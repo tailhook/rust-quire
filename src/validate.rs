@@ -1,6 +1,6 @@
 use std::str::FromStr;
 use std::ops::Mul;
-use std::fmt::{Display, Debug};
+use std::fmt::{Display};
 use std::num::{FromStrRadix, from_str_radix, FromPrimitive};
 use std::default::Default;
 use std::collections::{BTreeMap, HashSet};
@@ -91,10 +91,10 @@ fn from_numeric<T>(mut src: &str) -> Option<T>
     let mut mult = 1;
     for &(suffix, value) in NUMERIC_SUFFIXES.iter() {
         if suffix.len() < src.len() &&
-            src.slice_from(src.len() - suffix.len()) == suffix
+            &src[(src.len() - suffix.len())..] == suffix
         {
             mult = value;
-            src = src.slice_to(src.len() - suffix.len());
+            src = &src[..(src.len() - suffix.len())];
             break;
         }
     }
@@ -476,7 +476,6 @@ mod test {
     use super::super::decode::YamlDecoder;
     use super::super::ast::process;
     use super::super::parser::parse;
-    use super::super::errors::Error;
     use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
     use super::{Enum, Nothing, Directory};
     use self::TestEnum::*;

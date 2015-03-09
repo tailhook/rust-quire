@@ -28,7 +28,7 @@ impl<'a> TokenIter<'a> {
         assert!(last.kind == T::Eof);
         return TokenIter {
             index: 0,
-            tokens: src.as_slice(),
+            tokens: &src[..],
             eof_token: last,
         };
     }
@@ -203,7 +203,7 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                         let trimmed = line.trim_left_matches(' ');
                         indent = line.len() - trimmed.len();
                     }
-                    res.push_str(line.slice(indent, line.len()));
+                    res.push_str(&line[indent..line.len()]);
                     res.push('\n');
                 }
             } else {
@@ -315,7 +315,7 @@ fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
         }
     }
     return Ok(List(tag, None, children,
-        tokiter.tokens.slice(begin, tokiter.index)));
+        &tokiter.tokens[begin..tokiter.index]));
 }
 
 fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
@@ -389,7 +389,7 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
         }
     }
     return Ok(Map(tag, None, children,
-        tokiter.tokens.slice(begin, tokiter.index)));
+        &tokiter.tokens[begin..tokiter.index]));
 }
 
 fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
@@ -423,7 +423,7 @@ fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
         }
     }
     return Ok(List(tag, None, children,
-        tokiter.tokens.slice(begin, tokiter.index)));
+        &tokiter.tokens[begin..tokiter.index]));
 }
 
 fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
@@ -488,7 +488,7 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
         }
     }
     return Ok(Map(tag, None, children,
-        tokiter.tokens.slice(begin, tokiter.index)));
+        &tokiter.tokens[begin..tokiter.index]));
 }
 
 fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
@@ -533,7 +533,6 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
 
     if tok.kind == T::Indent {  // Indent in list is before tag
         tokiter.next();
-        tok = tokiter.peek(0);
         indent = true;
     }
     let mut tag = maybe_parse_tag(tokiter);

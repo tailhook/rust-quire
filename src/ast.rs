@@ -144,7 +144,7 @@ impl<'a> Context<'a> {
                 let pos = tok.start.clone();
                 let tag = self.string_to_tag(&pos, tag);
                 if tok.kind == T::PlainString {
-                    if val.as_slice() == "~" || val.as_slice() == "null" {
+                    if &val[..] == "~" || &val[..] == "null" {
                         return Ast::Null(tok.start.clone(), tag, Explicit);
                     } else {
                         return Ast::Scalar(pos, tag, Plain, val.clone());
@@ -172,7 +172,7 @@ impl<'a> Context<'a> {
                 for (k, v) in children.iter() {
                     let string_key = match *k {
                         P::Scalar(_, _, ref key, ref tok) => {
-                            if tok.kind == T::PlainString && key.as_slice() == "<<" {
+                            if tok.kind == T::PlainString && &key[..] == "<<" {
                                 merge = Some(v);
                                 continue;
                             }

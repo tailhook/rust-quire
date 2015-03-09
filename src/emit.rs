@@ -13,7 +13,6 @@ use super::ast::Tag as AstTag;
 use super::ast::Ast;
 use super::ast::Ast as A;
 use super::ast::NullKind::{Explicit, Implicit};
-use super::errors::Error;
 
 pub type Tag<'a> = &'a str;
 pub type Anchor<'a> = &'a str;
@@ -78,7 +77,7 @@ fn tag_as_string<'x>(tag: &'x AstTag) -> Option<&'x str> {
         NonSpecific => None,
         LocalTag(ref value) => Some(value),
         GlobalTag(_) => unimplemented!(),
-    }).map(|t| t.as_slice());
+    }).map(|t| &t[..]);
 }
 
 
@@ -296,7 +295,7 @@ impl<'a> Context<'a> {
     pub fn emit_node(&mut self, node: &Node) -> IoResult<()> {
         match node {
             &N::Map(tag, anchor, ref map, _) => {
-                try!(self.emit(Opcode::MapStart(tag.map(|t| t.slice_from(1)),
+                try!(self.emit(Opcode::MapStart(tag.map(|t| &t[1..]),
                                         anchor)));
                 for (k, v) in map.iter() {
                     try!(self.emit_node(k));
@@ -305,7 +304,7 @@ impl<'a> Context<'a> {
                 try!(self.emit(Opcode::MapEnd));
             }
             &N::List(tag, anchor, ref items, _) => {
-                try!(self.emit(Opcode::SeqStart(tag.map(|t| t.slice_from(1)),
+                try!(self.emit(Opcode::SeqStart(tag.map(|t| &t[1..]),
                                         anchor)));
                 for i in items.iter() {
                     try!(self.emit_node(i));
@@ -314,12 +313,12 @@ impl<'a> Context<'a> {
             },
             &N::Scalar(ref tag, _anchor, ref value, _) => {
                 // TODO(tailhook) fix anchor
-                try!(self.emit(Opcode::Scalar(tag.map(|t| t.slice_from(1)),
-                    None, ScalarStyle::Auto, value.as_slice())));
+                try!(self.emit(Opcode::Scalar(tag.map(|t| &t[1..]),
+                    None, ScalarStyle::Auto, value)));
             }
             &N::ImplicitNull(ref tag, ref _anchor, ref _token) => {
                 // TODO(tailhook) fix anchor
-                try!(self.emit(Opcode::Null(tag.map(|t| t.slice_from(1)),
+                try!(self.emit(Opcode::Null(tag.map(|t| &t[1..]),
                     None, Null::Nothing)));
             }
             &N::Alias(name, _) => unimplemented!(),
@@ -333,7 +332,7 @@ impl<'a> Context<'a> {
                 try!(self.emit(Opcode::MapStart(tag_as_string(tag), None)));
                 for (k, v) in map.iter() {
                     try!(self.emit(Opcode::Scalar(None, None,
-                        ScalarStyle::Auto, k.as_slice())));
+                        ScalarStyle::Auto, k)));
                     try!(self.emit_ast(v));
                 }
                 try!(self.emit(Opcode::MapEnd));
@@ -348,7 +347,7 @@ impl<'a> Context<'a> {
             &A::Scalar(_, ref tag, _, ref value) => {
                 // TODO(tailhook) fix tag and anchor
                 try!(self.emit(Opcode::Scalar(tag_as_string(tag), None,
-                                      ScalarStyle::Auto, value.as_slice())));
+                                      ScalarStyle::Auto, value)));
             }
             &A::Null(_, ref tag, ref kind) => {
                 try!(self.emit(Opcode::Null(tag_as_string(tag), None, match *kind {
@@ -398,43 +397,43 @@ impl<'a> Encoder for Context<'a> {
     }
     fn emit_uint(&mut self, v: usize) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_u64(&mut self, v: u64) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_u32(&mut self, v: u32) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_u16(&mut self, v: u16) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_u8(&mut self, v: u8) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_int(&mut self, v: isize) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_i64(&mut self, v: i64) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_i32(&mut self, v: i32) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_i16(&mut self, v: i16) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_i8(&mut self, v: i8) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_bool(&mut self, v: bool) -> Result<(), IoError> {
         return self.emit(Opcode::Scalar(None, None, Plain,
@@ -442,15 +441,15 @@ impl<'a> Encoder for Context<'a> {
     }
     fn emit_f64(&mut self, v: f64) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_f32(&mut self, v: f32) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, Plain, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
     fn emit_char(&mut self, v: char) -> Result<(), IoError> {
         let val = v.to_string();
-        return self.emit(Opcode::Scalar(None, None, ScalarStyle::Auto, val.as_slice()));
+        return self.emit(Opcode::Scalar(None, None, ScalarStyle::Auto, &val));
     }
     fn emit_str(&mut self, v: &str) -> Result<(), IoError> {
         return self.emit(Opcode::Scalar(None, None, ScalarStyle::Auto, v));

@@ -1,7 +1,7 @@
 #![crate_name="quire"]
 #![crate_type="lib"]
 
-#![feature(old_io, rustc_private, collections)]
+#![feature(old_io, rustc_private, collections, core, io, old_path, fs)]
 
 extern crate collections;
 extern crate serialize;
