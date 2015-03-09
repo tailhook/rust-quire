@@ -34,7 +34,7 @@ impl<'a> TokenIter<'a> {
     }
     fn peek(&mut self, index: usize) -> &'a Token<'a> {
         let mut num = index;
-        for idx in range(self.index, self.tokens.len()) {
+        for idx in self.index..self.tokens.len() {
             let tok = self.tokens.get(idx).unwrap();
             match tok.kind {
                 T::Whitespace | T::Comment => continue,

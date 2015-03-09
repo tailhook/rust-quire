@@ -161,7 +161,7 @@ impl<'a> Context<'a> {
             _ => {}
         }
         try!(self.ensure_line_start());
-        for _ in range(0, self.cur_indent) {
+        for _ in 0..self.cur_indent {
             try!(self.stream.write_char(' '));
         }
         return Ok(());

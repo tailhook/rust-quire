@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::fmt::Display;
 use std::fmt::Error as FormatError;
 use std::fmt::{Formatter};
-use core::iter::Iterator;
+use std::iter::Iterator;
 use std::clone::Clone;
 
 use super::chars::is_whitespace;
@@ -660,7 +660,7 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
         }
         let pos = self.iter.position.clone();
         if self.indent_levels.len() > 1 {
-            for _ in range(0, self.indent_levels.len() - 1) {
+            for _ in 0..(self.indent_levels.len() - 1) {
                 self.result.push(Token {
                     kind: Unindent,
                     start: pos.clone(),
