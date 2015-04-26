@@ -17,7 +17,7 @@ use super::ast::NullKind::{Explicit, Implicit};
 pub type Tag<'a> = &'a str;
 pub type Anchor<'a> = &'a str;
 
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 enum ScalarStyle {
     Auto,
     Plain,
@@ -27,14 +27,14 @@ enum ScalarStyle {
     Folded,
 }
 
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 enum Null {
     Nothing,
     Tilde,
     Null,
 }
 
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 enum State {
     New,
     MapKey,
@@ -51,7 +51,7 @@ enum Line {
     AfterScalar,  // Means, insert newline unless you emitting comment
 }
 
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 enum Opcode<'a> {
     MapStart(Option<Tag<'a>>, Option<Anchor<'a>>),
     MapEnd,

@@ -2,6 +2,7 @@ use std::str::FromStr;
 use std::ops::Mul;
 use std::fmt::{Display};
 use std::num::{FromStrRadix, from_str_radix, FromPrimitive};
+use std::path::{PathBuf, Path};
 use std::default::Default;
 use std::collections::{BTreeMap, HashSet};
 
@@ -165,7 +166,7 @@ impl<T> Validator for Numeric<T>
 pub struct Directory {
     pub descr: Option<String>,
     pub optional: bool,
-    pub default: Option<Path>,
+    pub default: Option<PathBuf>,
     pub absolute: Option<bool>,
 }
 
@@ -193,7 +194,7 @@ impl Validator for Directory {
                 return (ast, warnings);
             }
         };
-        let path = Path::new(val);
+        let path = Path::new(&val);
         match self.absolute {
             Some(true) => {
                 if !path.is_absolute() {
@@ -221,8 +222,7 @@ impl Validator for Directory {
             }
             None => {}
         };
-        return (A::Scalar(pos, T::NonSpecific, kind,
-                          path.display().to_string()),
+        return (A::Scalar(pos, T::NonSpecific, kind, val),
                 warnings);
     }
 }
@@ -902,7 +902,7 @@ mod test {
     }
 
     #[test]
-    #[should_fail]
+    #[should_panic]
     fn test_enum_5() {
         parse_enum("!Gamma");
     }
@@ -972,7 +972,7 @@ mod test {
     }
 
     #[test]
-    #[should_fail(expected = "Path expected")]
+    #[should_panic(expected = "Path expected")]
     fn test_path_null() {
         assert!(parse_path("path:", None) == TestPath {
             path: Path::new("/test"),
@@ -1008,7 +1008,7 @@ mod test {
     }
 
     #[test]
-    #[should_fail(expected = "must be absolute")]
+    #[should_panic(expected = "must be absolute")]
     fn test_path_rel_abs() {
         assert!(parse_path("path: root/dir", Some(true)) == TestPath {
             path: Path::new("root/dir"),
@@ -1016,7 +1016,7 @@ mod test {
     }
 
     #[test]
-    #[should_fail(expected = "must be absolute")]
+    #[should_panic(expected = "must be absolute")]
     fn test_path_down_abs() {
         assert!(parse_path("path: ../root/dir", Some(true)) == TestPath {
             path: Path::new("../root/dir"),
@@ -1024,7 +1024,7 @@ mod test {
     }
 
     #[test]
-    #[should_fail(expected = "must not be absolute")]
+    #[should_panic(expected = "must not be absolute")]
     fn test_path_abs_rel() {
         assert!(parse_path("path: /root/dir", Some(false)) == TestPath {
             path: Path::new("/root/dir"),
@@ -1039,7 +1039,7 @@ mod test {
     }
 
     #[test]
-    #[should_fail(expected = "/../ is not allowed")]
+    #[should_panic(expected = "/../ is not allowed")]
     fn test_path_down_rel() {
         assert!(parse_path("path: ../root/dir", Some(false)) == TestPath {
             path: Path::new("../root/dir"),

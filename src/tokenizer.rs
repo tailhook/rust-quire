@@ -14,7 +14,7 @@ use super::chars::is_flow_indicator;
 use super::errors::Error;
 use self::TokenType::*;
 
-#[derive(PartialEq, Debug, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum TokenType {
     Eof,
     DocumentStart,

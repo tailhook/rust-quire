@@ -7,7 +7,6 @@ use std::fmt::{Formatter};
 use std::str::FromStr;
 use std::default::Default;
 use std::sync::mpsc::Sender;
-use std::intrinsics::get_tydesc;
 use serialize::{Decoder, Decodable};
 use serialize::json::{Json, ToJson, from_str};
 use serialize::json::Json as J;
@@ -35,8 +34,8 @@ impl Deref for AnyJson {
 }
 
 impl Decodable for AnyJson {
-    fn decode<D: Decoder + 'static>(dec: &mut D)
-        -> Result<AnyJson, <Self as Decodable>::Error>
+    fn decode<D: Decoder>(dec: &mut D)
+        -> Result<AnyJson, D>
     {
         let dec: &mut YamlDecoder = (dec as &mut Any).downcast_mut().unwrap();
         match dec.state {
@@ -102,9 +101,8 @@ impl YamlDecoder {
                     Ok(x) => Ok(x),
                     Err(err) => {
                         return Err(Error::decode_error(pos, &self.path,
-                            format!("Can't parse value of type {}: {}",
-                                unsafe { (*get_tydesc::<T>()).name },
-                                err)));
+                            // TODO(tailhook) print type name somehow
+                            format!("Can't parse value: {}", err)));
                     }
                 }
             }

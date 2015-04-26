@@ -251,7 +251,7 @@ impl<'a> Context<'a> {
     {
         match *src {
             Some(val) => {
-                let mut pieces = val.splitn(2, '!');
+                let mut pieces = val.splitn(3, '!');
                 assert!(pieces.next().unwrap() == "");
                 match (pieces.next().unwrap(), pieces.next()) {
                     ("", None) => {

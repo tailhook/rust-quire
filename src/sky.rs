@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::io::Read;
 use std::old_io::stderr;
 use std::fs::File;
+use std::path::Path;
 use std::sync::mpsc::channel;
 use serialize::{Decodable};
 
