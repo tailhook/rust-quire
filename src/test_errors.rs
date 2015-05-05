@@ -1,19 +1,19 @@
 use std::rc::Rc;
 use std::default::Default;
 use std::sync::mpsc::channel;
-use serialize::Decodable;
+use rustc_serialize::Decodable;
 
 use super::decode::YamlDecoder;
 use super::ast::process;
 use super::parser::parse;
 
 
-#[derive(Decodable, PartialEq, Eq, Debug)]
+#[derive(RustcDecodable, PartialEq, Eq, Debug)]
 struct Struct1 {
     list: Vec<Struct2>,
 }
 
-#[derive(Decodable, PartialEq, Eq, Debug)]
+#[derive(RustcDecodable, PartialEq, Eq, Debug)]
 struct Struct2 {
     value: String,
 }

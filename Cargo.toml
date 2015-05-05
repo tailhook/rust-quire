@@ -9,6 +9,9 @@ homepage = "http://github.com/tailhook/rust-quire"
 version = "0.1.0"
 authors = ["paul@colomiets.name"]
 
+[dependencies]
+rustc-serialize = "0.3.12"
+
 [dependencies.argparse]
 path = 'rust-argparse'
 

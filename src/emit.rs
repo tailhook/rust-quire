@@ -1,6 +1,8 @@
-use std::old_io::{IoResult, IoError, Writer};
+use std::io::Result as IoResult;
+use std::io::Error as IoError;
+use std::io::Write;
 use std::string::ToString;
-use serialize::{Encodable, Encoder};
+use rustc_serialize::{Encodable, Encoder};
 
 use super::parser::Node;
 
@@ -65,7 +67,7 @@ enum Opcode<'a> {
 
 pub struct Context<'a> {
     cur_indent: usize,
-    stream: &'a mut (Writer + 'a),
+    stream: &'a mut (Write + 'a),
     stack: Vec<(State, usize)>,
     state: State,
     line: Line,
@@ -82,7 +84,7 @@ fn tag_as_string<'x>(tag: &'x AstTag) -> Option<&'x str> {
 
 
 impl<'a> Context<'a> {
-    pub fn new<'x>(stream: &'x mut Writer) -> Context<'x> {
+    pub fn new<'x>(stream: &'x mut Write) -> Context<'x> {
         return Context {
             cur_indent: 0,
             stream: stream,
@@ -99,7 +101,7 @@ impl<'a> Context<'a> {
             ScalarStyle::Auto|ScalarStyle::Plain => {
                 //  Check for allowed characters
                 self.line = L::AfterScalar;
-                return self.stream.write_str(value);
+                return self.stream.write(&value[..].as_bytes()).map(|_| ());
             }
             ScalarStyle::SingleQuoted => {
                 unimplemented!();
@@ -120,16 +122,16 @@ impl<'a> Context<'a> {
         return match style {
             Null::Nothing => {
                 if self.line == L::Start {
-                    Ok(())
+                    Ok(0)
                 } else {
-                    self.stream.write_char('\n')
+                    self.stream.write(b"\n")
                 }
             }
             Null::Tilde =>
-                self.stream.write_str(if space { " ~\n" } else { "~\n" }),
+                self.stream.write(if space { b" ~\n" } else { b"~\n" }),
             Null::Null =>
-                self.stream.write_str(if space { " null\n" } else { "null\n"}),
-        };
+                self.stream.write(if space { b" null\n" } else { b"null\n"}),
+        }.map(|_| ());
     }
 
     fn push_indent(&mut self, state: State, value: usize) {
@@ -150,7 +152,7 @@ impl<'a> Context<'a> {
             }
             L::AfterScalar | L::AfterIndent => {
                 self.line = L::Start;
-                return self.stream.write_char('\n');
+                return self.stream.write(b"\n").map(|_| ());
             }
         }
     }
@@ -161,7 +163,7 @@ impl<'a> Context<'a> {
         }
         try!(self.ensure_line_start());
         for _ in 0..self.cur_indent {
-            try!(self.stream.write_char(' '));
+            try!(self.stream.write(b" "));
         }
         return Ok(());
     }
@@ -170,13 +172,13 @@ impl<'a> Context<'a> {
         anchor: Option<Tag>, space: bool) -> IoResult<()> {
         match tag {
             Some(x) => {
-                try!(self.stream.write_char('!'));
-                try!(self.stream.write_str(x));
+                try!(self.stream.write(b"!"));
+                try!(self.stream.write(x.as_bytes()));
                 if space {
-                    try!(self.stream.write_char(' '));
+                    try!(self.stream.write(b" "));
                 } else {
                     self.line = L::Start;
-                    return self.stream.write_char('\n');
+                    return self.stream.write(b"\n").map(|_| ());
                 }
             }
             None => {}
@@ -225,20 +227,20 @@ impl<'a> Context<'a> {
                 S::MapKey }
             (S::MapSimpleKeyValue, Opcode::Scalar(tag, anchor, style, value))
             => {
-                try!(self.stream.write_str(": "));
+                try!(self.stream.write(b": "));
                 try!(self.emit_tag_anchor(tag, anchor, true));
                 try!(self.emit_scalar(style, value));
                 S::MapKey }
             (S::MapSimpleKeyValue, Opcode::Null(tag, anchor, style)) => {
-                try!(self.stream.write_str(": "));
+                try!(self.stream.write(b": "));
                 try!(self.emit_tag_anchor(tag, anchor, false));
                 try!(self.emit_null(false, style));
                 try!(self.ensure_line_start());
                 S::MapKey }
             (S::MapSimpleKeyValue, Opcode::MapStart(tag, anchor)) => {
-                try!(self.stream.write_char(':'));
+                try!(self.stream.write(b":"));
                 if tag.is_some() || anchor.is_some() {
-                    try!(self.stream.write_str(" "));
+                    try!(self.stream.write(b" "));
                     try!(self.emit_tag_anchor(tag, anchor, false));
                 } else {
                     self.line = L::AfterScalar;
@@ -246,7 +248,7 @@ impl<'a> Context<'a> {
                 self.push_indent(S::MapKey, 2);
                 S::MapKey }
             (S::MapSimpleKeyValue, Opcode::SeqStart(tag, anchor)) => {
-                try!(self.stream.write_char(':'));
+                try!(self.stream.write(b":"));
                 self.line = L::AfterScalar;
                 self.push_indent(S::MapKey, 0);
                 S::SeqItem }
@@ -266,7 +268,7 @@ impl<'a> Context<'a> {
                 S::SeqItem }
             (S::SeqItem, Opcode::Scalar(tag, anchor, style, value)) => {
                 try!(self.ensure_indented());
-                try!(self.stream.write_str("- "));
+                try!(self.stream.write(b"- "));
                 try!(self.emit_tag_anchor(tag, anchor, true));
                 try!(self.emit_scalar(style, value));
                 S::SeqItem }
@@ -276,7 +278,7 @@ impl<'a> Context<'a> {
                     try!(self.ensure_line_start());
                 }
                 try!(self.ensure_indented());
-                try!(self.stream.write_str("- "));
+                try!(self.stream.write(b"- "));
                 self.line = L::AfterIndent;
                 self.push_indent(S::SeqItem, 2);
                 S::MapKey }
@@ -359,7 +361,7 @@ impl<'a> Context<'a> {
         return Ok(());
     }
 
-    fn to_buffer<'x, T: Encodable, W: Writer>(
+    fn to_buffer<'x, T: Encodable, W: Write>(
         val: &T, wr: &'x mut W)
     {
         let mut encoder = Context::new(wr);
@@ -368,14 +370,14 @@ impl<'a> Context<'a> {
 
 }
 
-pub fn emit_parse_tree(tree: &Node, stream: &mut Writer)
+pub fn emit_parse_tree(tree: &Node, stream: &mut Write)
     -> IoResult<()>
 {
     let mut ctx = Context::new(stream);
     return ctx.emit_node(tree);
 }
 
-pub fn emit_ast(tree: &Ast, stream: &mut Writer)
+pub fn emit_ast(tree: &Ast, stream: &mut Write)
     -> IoResult<()>
 {
     let mut ctx = Context::new(stream);
@@ -383,7 +385,7 @@ pub fn emit_ast(tree: &Ast, stream: &mut Writer)
 }
 
 pub fn emit_object<'x, T: Encodable>(
-    val: &T, wr: &'x mut Writer) -> Result<(), IoError>
+    val: &T, wr: &'x mut Write) -> Result<(), IoError>
 {
     let mut encoder = Context::new(wr);
     val.encode(&mut encoder)
@@ -395,7 +397,7 @@ impl<'a> Encoder for Context<'a> {
     fn emit_nil(&mut self) -> Result<(), IoError> {
         return self.emit(Opcode::Null(None, None, Null::Nothing));
     }
-    fn emit_uint(&mut self, v: usize) -> Result<(), IoError> {
+    fn emit_usize(&mut self, v: usize) -> Result<(), IoError> {
         let val = v.to_string();
         return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
@@ -415,7 +417,7 @@ impl<'a> Encoder for Context<'a> {
         let val = v.to_string();
         return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
-    fn emit_int(&mut self, v: isize) -> Result<(), IoError> {
+    fn emit_isize(&mut self, v: isize) -> Result<(), IoError> {
         let val = v.to_string();
         return self.emit(Opcode::Scalar(None, None, Plain, &val));
     }
@@ -565,7 +567,7 @@ mod test {
     use std::str::{from_utf8};
     use std::rc::Rc;
     use std::default::Default;
-    use serialize::{Encodable, Encoder};
+    use rustc_serialize::{Encodable, Encoder};
 
     use super::super::parser::parse;
     use super::{Null, Opcode};
@@ -709,7 +711,7 @@ mod test {
     #[test]
     fn encode_int() {
         let mut bytes = Vec::new();
-        Context::to_buffer(&1us, &mut bytes);
+        Context::to_buffer(&1usize, &mut bytes);
         let value = from_utf8(&bytes[..]).unwrap();
         assert_eq!(value, "1\n");
     }
@@ -717,12 +719,12 @@ mod test {
     #[test]
     fn encode_seq() {
         let mut bytes = Vec::new();
-        Context::to_buffer(&vec!(1us, 2us), &mut bytes);
+        Context::to_buffer(&vec!(1usize, 2usize), &mut bytes);
         let value = from_utf8(&bytes[..]).unwrap();
         assert_eq!(value, "- 1\n- 2\n");
     }
 
-    #[derive(Encodable)]
+    #[derive(RustcEncodable)]
     struct Something {
         key1: isize,
         key2: String,

@@ -1,10 +1,8 @@
 #![crate_name="quire"]
 #![crate_type="lib"]
 
-#![feature(old_io, rustc_private, collections, core, io, old_path, fs)]
 
-extern crate collections;
-extern crate serialize;
+extern crate rustc_serialize;
 
 pub use sky::parse_config;
 pub use ast::Options;

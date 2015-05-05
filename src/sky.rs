@@ -1,10 +1,10 @@
 use std::rc::Rc;
-use std::io::Read;
-use std::old_io::stderr;
+use std::io::{Read, Write};
+use std::io::stderr;
 use std::fs::File;
 use std::path::Path;
 use std::sync::mpsc::channel;
-use serialize::{Decodable};
+use rustc_serialize::{Decodable};
 
 use super::ast;
 pub use super::errors::Error;
@@ -26,7 +26,7 @@ pub fn parse_config<T: Decodable>(
             filename.display(), e)));
     let (ast, mut warnings) = try!(parse(
             Rc::new(format!("{}", filename.display())),
-            body.as_slice(),
+            &body,
             |doc| { ast::process(options, doc) })
         .map_err(|e| format!("Error parsing config {}: {}",
             filename.display(), e)));

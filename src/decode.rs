@@ -7,9 +7,9 @@ use std::fmt::{Formatter};
 use std::str::FromStr;
 use std::default::Default;
 use std::sync::mpsc::Sender;
-use serialize::{Decoder, Decodable};
-use serialize::json::{Json, ToJson, from_str};
-use serialize::json::Json as J;
+use rustc_serialize::{Decoder, Decodable};
+use rustc_serialize::json::{Json, ToJson, decode};
+use rustc_serialize::json::Json as J;
 
 use super::ast::Ast as A;
 use super::ast::Tag as T;
@@ -22,6 +22,7 @@ use self::ParserState::*;
 
 pub type DecodeResult<T> = Result<T, Error>;
 
+/*
 #[derive(Debug)]
 struct AnyJson(Json);
 
@@ -63,6 +64,7 @@ impl Display for AnyJson {
         write!(fmt, "{}", selfj)
     }
 }
+*/
 
 enum ParserState {
     Node(Ast),
@@ -156,7 +158,7 @@ impl Decoder for YamlDecoder {
         }
         Ok(try!(self.from_str()))
     }
-    fn read_uint(&mut self) -> DecodeResult<usize> {
+    fn read_usize(&mut self) -> DecodeResult<usize> {
         Ok(try!(self.from_str()))
     }
 
@@ -172,7 +174,7 @@ impl Decoder for YamlDecoder {
     fn read_i8 (&mut self) -> DecodeResult<i8 > {
         Ok(try!(self.from_str()))
     }
-    fn read_int(&mut self) -> DecodeResult<isize> {
+    fn read_isize(&mut self) -> DecodeResult<isize> {
         Ok(try!(self.from_str()))
     }
 
@@ -519,18 +521,19 @@ impl Decoder for YamlDecoder {
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
+    use std::path::PathBuf;
     use std::default::Default;
     use std::collections::BTreeMap;
     use std::sync::mpsc::channel;
-    use serialize::{Decodable, Decoder};
+    use rustc_serialize::{Decodable, Decoder};
 
     use super::YamlDecoder;
     use super::super::parser::parse;
     use super::super::ast::process;
-    use super::AnyJson;
+    //use super::AnyJson;
     use self::TestEnum::*;
 
-    #[derive(Clone, Debug, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestStruct {
         a: usize,
         b: String,
@@ -604,17 +607,18 @@ mod test {
     }
 
 
-    #[derive(PartialEq, Eq, Decodable, Debug)]
+    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
     struct TestOption {
         path: Option<String>,
     }
-    #[derive(Debug, PartialEq, Eq, Decodable)]
+    /*
+    #[derive(Debug, PartialEq, Eq, RustcDecodable)]
     struct TestJson {
         json: AnyJson,
     }
 
 
-/*  This test does not compile for some reason
+    This test does not compile for some reason
     #[test]
     fn decode_json() {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()),
@@ -683,9 +687,9 @@ mod test {
         assert_eq!(warnings.len(), 0);
     }
 
-    #[derive(PartialEq, Eq, Decodable)]
+    #[derive(PartialEq, Eq, RustcDecodable)]
     struct TestPath {
-        path: Path,
+        path: PathBuf,
     }
 
     #[test]
@@ -700,13 +704,13 @@ mod test {
             Decodable::decode(&mut dec).unwrap()
         };
         warnings.extend(rx.iter());
-        assert!(val.path == Path::new("test/dir"));
+        assert!(val.path == PathBuf::from("test/dir"));
         assert_eq!(warnings.len(), 0);
     }
 
-    #[derive(PartialEq, Eq, Decodable)]
+    #[derive(PartialEq, Eq, RustcDecodable)]
     struct TestPathMap {
-        paths: BTreeMap<Path, isize>,
+        paths: BTreeMap<PathBuf, isize>,
     }
 
     #[test]
@@ -721,13 +725,13 @@ mod test {
             Decodable::decode(&mut dec).unwrap()
         };
         warnings.extend(rx.iter());
-        let tree: BTreeMap<Path, isize>;
-        tree = vec!((Path::new("test/dir"), 1)).into_iter().collect();
+        let tree: BTreeMap<PathBuf, isize>;
+        tree = vec!((PathBuf::from("test/dir"), 1)).into_iter().collect();
         assert!(val.paths == tree);
         assert_eq!(warnings.len(), 0);
     }
 
-    #[derive(PartialEq, Eq, Decodable, Debug)]
+    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
     #[allow(non_camel_case_types)]
     enum TestEnum {
         Alpha,

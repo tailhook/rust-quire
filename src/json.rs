@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
 use std::collections::BTreeMap;
-use serialize::json::{ToJson, Json};
-use serialize::json::Json as J;
+use rustc_serialize::json::{ToJson, Json};
+use rustc_serialize::json::Json as J;
 
 use super::ast::Ast;
 use super::ast::Ast as A;
@@ -53,16 +53,16 @@ impl ToJson for Ast {
 mod test {
     use std::rc::Rc;
     use std::default::Default;
-    use serialize::json::ToJson;
-    use serialize::json as J;
+    use rustc_serialize::json::ToJson;
+    use rustc_serialize::json as J;
     use super::super::parser::parse;
     use super::super::ast::process;
 
     fn assert_yaml_eq_json(a: &'static str, b: &'static str) {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()), a,
             |doc| { process(Default::default(), doc) }).unwrap();
-        let aj = ast.to_json();
-        let bj = J::from_str(b).unwrap();
+        let aj = format!("{}", ast.to_json());
+        let bj = J::encode(&b).unwrap();
         assert_eq!(aj, bj);
     }
 

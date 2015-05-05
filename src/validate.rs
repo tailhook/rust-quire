@@ -1,8 +1,7 @@
 use std::str::FromStr;
 use std::ops::Mul;
 use std::fmt::{Display};
-use std::num::{FromStrRadix, from_str_radix, FromPrimitive};
-use std::path::{PathBuf, Path};
+use std::path::{PathBuf, Path, Component};
 use std::default::Default;
 use std::collections::{BTreeMap, HashSet};
 
@@ -14,7 +13,7 @@ use super::ast::{Ast, NullKind};
 use super::ast::ScalarKind::{Quoted, Plain};
 
 
-static NUMERIC_SUFFIXES: &'static [(&'static str, u64)] = &[
+static NUMERIC_SUFFIXES: &'static [(&'static str, i64)] = &[
     ("k", 1000),
     ("M", 1000000),
     ("G", 1000000000),
@@ -77,17 +76,15 @@ impl Validator for Scalar {
 }
 
 #[derive(Default)]
-pub struct Numeric<T> {
+pub struct Numeric {
     pub descr: Option<String>,
     pub optional: bool,
-    pub default: Option<T>,
-    pub min: Option<T>,
-    pub max: Option<T>,
+    pub default: Option<i64>,
+    pub min: Option<i64>,
+    pub max: Option<i64>,
 }
 
-fn from_numeric<T>(mut src: &str) -> Option<T>
-    where T: FromStr+FromStrRadix+Mul<T, Output=T>+FromPrimitive+Copy+Display
-
+fn from_numeric(mut src: &str) -> Option<i64>
 {
     let mut mult = 1;
     for &(suffix, value) in NUMERIC_SUFFIXES.iter() {
@@ -99,22 +96,19 @@ fn from_numeric<T>(mut src: &str) -> Option<T>
             break;
         }
     }
-    let mut val: Option<T> = FromStr::from_str(src).ok();
+    let mut val: Option<i64> = FromStr::from_str(src).ok();
     if val.is_none() && src.len() > 2 {
         val = match &src[..2] {
-            "0x" => from_str_radix(&src[2..], 16).ok(),
-            "0o" => from_str_radix(&src[2..], 8).ok(),
-            "0b" => from_str_radix(&src[2..], 2).ok(),
+            "0x" => i64::from_str_radix(&src[2..], 16).ok(),
+            "0o" => i64::from_str_radix(&src[2..], 8).ok(),
+            "0b" => i64::from_str_radix(&src[2..], 2).ok(),
             _    => None,
         };
     }
-    return val.and_then(|x| FromPrimitive::from_u64(mult).map(|m| x*m));
+    return val.map(|x| x*mult);
 }
 
-impl<T> Validator for Numeric<T>
-    where T: PartialOrd+Display+FromStr+FromStrRadix+Mul<T, Output=T>
-        +FromPrimitive+Copy
-{
+impl Validator for Numeric {
 
     fn default(&self, pos: Pos) -> Option<Ast> {
         if self.default.is_none() && self.optional {
@@ -126,9 +120,9 @@ impl<T> Validator for Numeric<T>
     }
     fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
-        let (pos, val): (Pos, T)  = match ast {
+        let (pos, val): (Pos, i64)  = match ast {
             A::Scalar(pos, tag, kind, string)
-            => match from_numeric::<T>(string.as_slice()) {
+            => match from_numeric(&string) {
                 Some(val) => (pos, val),
                 None => {
                     warnings.push(Error::validation_error(&pos,
@@ -194,34 +188,36 @@ impl Validator for Directory {
                 return (ast, warnings);
             }
         };
-        let path = Path::new(&val);
-        match self.absolute {
-            Some(true) => {
-                if !path.is_absolute() {
-                    warnings.push(Error::validation_error(&pos,
-                        format!("Path must be absolute")));
+        {
+            let path = Path::new(&val);
+            match self.absolute {
+                Some(true) => {
+                    if !path.is_absolute() {
+                        warnings.push(Error::validation_error(&pos,
+                            format!("Path must be absolute")));
+                    }
                 }
-            }
-            Some(false) => {
-                if path.is_absolute() {
-                    warnings.push(Error::validation_error(&pos,
-                        format!("Path must not be absolute")));
-                } else {
-                    // Still for non-absolute paths we must check if
-                    // there are ../../something
-                    //
-                    // If you don't want this check, just set self.absolute
-                    // to None instead of Some(false)
-                    for cmp in path.str_components() {
-                        if cmp == Some("..") {
-                            warnings.push(Error::validation_error(&pos,
-                                format!("The /../ is not allowed in path")));
+                Some(false) => {
+                    if path.is_absolute() {
+                        warnings.push(Error::validation_error(&pos,
+                            format!("Path must not be absolute")));
+                    } else {
+                        // Still for non-absolute paths we must check if
+                        // there are ../../something
+                        //
+                        // If you don't want this check, just set self.absolute
+                        // to None instead of Some(false)
+                        for cmp in path.components() {
+                            if cmp == Component::ParentDir {
+                                warnings.push(Error::validation_error(&pos,
+                                    format!("The /../ is not allowed in path")));
+                            }
                         }
                     }
                 }
-            }
-            None => {}
-        };
+                None => {}
+            };
+        }
         return (A::Scalar(pos, T::NonSpecific, kind, val),
                 warnings);
     }
@@ -267,7 +263,7 @@ impl<'a> Validator for Structure<'a> {
         };
         for &(ref k, ref validator) in self.members.iter() {
             let value = match map.remove(k)
-                .or(map.remove(&k.as_slice().replace("_", "-"))) {
+                .or(map.remove(&k[..].replace("_", "-"))) {
                 Some(src) => {
                     let (value, wrn) = validator.validate(src);
                     warnings.extend(wrn.into_iter());
@@ -288,7 +284,7 @@ impl<'a> Validator for Structure<'a> {
         }
         let mut keys: HashSet<String>;
         keys = map.keys()
-            .filter(|s| !s.as_slice().starts_with("_"))
+            .filter(|s| !&s[..].starts_with("_"))
             .map(|s| s.clone()).collect();
         for &(ref k, _) in self.members.iter() {
             keys.remove(k);
@@ -336,7 +332,7 @@ impl<'a> Validator for Enum<'a> {
         if let Some(tag_name) = tag_name {
             let pos = ast.pos().clone();
             for &(ref k, ref validator) in self.options.iter() {
-                if k.as_slice() == tag_name.as_slice() {
+                if &k[..] == &tag_name[..] {
                     let (value, wrn) = validator.validate(ast);
                     warnings.extend(wrn.into_iter());
                     return (value.with_tag(T::LocalTag(tag_name)), warnings);
@@ -469,7 +465,8 @@ mod test {
     use std::rc::Rc;
     use std::sync::mpsc::channel;
     use std::default::Default;
-    use serialize::Decodable;
+    use std::path::PathBuf;
+    use rustc_serialize::Decodable;
     use std::collections::BTreeMap;
     use std::collections::HashMap;
 
@@ -480,7 +477,7 @@ mod test {
     use super::{Enum, Nothing, Directory};
     use self::TestEnum::*;
 
-    #[derive(Clone, Debug, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestStruct {
         intkey: usize,
         strkey: String,
@@ -489,7 +486,7 @@ mod test {
     fn parse_str(body: &str) -> TestStruct {
         let str_val = Structure { members: vec!(
             ("intkey".to_string(), Box::new(Numeric {
-                default: Some(123us),
+                default: Some(123),
                 .. Default::default() }) as Box<Validator>),
             ("strkey".to_string(), Box::new(Scalar {
                 default: Some("default_value".to_string()),
@@ -551,7 +548,7 @@ mod test {
         });
     }
 
-    #[derive(Clone, Debug, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestDash {
         some_key: usize,
     }
@@ -559,7 +556,7 @@ mod test {
     fn parse_dash_str(body: &str) -> TestDash {
         let str_val = Structure { members: vec!(
             ("some_key".to_string(), Box::new(Numeric {
-                default: Some(123us),
+                default: Some(123),
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
@@ -589,7 +586,7 @@ mod test {
     fn parse_with_warnings(body: &str) -> (TestDash, Vec<String>) {
         let str_val = Structure { members: vec!(
             ("some_key".to_string(), Box::new(Numeric {
-                default: Some(123us),
+                default: Some(123),
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
@@ -619,7 +616,7 @@ mod test {
                  .to_string())));
     }
 
-    #[derive(Clone, Debug, PartialEq, Eq, Decodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestOpt {
         some_key: Option<usize>,
     }
@@ -627,7 +624,7 @@ mod test {
     fn parse_opt_str(body: &str) -> TestOpt {
         let str_val = Structure { members: vec!(
             ("some_key".to_string(), Box::new(Numeric {
-                default: None::<usize>,
+                default: None,
                 optional: true,
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
@@ -666,8 +663,8 @@ mod test {
     fn parse_map<T:Decodable>(body: &str) -> T {
         let validator = Mapping {
             key_element: Box::new(Scalar { .. Default::default()}),
-            value_element: Box::new(Numeric::<usize> {
-                default: Some(0us),
+            value_element: Box::new(Numeric {
+                default: Some(0),
                 .. Default::default()}),
             .. Default::default()
         };
@@ -728,7 +725,7 @@ mod test {
             key_element: Box::new(Scalar { .. Default::default()}),
             value_element: Box::new(Structure { members: vec!(
                 ("some_key".to_string(), Box::new(Numeric {
-                    default: Some(123us),
+                    default: Some(123),
                     .. Default::default() }) as Box<Validator>),
             ),.. Default::default()}) as Box<Validator>,
             .. Default::default()
@@ -780,7 +777,7 @@ mod test {
     fn parse_seq(body: &str) -> Vec<usize> {
         let validator = Sequence {
             element: Box::new(Numeric {
-                default: None::<usize>,
+                default: None,
                 .. Default::default()}),
             .. Default::default()
         };
@@ -829,7 +826,7 @@ mod test {
         assert_eq!(res, m);
     }
 
-    #[derive(PartialEq, Eq, Decodable, Debug)]
+    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
     enum TestEnum {
         Alpha,
         Beta,
@@ -845,11 +842,11 @@ mod test {
                 ("Beta".to_string(), Box::new(Nothing) as Box<Validator>),
                 ("Gamma".to_string(), Box::new(Numeric {
                     optional: true,
-                    default: Some(7us),
+                    default: Some(7),
                     .. Default::default() }) as Box<Validator>),
                 ("Delta".to_string(), Box::new(Structure { members: vec!(
                     ("intkey".to_string(), Box::new(Numeric {
-                        default: Some(123us),
+                        default: Some(123),
                         .. Default::default() }) as Box<Validator>),
                     ("strkey".to_string(), Box::new(Scalar {
                         default: Some("default_value".to_string()),
@@ -859,7 +856,7 @@ mod test {
                     optional: true,
                     members: vec!(
                     ("intkey".to_string(), Box::new(Numeric {
-                        default: Some(457us),
+                        default: Some(457),
                         .. Default::default() }) as Box<Validator>),
                     ("strkey".to_string(), Box::new(Scalar {
                         default: Some("epsilon".to_string()),
@@ -947,15 +944,15 @@ mod test {
             })));
     }
 
-    #[derive(Clone, PartialEq, Eq, Decodable)]
+    #[derive(Clone, PartialEq, Eq, RustcDecodable)]
     struct TestPath {
-        path: Path,
+        path: PathBuf,
     }
 
     fn parse_path(body: &str, abs: Option<bool>) -> TestPath {
         let str_val = Structure { members: vec!(
             ("path".to_string(), Box::new(Directory {
-                default: Some(Path::new("/test")),
+                default: Some(PathBuf::from("/test")),
                 absolute: abs,
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
@@ -975,35 +972,35 @@ mod test {
     #[should_panic(expected = "Path expected")]
     fn test_path_null() {
         assert!(parse_path("path:", None) == TestPath {
-            path: Path::new("/test"),
+            path: PathBuf::from("/test"),
         });
     }
 
     #[test]
     fn test_path_abs() {
         assert!(parse_path("path: /root/dir", None) == TestPath {
-            path: Path::new("/root/dir"),
+            path: PathBuf::from("/root/dir"),
         });
     }
 
     #[test]
     fn test_path_rel() {
         assert!(parse_path("path: root/dir", None) == TestPath {
-            path: Path::new("root/dir"),
+            path: PathBuf::from("root/dir"),
         });
     }
 
     #[test]
     fn test_path_down() {
         assert!(parse_path("path: ../root/dir", None) == TestPath {
-            path: Path::new("../root/dir"),
+            path: PathBuf::from("../root/dir"),
         });
     }
 
     #[test]
     fn test_path_abs_abs() {
         assert!(parse_path("path: /root/dir", Some(true)) == TestPath {
-            path: Path::new("/root/dir"),
+            path: PathBuf::from("/root/dir"),
         });
     }
 
@@ -1011,7 +1008,7 @@ mod test {
     #[should_panic(expected = "must be absolute")]
     fn test_path_rel_abs() {
         assert!(parse_path("path: root/dir", Some(true)) == TestPath {
-            path: Path::new("root/dir"),
+            path: PathBuf::from("root/dir"),
         });
     }
 
@@ -1019,7 +1016,7 @@ mod test {
     #[should_panic(expected = "must be absolute")]
     fn test_path_down_abs() {
         assert!(parse_path("path: ../root/dir", Some(true)) == TestPath {
-            path: Path::new("../root/dir"),
+            path: PathBuf::from("../root/dir"),
         });
     }
 
@@ -1027,14 +1024,14 @@ mod test {
     #[should_panic(expected = "must not be absolute")]
     fn test_path_abs_rel() {
         assert!(parse_path("path: /root/dir", Some(false)) == TestPath {
-            path: Path::new("/root/dir"),
+            path: PathBuf::from("/root/dir"),
         });
     }
 
     #[test]
     fn test_path_rel_rel() {
         assert!(parse_path("path: root/dir", Some(false)) == TestPath {
-            path: Path::new("root/dir"),
+            path: PathBuf::from("root/dir"),
         });
     }
 
@@ -1042,7 +1039,7 @@ mod test {
     #[should_panic(expected = "/../ is not allowed")]
     fn test_path_down_rel() {
         assert!(parse_path("path: ../root/dir", Some(false)) == TestPath {
-            path: Path::new("../root/dir"),
+            path: PathBuf::from("../root/dir"),
         });
     }
 

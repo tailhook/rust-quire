@@ -989,10 +989,10 @@ fn test_directive() {
 #[test]
 fn test_reserved() {
     let err = test_tokenize("@").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:1: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:1: \
         Tokenizer Error: Characters '@' and '`' are not allowed");
     let err = test_tokenize("a:\n  @").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:2:3: \
+    assert_eq!(&format!("{}", err), "<inline_test>:2:3: \
         Tokenizer Error: Characters '@' and '`' are not allowed");
     let tokens = test_tokenize("a@");
     assert_eq!(simple_tokens(tokens),
@@ -1005,31 +1005,31 @@ fn test_reserved() {
 #[test]
 fn test_bad_char_ctl() {
     let err = test_tokenize("\x01").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:1: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:1: \
         Tokenizer Error: Unacceptable character");
 }
 #[test]
 fn test_bad_char_tab() {
     let err = test_tokenize("\t").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:1: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:1: \
         Tokenizer Error: Tab character may appear only in quoted string");
 }
 #[test]
 fn test_bad_char_tab2() {
     let err = test_tokenize("a:\n  \tbc").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:2:3: \
+    assert_eq!(&format!("{}", err), "<inline_test>:2:3: \
         Tokenizer Error: Tab character may appear only in quoted string");
 }
 #[test]
 fn test_bad_char_tab3() {
     let err = test_tokenize("a\n\tb").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:2:1: \
+    assert_eq!(&format!("{}", err), "<inline_test>:2:1: \
         Tokenizer Error: Tab character may appear only in quoted string");
 }
 #[test]
 fn test_bad_char_tab4() {
     let err = test_tokenize("a\tb").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:2: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:2: \
         Tokenizer Error: Tab character may appear only in quoted string");
 }
 
@@ -1045,7 +1045,7 @@ fn test_double_quoted() {
     assert_eq!(simple_tokens(tokens),
         vec!((DoubleString, "\"a\\\"\nb\"")));
     let err = test_tokenize("val: \"value\nof").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:6: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:6: \
         Tokenizer Error: Unclosed double-quoted string");
 }
 
@@ -1062,7 +1062,7 @@ fn test_single_quoted() {
         vec!((SingleString, "'a\\'"), (MappingValue, ":"),
              (Whitespace, " "), (SingleString, "'b'")));
     let err = test_tokenize("val: 'value\nof").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:6: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:6: \
         Tokenizer Error: Unclosed quoted string");
 }
 
@@ -1088,7 +1088,7 @@ fn test_tag() {
     assert_eq!(simple_tokens(test_tokenize("!a b")),
         vec!((Tag, "!a"), (Whitespace, " "), (PlainString, "b")));
     let err = test_tokenize("!a[]").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:3: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:3: \
         Tokenizer Error: Bad char in tag name");
 }
 
@@ -1099,10 +1099,10 @@ fn test_anchor() {
     assert_eq!(simple_tokens(test_tokenize("&a b")),
         vec!((Anchor, "&a"), (Whitespace, " "), (PlainString, "b")));
     let err = test_tokenize("&a[]").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:3: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:3: \
         Tokenizer Error: Bad char in anchor name");
     let err = test_tokenize("&").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:1: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:1: \
         Tokenizer Error: Anchor name requires at least one character");
 }
 
@@ -1113,10 +1113,10 @@ fn test_alias() {
     assert_eq!(simple_tokens(test_tokenize("*a b")),
         vec!((Alias, "*a"), (Whitespace, " "), (PlainString, "b")));
     let err = test_tokenize("*a[]").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:3: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:3: \
         Tokenizer Error: Bad char in alias name");
     let err = test_tokenize("*").err().unwrap();
-    assert_eq!(format!("{}", err).as_slice(), "<inline_test>:1:1: \
+    assert_eq!(&format!("{}", err), "<inline_test>:1:1: \
         Tokenizer Error: Alias name requires at least one character");
 }
 
