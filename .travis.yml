@@ -1,4 +1,4 @@
 sudo: false
 language: rust
-rust: 1.0.0-alpha.2
+rust: 1.0.0
 script: make test
