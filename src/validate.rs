@@ -612,7 +612,7 @@ mod test {
             (TestDash {
                 some_key: 13,
             }, vec!("<inline text>:1:1: Validation Error: \
-                 Keys HashSet {\"another-key\"} are not expected"
+                 Keys {\"another-key\"} are not expected"
                  .to_string())));
     }
 

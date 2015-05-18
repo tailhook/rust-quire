@@ -10,7 +10,7 @@ version = "0.1.0"
 authors = ["paul@colomiets.name"]
 
 [dependencies]
-rustc-serialize = "0.3.12"
+rustc-serialize = "0.3"
 
 [dependencies.argparse]
 path = 'rust-argparse'
