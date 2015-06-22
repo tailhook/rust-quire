@@ -11,7 +11,6 @@ authors = ["paul@colomiets.name"]
 
 [dependencies]
 rustc-serialize = "0.3"
+argparse = "0.2"
 
-[dependencies.argparse]
-path = 'rust-argparse'
 
