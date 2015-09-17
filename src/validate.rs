@@ -36,6 +36,16 @@ pub struct Scalar {
     pub max_length: Option<usize>,
 }
 
+impl Scalar {
+    pub fn new() -> Scalar {
+        Default::default()
+    }
+    pub fn optional(mut self) -> Scalar {
+        self.optional = true;
+        self
+    }
+}
+
 impl Validator for Scalar {
     fn default(&self, pos: Pos) -> Option<Ast> {
         if self.default.is_none() && self.optional {
@@ -230,6 +240,22 @@ pub struct Structure<'a> {
     pub optional: bool,
 }
 
+impl<'a> Structure<'a> {
+    pub fn new() -> Structure<'a> {
+        Default::default()
+    }
+    pub fn member<S: Display, V: Validator + 'a>(mut self, name: S, value: V)
+        -> Structure<'a>
+    {
+        self.members.push((name.to_string(), Box::new(value)));
+        self
+    }
+    pub fn optional(mut self) -> Structure<'a> {
+        self.optional = true;
+        self
+    }
+}
+
 impl<'a> Validator for Structure<'a> {
     fn default(&self, pos: Pos) -> Option<Ast> {
         if self.optional {
@@ -303,6 +329,22 @@ pub struct Enum<'a> {
     pub options: Vec<(String, Box<Validator + 'a>)>,
     pub optional: bool,
     pub default_tag: Option<String>,
+}
+
+impl<'a> Enum<'a> {
+    pub fn new() -> Enum<'a> {
+        Default::default()
+    }
+    pub fn optional(mut self) -> Enum<'a> {
+        self.optional = true;
+        self
+    }
+    pub fn option<S: Display, V: Validator + 'a>(mut self, name: S, value: V)
+        -> Enum<'a>
+    {
+        self.options.push((name.to_string(), Box::new(value)));
+        self
+    }
 }
 
 impl<'a> Validator for Enum<'a> {
@@ -392,6 +434,16 @@ pub struct Sequence<'a> {
     pub descr: Option<String>,
     pub element: Box<Validator + 'a>,
     pub from_scalar: Option<fn (scalar: Ast) -> Vec<Ast>>,
+}
+
+impl<'a> Sequence<'a> {
+    pub fn new<V: Validator + 'a>(el: V) -> Sequence<'a> {
+        Sequence {
+            descr: None,
+            element: Box::new(el),
+            from_scalar: None,
+        }
+    }
 }
 
 impl<'a> Validator for Sequence<'a> {
