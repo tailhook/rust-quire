@@ -388,13 +388,25 @@ impl<'a> Validator for Enum<'a> {
 }
 
 #[derive(Default)]
-pub struct Mapping<'a, 'b> {
+pub struct Mapping<'a> {
     pub descr: Option<String>,
     pub key_element: Box<Validator + 'a>,
-    pub value_element: Box<Validator + 'b>,
+    pub value_element: Box<Validator + 'a>,
 }
 
-impl<'a, 'b> Validator for Mapping<'a, 'b> {
+impl<'a> Mapping<'a> {
+    pub fn new<V: Validator + 'a, W: Validator + 'a>(key: V, val: W)
+        -> Mapping<'a>
+    {
+        Mapping {
+            descr: None,
+            key_element: Box::new(key),
+            value_element: Box::new(val),
+        }
+    }
+}
+
+impl<'a> Validator for Mapping<'a> {
     fn default(&self, pos: Pos) -> Option<Ast> {
         return Some(A::Map(pos, T::NonSpecific, BTreeMap::new()));
     }
