@@ -511,6 +511,10 @@ impl<'a> Sequence<'a> {
             from_scalar: None,
         }
     }
+    pub fn parser(mut self, f: fn (scalar: Ast) -> Vec<Ast>) -> Sequence<'a> {
+        self.from_scalar = Some(f);
+        self
+    }
 }
 
 impl<'a> Validator for Sequence<'a> {
