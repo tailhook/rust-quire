@@ -44,6 +44,18 @@ impl Scalar {
         self.optional = true;
         self
     }
+    pub fn default<S:ToString>(mut self, value: S) -> Scalar {
+        self.default = Some(value.to_string());
+        self
+    }
+    pub fn min_length(mut self, len: usize) -> Scalar {
+        self.min_length = Some(len);
+        self
+    }
+    pub fn max_length(mut self, len: usize) -> Scalar {
+        self.max_length = Some(len);
+        self
+    }
 }
 
 impl Validator for Scalar {
