@@ -1,5 +1,4 @@
 use std::str::FromStr;
-use std::ops::Mul;
 use std::fmt::{Display};
 use std::path::{PathBuf, Path, Component};
 use std::default::Default;
@@ -391,10 +390,14 @@ impl<'a> Enum<'a> {
         self.optional = true;
         self
     }
-    pub fn option<S: Display, V: Validator + 'a>(mut self, name: S, value: V)
+    pub fn option<S: ToString, V: Validator + 'a>(mut self, name: S, value: V)
         -> Enum<'a>
     {
         self.options.push((name.to_string(), Box::new(value)));
+        self
+    }
+    pub fn default_tag<S: ToString>(mut self, name: S) -> Enum<'a> {
+        self.default_tag = Some(name.to_string());
         self
     }
 }
