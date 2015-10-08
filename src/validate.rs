@@ -130,6 +130,28 @@ fn from_numeric(mut src: &str) -> Option<i64>
     return val.map(|x| x*mult);
 }
 
+impl Numeric {
+    pub fn new() -> Numeric {
+        Default::default()
+    }
+    pub fn optional(mut self) -> Numeric {
+        self.optional = true;
+        self
+    }
+    pub fn default(mut self, value: i64) -> Numeric {
+        self.default = Some(value);
+        self
+    }
+    pub fn min(mut self, val: i64) -> Numeric {
+        self.min = Some(val);
+        self
+    }
+    pub fn max(mut self, val: i64) -> Numeric {
+        self.max = Some(val);
+        self
+    }
+}
+
 impl Validator for Numeric {
 
     fn default(&self, pos: Pos) -> Option<Ast> {
