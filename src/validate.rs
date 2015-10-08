@@ -208,6 +208,24 @@ pub struct Directory {
     pub absolute: Option<bool>,
 }
 
+impl Directory {
+    pub fn new() -> Directory {
+        Default::default()
+    }
+    pub fn optional(mut self) -> Directory {
+        self.optional = true;
+        self
+    }
+    pub fn default<P:AsRef<Path>>(mut self, value: P) -> Directory {
+        self.default = Some(value.as_ref().to_path_buf());
+        self
+    }
+    pub fn is_absolute(mut self, value: bool) -> Directory {
+        self.absolute = Some(value);
+        self
+    }
+}
+
 impl Validator for Directory {
     fn default(&self, pos: Pos) -> Option<Ast> {
         if self.default.is_none() && self.optional {
