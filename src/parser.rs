@@ -14,7 +14,7 @@ use super::tokenizer::tokenize;
 use super::tokenizer::TokenType as T;
 use self::Node::*;
 
-type Aliases<'x> = BTreeMap<&'x str, &'x Node<'x>>;
+type Aliases<'x> = BTreeMap<&'x str, Node<'x>>;
 
 pub struct TokenIter<'a> {
     index: usize,
@@ -223,9 +223,9 @@ pub struct Directive<'a>(&'a Token<'a>);
 pub struct Document<'a> {
     pub directives: Vec<Directive<'a>>,
     pub root: Node<'a>,
-    pub aliases: BTreeMap<&'a str, &'a Node<'a>>,
 }
 
+#[derive(Clone)]
 pub enum Node<'a> {
     Map(Option<&'a str>, Option<&'a str>,
         BTreeMap<Node<'a>, Node<'a>>, &'a[Token<'a>]),
@@ -233,7 +233,7 @@ pub enum Node<'a> {
     Scalar(Option<&'a str>, Option<&'a str>, String, &'a Token<'a>),
     // Explicit null is a Scalar at this state of parsing
     ImplicitNull(Option<&'a str>, Option<&'a str>, Pos),
-    Alias(&'a str, &'a Token<'a>),
+    Alias(&'a str, &'a Token<'a>, Box<Node<'a>>),
 }
 
 fn _compare(a: &Node, b: &Node) -> Ordering {
@@ -283,8 +283,8 @@ impl<'a> Debug for Node<'a> {
 }
 
 
-fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
-    tag: Option<&'x str>)
+fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
+    tag: Option<&'x str>, anchor: Option<&'x str>)
     -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
@@ -314,12 +314,12 @@ fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
             }
         }
     }
-    return Ok(List(tag, None, children,
+    return Ok(List(tag, anchor, children,
         &tokiter.tokens[begin..tokiter.index]));
 }
 
-fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
-    tag: Option<&'x str>)
+fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
+    tag: Option<&'x str>, anchor: Option<&'x str>)
     -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
@@ -352,8 +352,9 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
             T::SequenceEntry if tok.start.line > delim.end.line => {
                 // Allow sequences on the same indentation level as a key in
                 // mapping
+                let canchor = maybe_parse_anchor(tokiter);
                 let tag = maybe_parse_tag(tokiter);
-                let value = match parse_list(tokiter, aliases, tag) {
+                let value = match parse_list(tokiter, aliases, tag, canchor) {
                     Ok(value) => value,
                     Err(err) => return Err(err),
                 };
@@ -388,12 +389,12 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
             }
         }
     }
-    return Ok(Map(tag, None, children,
+    return Ok(Map(tag, anchor, children,
         &tokiter.tokens[begin..tokiter.index]));
 }
 
-fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
-    tag: Option<&'x str>)
+fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
+    tag: Option<&'x str>, anchor: Option<&'x str>)
     -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
@@ -422,12 +423,12 @@ fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
                 "Expected comma `,` or colon `:`".to_string())),
         }
     }
-    return Ok(List(tag, None, children,
+    return Ok(List(tag, anchor, children,
         &tokiter.tokens[begin..tokiter.index]));
 }
 
-fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
-    tag: Option<&'x str>)
+fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
+    tag: Option<&'x str>, anchor: Option<&'x str>)
     -> Result<Node<'x>, Error>
 {
     let begin = tokiter.index;
@@ -487,29 +488,75 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases,
                 "Expected comma `,` or closing bracket `}`".to_string())),
         }
     }
-    return Ok(Map(tag, None, children,
+    return Ok(Map(tag, anchor, children,
         &tokiter.tokens[begin..tokiter.index]));
 }
 
-fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
     -> Result<Node<'x>, Error>
 {
+    let res = try!(_parse_flow_node(tokiter, aliases));
+    match &res {
+        &Map(_, Some(anchor), _, _)
+        => { aliases.insert(anchor, res.clone()); }
+        &Map(_, None, _, _) => {}
+        &List(_, Some(anchor), _, _)
+        => { aliases.insert(anchor, res.clone()); }
+        &List(_, None, _, _) => {}
+        &Scalar(_, Some(anchor), _, _)
+        => { aliases.insert(anchor, res.clone()); }
+        &Scalar(_, None, _, _) => {}
+        &ImplicitNull(_, Some(anchor), _)
+        => { aliases.insert(anchor, res.clone()); }
+        &ImplicitNull(_, None, _) => {}
+        &Alias(_, _, _) => {}
+    }
+    Ok(res)
+}
+
+fn _parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
+    -> Result<Node<'x>, Error>
+{
+    let anchor = maybe_parse_anchor(tokiter);
     let tag = maybe_parse_tag(tokiter);
     let tok = tokiter.peek(0);
     match tok.kind {
         T::PlainString | T::SingleString | T::DoubleString => {
             tokiter.next();
-            return Ok(Scalar(None, None, plain_value(tok), tok));
+            return Ok(Scalar(tag, anchor, plain_value(tok), tok));
         }
         T::FlowSeqStart => {
-            return parse_flow_list(tokiter, aliases, tag);
+            return parse_flow_list(tokiter, aliases, tag, anchor);
         }
         T::FlowMapStart => {
-            return parse_flow_map(tokiter, aliases, tag);
+            return parse_flow_map(tokiter, aliases, tag, anchor);
+        }
+        T::Alias => {
+            tokiter.next();
+            match aliases.get(&tok.value[1..]) {
+                Some(x) => return Ok(x.clone()),
+                None => {
+                    return Err(Error::parse_error(&tok.start,
+                        format!("Unknown alias {:?}", &tok.value[1..])));
+                }
+            }
         }
         _ => return Err(Error::parse_error(&tok.start,
             "Expected plain string, sequence or mapping".to_string())),
     };
+}
+
+fn maybe_parse_anchor<'x>(tokiter: &mut TokenIter<'x>) -> Option<&'x str> {
+    let tok = tokiter.peek(0);
+    let mut anchor = None;
+    match tok.kind {
+        T::Anchor => {
+            anchor = Some(&tok.value[1..]);
+            tokiter.next();
+        }
+        _ => {}
+    }
+    return anchor;
 }
 
 fn maybe_parse_tag<'x>(tokiter: &mut TokenIter<'x>) -> Option<&'x str> {
@@ -524,8 +571,29 @@ fn maybe_parse_tag<'x>(tokiter: &mut TokenIter<'x>) -> Option<&'x str> {
     }
     return tag;
 }
+fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
+    -> Result<Node<'x>, Error>
+{
+    let res = try!(_parse_node(tokiter, aliases));
+    match &res {
+        &Map(_, Some(anchor), _, _)
+        => { aliases.insert(anchor, res.clone()); }
+        &Map(_, None, _, _) => {}
+        &List(_, Some(anchor), _, _)
+        => { aliases.insert(anchor, res.clone()); }
+        &List(_, None, _, _) => {}
+        &Scalar(_, Some(anchor), _, _)
+        => { aliases.insert(anchor, res.clone()); }
+        &Scalar(_, None, _, _) => {}
+        &ImplicitNull(_, Some(anchor), _)
+        => { aliases.insert(anchor, res.clone()); }
+        &ImplicitNull(_, None, _) => {}
+        &Alias(_, _, _) => {}
+    }
+    Ok(res)
+}
 
-fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+fn _parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
     -> Result<Node<'x>, Error>
 {
     let mut indent = false;
@@ -535,6 +603,7 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
         tokiter.next();
         indent = true;
     }
+    let anchor = maybe_parse_anchor(tokiter);
     let mut tag = maybe_parse_tag(tokiter);
     tok = tokiter.peek(0);
     if !indent && tok.kind == T::Indent {  // Otherwise indent is after tag
@@ -551,27 +620,37 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
                 if val.kind == T::MappingValue &&
                         val.start.line == tok.end.line
                 {
-                    parse_map(tokiter, aliases, tag)
+                    parse_map(tokiter, aliases, tag, anchor)
                 } else {
                     tokiter.next();
-                    Ok(Scalar(tag, None, plain_value(tok), tok))
+                    Ok(Scalar(tag, anchor, plain_value(tok), tok))
                 }
             } else {
                 tokiter.next();
-                Ok(Scalar(tag, None, plain_value(tok), tok))
+                Ok(Scalar(tag, anchor, plain_value(tok), tok))
             }
         }
         T::Eof | T::Unindent => {
-            Ok(ImplicitNull(tag, None, tok.start.clone()))
+            Ok(ImplicitNull(tag, anchor, tok.start.clone()))
         }
         T::SequenceEntry => {
-            parse_list(tokiter, aliases, tag)
+            parse_list(tokiter, aliases, tag, anchor)
         }
         T::FlowSeqStart => {
-            parse_flow_list(tokiter, aliases, tag)
+            parse_flow_list(tokiter, aliases, tag, anchor)
         }
         T::FlowMapStart => {
-            parse_flow_map(tokiter, aliases, tag)
+            parse_flow_map(tokiter, aliases, tag, anchor)
+        }
+        T::Alias => {
+            tokiter.next();
+            match aliases.get(&tok.value[1..]) {
+                Some(x) => Ok(x.clone()),
+                None => {
+                    return Err(Error::parse_error(&tok.start,
+                        format!("Unknown alias {:?}", &tok.value[1..])));
+                }
+            }
         }
         _ => Err(Error::parse_error(&tok.start,
             format!("Expected scalar, sequence or mapping, got {:?}",
@@ -589,7 +668,7 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
     return result;
 }
 
-fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases)
+fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
     -> Result<(Vec<Directive<'x>>, Node<'x>), Error>
 {
     let mut directives = Vec::new();
@@ -637,7 +716,6 @@ pub fn parse_tokens<'x>(tokens: &'x Vec<Token<'x>>)
     return Ok(Document {
         directives: directives,
         root: root,
-        aliases: aliases,
         });
 }
 

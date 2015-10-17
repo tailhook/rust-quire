@@ -323,7 +323,9 @@ impl<'a> Context<'a> {
                 try!(self.emit(Opcode::Null(tag.map(|t| &t[1..]),
                     None, Null::Nothing)));
             }
-            &N::Alias(name, _) => unimplemented!(),
+            &N::Alias(name, _, _) => {
+                try!(self.emit(Opcode::Alias(name)));
+            }
         }
         return Ok(());
     }

@@ -380,4 +380,9 @@ mod test {
         assert_yaml_eq_json("a: {\n  b: {}}",
             r#"{"a": {"b": {}}}"#);
     }
+
+    #[test]
+    fn test_alias() {
+        assert_yaml_eq_json("- &a hello\n- *a", r#"["hello", "hello"]"#);
+    }
 }

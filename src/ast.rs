@@ -107,7 +107,6 @@ struct Context<'a> {
     options: Options,
     warnings: Vec<Error>,
     directives: Vec<Directive<'a>>,
-    aliases: BTreeMap<&'a str, &'a Node<'a>>,
 }
 
 
@@ -117,12 +116,35 @@ fn pos_for_node<'x>(node: &Node<'x>) -> Pos {
         P::List(_, _, _, ref tokens) => tokens[0].start.clone(),
         P::Scalar(_, _, _, ref token) => token.start.clone(),
         P::ImplicitNull(_, _, ref pos) => pos.clone(),
-        P::Alias(_, ref token) => token.start.clone(),
+        P::Alias(_, ref token, _) => token.start.clone(),
+    }
+}
+
+fn parse_key<'x>(node: &Node, value: &'x Node<'x>, merge: &mut Option<&Node<'x>>)
+    -> Result<String, Option<Error>>
+{
+     match *node {
+        P::Scalar(_, _, ref key, ref tok) => {
+            if tok.kind == T::PlainString && &key[..] == "<<" {
+                *merge = Some(value);
+                return Err(None);
+            }
+            Ok(key.clone())
+        }
+        P::ImplicitNull(_, _, _) => Ok("".to_string()),
+        P::Alias(_, _, ref node) => {
+            parse_key(node, value, merge)
+        }
+        ref node => {
+            Err(Some(Error::preprocess_error(&pos_for_node(node),
+                "Non scalar keys are not supported yet"
+                .to_string())))
+        }
     }
 }
 
 impl<'a> Context<'a> {
-    fn process(&mut self, node: &Node<'a>) -> Ast {
+    fn process(&mut self, node: &'a Node<'a>) -> Ast {
         match *node {
             P::Map(ref origtag, _, _, ref tokens) => {
                 let pos = tokens[0].start.clone();
@@ -157,36 +179,24 @@ impl<'a> Context<'a> {
                 let tag = self.string_to_tag(pos, tag);
                 return Ast::Null(pos.clone(), tag, Implicit);
             }
-            P::Alias(_, _) => {
-                unimplemented!();
+            P::Alias(_, _, ref node) => {
+                return self.process(node);
             }
         }
     }
 
     fn merge_mapping(&mut self, target: &mut BTreeMap<String, Ast>,
-        node: &Node<'a>)
+        node: &'a Node<'a>)
     {
         match *node {
             P::Map(_, _, ref children, _) => {
                 let mut merge = None;
                 for (k, v) in children.iter() {
-                    let string_key = match *k {
-                        P::Scalar(_, _, ref key, ref tok) => {
-                            if tok.kind == T::PlainString && &key[..] == "<<" {
-                                merge = Some(v);
-                                continue;
-                            }
-                            key.clone()
-                        }
-                        P::ImplicitNull(_, _, _) => "".to_string(),
-                        P::Alias(_, _) => {
-                            unimplemented!();
-                        }
-                        ref node => {
-                            self.warnings.push(
-                                Error::preprocess_error(&pos_for_node(node),
-                                    "Non scalar keys are not supported yet"
-                                    .to_string()));
+                    let string_key = match parse_key(k, v, &mut merge) {
+                        Ok(k) => k,
+                        Err(None) => continue,  // merge key
+                        Err(Some(e)) => {
+                            self.warnings.push(e);
                             continue;
                         }
                     };
@@ -206,8 +216,8 @@ impl<'a> Context<'a> {
                     self.merge_mapping(target, item);
                 }
             }
-            P::Alias(_, _) => {
-                unimplemented!();
+            P::Alias(_, _, ref node) => {
+                self.merge_mapping(target, node);
             }
             _ => {
                 self.warnings.push(Error::preprocess_error(&pos_for_node(node),
@@ -218,7 +228,7 @@ impl<'a> Context<'a> {
     }
 
     fn merge_sequence(&mut self, target: &mut Vec<Ast>,
-        node: &Node<'a>)
+        node: &'a Node<'a>)
     {
         match *node {
             P::List(_, _, ref children, _) => {
@@ -236,8 +246,8 @@ impl<'a> Context<'a> {
                     }
                 }
             }
-            P::Alias(_, _) => {
-                unimplemented!();
+            P::Alias(_, _, ref node) => {
+                self.merge_sequence(target, node);
             }
             _ => {
                 self.warnings.push(Error::preprocess_error(&pos_for_node(node),
@@ -286,7 +296,6 @@ pub fn process(opt: Options, doc: Document)
     let mut ctx = Context {
         options: opt,
         directives: doc.directives,
-        aliases: doc.aliases,
         warnings: Vec::new(),
     };
     let ast = ctx.process(&doc.root);
