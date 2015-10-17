@@ -17,6 +17,7 @@ pub fn parse_config<T: Decodable, P: AsRef<Path>>(
     filename: &P, validator: &Validator, options: ast::Options)
     -> Result<T, String>
 {
+    let filename = filename.as_ref();
     let mut file = try!(File::open(filename)
         .map_err(|e| format!("Error opening config {}: {}",
             filename.display(), e)));
