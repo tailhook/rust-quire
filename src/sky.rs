@@ -14,7 +14,7 @@ use super::validate::Validator;
 
 
 pub fn parse_config<T: Decodable, P: AsRef<Path>>(
-    filename: &P, validator: &Validator, options: ast::Options)
+    filename: P, validator: &Validator, options: ast::Options)
     -> Result<T, String>
 {
     let filename = filename.as_ref();
