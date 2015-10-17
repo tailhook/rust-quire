@@ -13,8 +13,8 @@ use super::decode::YamlDecoder;
 use super::validate::Validator;
 
 
-pub fn parse_config<T: Decodable>(
-    filename: &Path, validator: &Validator, options: ast::Options)
+pub fn parse_config<T: Decodable, P: AsRef<Path>>(
+    filename: &P, validator: &Validator, options: ast::Options)
     -> Result<T, String>
 {
     let mut file = try!(File::open(filename)
