@@ -57,7 +57,6 @@ mod test {
     use rustc_serialize::json as J;
     use super::super::parser::parse;
     use super::super::ast::process;
-    use std::str::FromStr;
 
     fn assert_yaml_eq_json(a: &'static str, b: &'static str) {
         let (ast, _) = parse(Rc::new("<inline text>".to_string()), a,

@@ -1,15 +1,9 @@
-use std::ops::Deref;
-use std::any::Any;
 use std::mem::swap;
 use std::fmt::Display;
-use std::fmt::Error as FormatError;
-use std::fmt::{Formatter};
 use std::str::FromStr;
 use std::default::Default;
 use std::sync::mpsc::Sender;
-use rustc_serialize::{Decoder, Decodable};
-use rustc_serialize::json::{Json, ToJson, decode};
-use rustc_serialize::json::Json as J;
+use rustc_serialize::{Decoder};
 
 use super::ast::Ast as A;
 use super::ast::Tag as T;
