@@ -4,5 +4,6 @@
 /libquire.rlib
 /.vagga
 
+*~
 Cargo.lock
 /target
