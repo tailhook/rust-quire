@@ -6,7 +6,7 @@ license = "MIT"
 readme = "README.rst"
 keywords = ["config", "yaml", "parser"]
 homepage = "http://github.com/tailhook/rust-quire"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["paul@colomiets.name"]
 
 [dependencies]
