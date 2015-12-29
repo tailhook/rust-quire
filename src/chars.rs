@@ -16,6 +16,10 @@ pub fn is_whitespace(ch: char) -> bool {
     return ch == '\x20' || ch == '\x09' || ch == '\r' || ch == '\n';
 }
 
+pub fn is_anchor_name(ch: char) -> bool {
+    return !is_whitespace(ch) && !is_flow_indicator(ch);
+}
+
 pub fn is_dec_digit(ch: char) -> bool {
     return '0' <= ch && ch <= '9';
 }

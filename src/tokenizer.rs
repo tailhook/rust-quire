@@ -11,6 +11,7 @@ use super::chars::is_whitespace;
 use super::chars::is_printable;
 use super::chars::is_tag_char;
 use super::chars::is_flow_indicator;
+use super::chars::is_anchor_name;
 use super::errors::Error;
 use self::TokenType::*;
 
@@ -571,13 +572,16 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 Some((start, '&')) => {
                     loop {
                         match self.iter.next_value {
-                            Some((_, ch)) if is_whitespace(ch) => break,
+                            Some((_, ch)) if !is_anchor_name(ch) => break,
                             None => break,
                             _ => {}
                         }
-                        let (pos, ch) = self.iter.next().unwrap();
+                        self.iter.next();
+                    }
+                    if let Some((_, ch)) = self.iter.next_value {
                         if is_flow_indicator(ch) {
-                            self.error = Some(Error::tokenizer_error(&pos,
+                            self.error = Some(Error::tokenizer_error(
+                                &self.iter.position,
                                 "Bad char in anchor name".to_string()));
                             break 'tokenloop;
                         }
@@ -594,16 +598,11 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                 Some((start, '*')) => {
                     loop {
                         match self.iter.next_value {
-                            Some((_, ch)) if is_whitespace(ch) => break,
+                            Some((_, ch)) if !is_anchor_name(ch) => break,
                             None => break,
                             _ => {}
                         }
-                        let (pos, ch) = self.iter.next().unwrap();
-                        if is_flow_indicator(ch) {
-                            self.error = Some(Error::tokenizer_error(&pos,
-                                "Bad char in alias name".to_string()));
-                            break 'tokenloop;
-                        }
+                        self.iter.next();
                     }
                     if self.iter.position.offset - start.offset < 2 {
                         self.error = Some(Error::tokenizer_error(&start,
@@ -1112,9 +1111,15 @@ fn test_alias() {
         vec!((Alias, "*abc")));
     assert_eq!(simple_tokens(test_tokenize("*a b")),
         vec!((Alias, "*a"), (Whitespace, " "), (PlainString, "b")));
-    let err = test_tokenize("*a[]").err().unwrap();
-    assert_eq!(&format!("{}", err), "<inline_test>:1:3: \
-        Tokenizer Error: Bad char in alias name");
+    assert_eq!(simple_tokens(test_tokenize("*a, *b")),
+        vec!((Alias, "*a"), (FlowEntry, ","), (Whitespace, " "), (Alias, "*b")));
+    assert_eq!(simple_tokens(test_tokenize("[*a, *b]")),
+        vec!((FlowSeqStart, "["),
+             (Alias, "*a"), (FlowEntry, ","), (Whitespace, " "), (Alias, "*b"),
+             (FlowSeqEnd, "]")));
+    // The following one is okay for tokenizer, will fail later on
+    assert_eq!(simple_tokens(test_tokenize("*a[]")),
+        vec![(Alias, "*a"), (FlowSeqStart, "["), (FlowSeqEnd, "]")]);
     let err = test_tokenize("*").err().unwrap();
     assert_eq!(&format!("{}", err), "<inline_test>:1:1: \
         Tokenizer Error: Alias name requires at least one character");

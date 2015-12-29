@@ -107,6 +107,12 @@ mod test {
     }
 
     #[test]
+    fn test_multiple_merge() {
+        assert_yaml_eq_json("<<: [{a: 1, b: 2}, {b: 3, c: 4}]",
+            r#"{"a": 1, "b": 2, "c": 4}"#);
+    }
+
+    #[test]
     fn test_no_merge1() {
         assert_yaml_eq_json("a: 1\n'<<':\n b: 2",
             "{\"a\": 1, \"<<\": {\"b\": 2}}");
@@ -383,5 +389,11 @@ mod test {
     #[test]
     fn test_alias() {
         assert_yaml_eq_json("- &a hello\n- *a", r#"["hello", "hello"]"#);
+    }
+
+    #[test]
+    fn test_multiple_alias_merge() {
+        assert_yaml_eq_json("- &a {hello: world, foo: bar}\n- &b {foo: 123}\n- <<: [*a, *b]",
+            r#"[{"hello": "world", "foo": "bar"}, {"foo": 123}, {"hello": "world", "foo": "bar"}]"#);
     }
 }
