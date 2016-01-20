@@ -2,7 +2,7 @@
 
 name = "quire"
 description = "A YAML-based configuration parsing library"
-license = "MIT"
+license = "MIT/Apache-2.0"
 readme = "README.rst"
 keywords = ["config", "yaml", "parser"]
 homepage = "http://github.com/tailhook/rust-quire"
