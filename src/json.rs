@@ -371,6 +371,11 @@ mod test {
     }
 
     #[test]
+    fn yaml_literal_with_empty_line_in_a_list() {
+        assert_yaml_eq_json("- |\n  val\n\n  line2", r#"["val\n\nline2\n"]"#);
+    }
+
+    #[test]
     fn yaml_words_with_space() {
         assert_yaml_eq_json("   a\nb", r#""a b""#);
     }

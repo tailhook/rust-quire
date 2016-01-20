@@ -203,7 +203,11 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                         let trimmed = line.trim_left_matches(' ');
                         indent = line.len() - trimmed.len();
                     }
-                    res.push_str(&line[indent..line.len()]);
+                    if line.len() < indent {
+                        assert!(line[..].chars().all(|x| x == ' '));
+                    } else {
+                        res.push_str(&line[indent..line.len()]);
+                    }
                     res.push('\n');
                 }
             } else {
