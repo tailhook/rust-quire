@@ -3,11 +3,12 @@ containers:
   build:
     setup:
     - !Ubuntu trusty
-    - !Install [make, gcc, libc6-dev, ca-certificates]
+    - !Install [make, wget, ca-certificates, build-essential]
+
     - !TarInstall
-      url: http://static.rust-lang.org/dist/rust-1.2.0-x86_64-unknown-linux-gnu.tar.gz
-      # We install rustc and cargo, but skip rust-docs
-      script: ./install.sh --prefix=/usr --components=rustc,cargo
+      url: "http://static.rust-lang.org/dist/rust-1.5.0-x86_64-unknown-linux-gnu.tar.gz"
+      script: "./install.sh --prefix=/usr \
+               --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
     environ:
       HOME: /work/target
 
