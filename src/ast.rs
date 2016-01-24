@@ -32,11 +32,13 @@ impl Default for Options {
     }
 }
 
+#[derive(Debug)]
 pub enum ScalarKind {
     Plain,
     Quoted,
 }
 
+#[derive(Debug)]
 pub enum NullKind {
     Implicit,
     Explicit,
@@ -58,6 +60,7 @@ impl Tag {
     }
 }
 
+#[derive(Debug)]
 pub enum Ast {
     Map(Pos, Tag, BTreeMap<String, Ast>),
     List(Pos, Tag, Vec<Ast>),

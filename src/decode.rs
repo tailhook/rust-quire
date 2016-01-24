@@ -60,6 +60,7 @@ impl Display for AnyJson {
 }
 */
 
+#[derive(Debug)]
 enum ParserState {
     Node(Ast),
     Map(Vec<(String, Ast)>),  // used only in read_map_elt_key/elt_val
@@ -260,7 +261,18 @@ impl Decoder for YamlDecoder {
                 return Err(Error::decode_error(&node.pos(), &self.path,
                     format!("Scalar or tagged value expected")));
             }
-            _ => unimplemented!(),
+            Byte(ref pos, _) => {
+                // This is a little bit heuristically determined.
+                // The Byte state is achieved when we have a string on a
+                // sequence position. We do that to decode paths
+                // (which unfortunately are sequences of bytes).
+                // So we have to determine the error here.
+                return Err(Error::decode_error(pos, &self.path,
+                    format!("Expected sequence, got string. \
+                        Perhaps you forgot dash before the element \
+                        (use `- x` instead of `x`)")));
+            }
+            ref node => panic!("Not implemented: state {:?}", node),
         }
         return f(self, idx.unwrap());
     }
@@ -805,6 +817,32 @@ mod test {
     #[test]
     fn test_enum_seq() {
         assert_eq!(decode_enum("!Sigma\n- 1\n- 2"), Sigma(vec!(1, 2)));
+    }
+
+    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    struct TestStruct2 {
+        items: Vec<TestEnum>,
+    }
+
+    fn decode_struct2(text: &str) -> TestStruct2 {
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            text,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let mut warnings = vec!();
+        let (tx, rx) = channel();
+        let val: TestStruct2 = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
+        assert_eq!(warnings.len(), 0);
+        return val;
+    }
+
+    #[test]
+    #[should_panic(expected = "Expected sequence, got string")]
+    fn test_struct_items_tag() {
+        decode_struct2("items:\n  'hello'");
     }
 
 }

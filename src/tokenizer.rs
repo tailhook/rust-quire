@@ -44,7 +44,7 @@ pub enum TokenType {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Pos {
     pub filename: Rc<String>,
     pub indent: usize,
