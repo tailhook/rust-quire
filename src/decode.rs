@@ -6,7 +6,7 @@ use std::sync::mpsc::Sender;
 use rustc_serialize::{Decoder};
 
 use super::ast::Ast as A;
-use super::ast::Tag as T;
+use super::ast::Tag;
 use super::ast::NullKind;
 use super::ast::Ast;
 use super::errors::Error;
@@ -228,8 +228,8 @@ impl Decoder for YamlDecoder {
         match self.state {
             Node(ref node) if node.tag().is_specific() => {
                 match node.tag() {
-                    &T::NonSpecific => unreachable!(),
-                    &T::LocalTag(ref tag) => {
+                    &Tag::NonSpecific => unreachable!(),
+                    &Tag::LocalTag(ref tag) => {
                         for (i, name) in names.iter().enumerate() {
                             if *name == &tag[..] {
                                 idx = Some(i);
@@ -241,7 +241,7 @@ impl Decoder for YamlDecoder {
                                 format!("{} is not one of {:?}", tag, names)));
                         }
                     }
-                    &T::GlobalTag(_) => unimplemented!(),
+                    &Tag::GlobalTag(_) => unimplemented!(),
                 }
             }
             Node(A::Scalar(ref pos, _, _, ref value)) => {
@@ -309,7 +309,7 @@ impl Decoder for YamlDecoder {
             Node(A::Map(_, _, _)) => {}
             Node(A::Null(ref pos, _, _)) => {
                 return f(&mut YamlDecoder {
-                    state: Node(A::Map(pos.clone(), T::NonSpecific,
+                    state: Node(A::Map(pos.clone(), Tag::NonSpecific,
                         Default::default())),
                     sender: self.sender.clone(),
                     path: self.path.clone(),
@@ -335,7 +335,7 @@ impl Decoder for YamlDecoder {
             match children.remove(&name.to_string()) {
                 None => {
                     return f(&mut YamlDecoder {
-                        state: Node(A::Null(pos.clone(), T::NonSpecific,
+                        state: Node(A::Null(pos.clone(), Tag::NonSpecific,
                             NullKind::Implicit)),
                         sender: self.sender.clone(),
                         path: format!("{}.{}", self.path, name),
