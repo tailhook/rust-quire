@@ -408,6 +408,9 @@ impl<'a> Validator for Enum<'a> {
             return Some(A::Null(pos.clone(),
                 T::LocalTag(self.default_tag.as_ref().unwrap().clone()),
                 NullKind::Implicit));
+        } else if self.optional {
+            return Some(A::Null(pos.clone(), T::NonSpecific,
+                                NullKind::Implicit));
         }
         return None;
     }
@@ -958,8 +961,9 @@ mod test {
         Epsilon(Option<TestStruct>),
     }
 
-    fn enum_validator<'x>() -> Box<Validator + 'x> {
-        Box::new(Enum {
+    fn enum_validator<'x>() -> Enum<'x> {
+        Enum {
+            //optional: true,
             options: vec!(
                 ("Alpha".to_string(), Box::new(Nothing) as Box<Validator>),
                 ("Beta".to_string(), Box::new(Nothing) as Box<Validator>),
@@ -986,7 +990,7 @@ mod test {
                         .. Default::default() }) as Box<Validator>),
                     ), .. Default::default()}) as Box<Validator>),
             ), .. Default::default()
-        }) as Box<Validator>
+        }
     }
 
     fn parse_enum(body: &str) -> TestEnum {
@@ -1168,7 +1172,7 @@ mod test {
 
     fn parse_enum_list(body: &str) -> Vec<TestEnum> {
         let validator = Sequence {
-            element: enum_validator(),
+            element: Box::new(enum_validator()),
             .. Default::default() };
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
@@ -1189,5 +1193,39 @@ mod test {
                 }),
             Epsilon(None)
             ));
+    }
+
+    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    struct EnumOpt {
+        val: Option<TestEnum>,
+    }
+
+    fn parse_enum_opt(body: &str) -> EnumOpt {
+        let validator = Structure::new()
+            .member("val", enum_validator().optional());
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        assert_eq!(warnings.len(), 0);
+        let (ast, warnings) = validator.validate(ast);
+        ::emit::emit_ast(&ast, &mut ::std::io::stdout()).unwrap();
+        if warnings.len() != 0 {
+            panic!("Warnings: {}", warnings.iter()
+                .map(|x| x.to_string()).collect::<Vec<_>>()
+                .join("\n    "));
+        }
+        let (tx, _) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    fn test_enum_val_none() {
+        assert_eq!(parse_enum_opt("{}"), EnumOpt { val: None });
+    }
+
+    #[test]
+    fn test_enum_val_some() {
+        assert_eq!(parse_enum_opt("val: !Epsilon"),
+                   EnumOpt { val: Some(Epsilon(None)) });
     }
 }

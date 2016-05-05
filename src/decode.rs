@@ -72,6 +72,7 @@ enum ParserState {
 
 pub struct YamlDecoder {
     state: ParserState,
+    skip_tag: bool,
     sender: Sender<Error>,
     path: String,
 }
@@ -83,6 +84,7 @@ impl YamlDecoder {
     {
         return YamlDecoder {
             state: Node(ast),
+            skip_tag: false,
             sender: sender,
             path: "".to_string(),
         }
@@ -240,6 +242,7 @@ impl Decoder for YamlDecoder {
                                 &self.path,
                                 format!("{} is not one of {:?}", tag, names)));
                         }
+                        self.skip_tag = true;
                     }
                     &Tag::GlobalTag(_) => unimplemented!(),
                 }
@@ -311,6 +314,7 @@ impl Decoder for YamlDecoder {
                 return f(&mut YamlDecoder {
                     state: Node(A::Map(pos.clone(), Tag::NonSpecific,
                         Default::default())),
+                    skip_tag: false,
                     sender: self.sender.clone(),
                     path: self.path.clone(),
                 });
@@ -337,6 +341,7 @@ impl Decoder for YamlDecoder {
                     return f(&mut YamlDecoder {
                         state: Node(A::Null(pos.clone(), Tag::NonSpecific,
                             NullKind::Implicit)),
+                        skip_tag: false,
                         sender: self.sender.clone(),
                         path: format!("{}.{}", self.path, name),
                     });
@@ -344,6 +349,7 @@ impl Decoder for YamlDecoder {
                 Some(node) => {
                     return f(&mut YamlDecoder {
                         state: Node(node),
+                        skip_tag: false,
                         sender: self.sender.clone(),
                         path: format!("{}.{}", self.path, name),
                     });
@@ -382,7 +388,8 @@ impl Decoder for YamlDecoder {
         where F: FnOnce(&mut Self, bool) -> Result<T, Error>
     {
         match self.state {
-            Node(A::Null(_, _, _)) => f(self, false),
+            Node(A::Null(_, T::NonSpecific, _)) => f(self, false),
+            Node(A::Null(_, _, _)) if self.skip_tag => f(self, false),
             Node(_) => f(self, true),
             Key(_, _) => unimplemented!(),
             Byte(_, _) => unimplemented!(),
@@ -404,6 +411,7 @@ impl Decoder for YamlDecoder {
                 let bytes = val.as_bytes();
                 return f(&mut YamlDecoder {
                     state: ByteSeq(pos.clone(), bytes.to_vec()),
+                    skip_tag: false,
                     sender: self.sender.clone(),
                     path: self.path.clone(),
                 }, bytes.len());
@@ -419,6 +427,7 @@ impl Decoder for YamlDecoder {
                 let bytes = val.as_bytes();
                 return f(&mut YamlDecoder {
                     state: ByteSeq(pos.clone(), bytes.to_vec()),
+                    skip_tag: false,
                     sender: self.sender.clone(),
                     path: self.path.clone(),
                 }, bytes.len());
@@ -427,6 +436,7 @@ impl Decoder for YamlDecoder {
         let len = items.len();
         return f(&mut YamlDecoder {
             state: Seq(items),
+            skip_tag: false,
             sender: self.sender.clone(),
             path: self.path.clone(),
         }, len);
@@ -441,6 +451,7 @@ impl Decoder for YamlDecoder {
                 let val = els.remove(0);
                 return f(&mut YamlDecoder {
                     state: Node(val),
+                    skip_tag: false,
                     sender: self.sender.clone(),
                     path: format!("{}[{}]", self.path, idx),
                 });
@@ -448,6 +459,7 @@ impl Decoder for YamlDecoder {
             ByteSeq(ref pos, ref vec) => {
                 return f(&mut YamlDecoder {
                     state: Byte(pos.clone(), vec[idx]),
+                    skip_tag: false,
                     sender: self.sender.clone(),
                     path: format!("{}[{}]", self.path, idx),
                 });
@@ -478,6 +490,7 @@ impl Decoder for YamlDecoder {
         let len = items.len();
         return f(&mut YamlDecoder {
             state: Map(items),
+            skip_tag: false,
             sender: self.sender.clone(),
             path: self.path.clone(),
         }, len);
@@ -491,6 +504,7 @@ impl Decoder for YamlDecoder {
             let (ref key, ref val) = (*vec)[0];
             return f(&mut YamlDecoder {
                 state: Key(val.pos().clone(), key.clone()),
+                skip_tag: false,
                 sender: self.sender.clone(),
                 path: self.path.clone() + ".",
             });
@@ -506,6 +520,7 @@ impl Decoder for YamlDecoder {
             let (key, val) = els.remove(0);
             return f(&mut YamlDecoder {
                 state: Node(val),
+                skip_tag: false,
                 sender: self.sender.clone(),
                 path: self.path.clone() + "." + &key[..],
             });
