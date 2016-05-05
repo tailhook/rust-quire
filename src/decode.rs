@@ -388,7 +388,7 @@ impl Decoder for YamlDecoder {
         where F: FnOnce(&mut Self, bool) -> Result<T, Error>
     {
         match self.state {
-            Node(A::Null(_, T::NonSpecific, _)) => f(self, false),
+            Node(A::Null(_, Tag::NonSpecific, _)) => f(self, false),
             Node(A::Null(_, _, _)) if self.skip_tag => f(self, false),
             Node(_) => f(self, true),
             Key(_, _) => unimplemented!(),
