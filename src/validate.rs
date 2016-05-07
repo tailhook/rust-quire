@@ -380,6 +380,7 @@ pub struct Enum<'a> {
     pub options: Vec<(String, Box<Validator + 'a>)>,
     pub optional: bool,
     pub default_tag: Option<String>,
+    pub allow_plain: bool,
 }
 
 impl<'a> Enum<'a> {
@@ -390,6 +391,13 @@ impl<'a> Enum<'a> {
         self.optional = true;
         self
     }
+    /// For variant that doesn't
+    pub fn allow_plain(mut self) -> Enum<'a> {
+        assert!(self.default_tag.is_none(),
+            "Default tag and allow_plain are not compatible");
+        self.allow_plain = true;
+        self
+    }
     pub fn option<S: ToString, V: Validator + 'a>(mut self, name: S, value: V)
         -> Enum<'a>
     {
@@ -397,6 +405,8 @@ impl<'a> Enum<'a> {
         self
     }
     pub fn default_tag<S: ToString>(mut self, name: S) -> Enum<'a> {
+        assert!(!self.allow_plain,
+            "Default tag and allow_plain are not compatible");
         self.default_tag = Some(name.to_string());
         self
     }
@@ -421,15 +431,18 @@ impl<'a> Validator for Enum<'a> {
                 Some(tag_name.clone())
             }
             &T::NonSpecific => {
-                if let A::Scalar(ref pos, _, _, ref val) = ast {
-                    for &(ref k, ref validator) in self.options.iter() {
-                        if &k[..] == val {
-                            let (value, wrn) = validator.validate(
-                                A::Null(pos.clone(), T::NonSpecific,
-                                        NullKind::Implicit));
-                            warnings.extend(wrn.into_iter());
-                            return (value.with_tag(T::LocalTag(k.to_string())),
-                                    warnings);
+                if self.allow_plain {
+                    if let A::Scalar(ref pos, _, _, ref val) = ast {
+                        for &(ref k, ref validator) in self.options.iter() {
+                            if &k[..] == val {
+                                let (value, wrn) = validator.validate(
+                                    A::Null(pos.clone(), T::NonSpecific,
+                                            NullKind::Implicit));
+                                warnings.extend(wrn.into_iter());
+                                return (value.with_tag(
+                                            T::LocalTag(k.to_string())),
+                                        warnings);
+                            }
                         }
                     }
                 }
@@ -975,7 +988,7 @@ mod test {
 
     fn enum_validator<'x>() -> Enum<'x> {
         Enum {
-            //optional: true,
+            allow_plain: true,
             options: vec!(
                 ("Alpha".to_string(), Box::new(Nothing) as Box<Validator>),
                 ("Beta".to_string(), Box::new(Nothing) as Box<Validator>),
