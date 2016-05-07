@@ -421,6 +421,18 @@ impl<'a> Validator for Enum<'a> {
                 Some(tag_name.clone())
             }
             &T::NonSpecific => {
+                if let A::Scalar(ref pos, _, _, ref val) = ast {
+                    for &(ref k, ref validator) in self.options.iter() {
+                        if &k[..] == val {
+                            let (value, wrn) = validator.validate(
+                                A::Null(pos.clone(), T::NonSpecific,
+                                        NullKind::Implicit));
+                            warnings.extend(wrn.into_iter());
+                            return (value.with_tag(T::LocalTag(k.to_string())),
+                                    warnings);
+                        }
+                    }
+                }
                 warnings.push(Error::validation_error(&ast.pos(),
                     format!("One of the tags {:?} expected",
                         self.options.iter().map(|&(ref k, _)| k)
@@ -1013,6 +1025,11 @@ mod test {
     #[test]
     fn test_enum_2() {
         assert_eq!(parse_enum("!Beta"), Beta);
+    }
+
+    #[test]
+    fn test_enum_str() {
+        assert_eq!(parse_enum("Alpha"), Alpha);
     }
 
     #[test]
