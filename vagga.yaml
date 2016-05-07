@@ -16,12 +16,12 @@ commands:
 
   make: !Command
     container: build
-    run: [make]
+    run: [cargo, build]
 
   test: !Command
     environ: { RUST_BACKTRACE: 1 }
     container: build
-    run: [make, test]
+    run: [cargo, test]
 
   cargo: !Command
     container: build
