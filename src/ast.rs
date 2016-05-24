@@ -237,7 +237,7 @@ impl<'a> Context<'a> {
             P::List(_, _, ref children, _) => {
                 for item in children.iter() {
                     match *item {
-                        P::List(Some("!Unpack"), _, ref children, _) => {
+                        P::List(Some("!*Unpack"), _, ref children, _) => {
                             for child in children.iter() {
                                 self.merge_sequence(target, child);
                             }
@@ -254,7 +254,7 @@ impl<'a> Context<'a> {
             }
             _ => {
                 self.warnings.push(Error::preprocess_error(&pos_for_node(node),
-                    "The of !Unpack node must be sequence".to_string()));
+                    "The of !*Unpack node must be sequence".to_string()));
             }
         }
     }

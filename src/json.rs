@@ -397,6 +397,11 @@ mod test {
     }
 
     #[test]
+    fn test_unpack() {
+        assert_yaml_eq_json("- !*Unpack [[hello]]\n", r#"["hello"]"#);
+    }
+
+    #[test]
     fn test_multiple_alias_merge() {
         assert_yaml_eq_json("- &a {hello: world, foo: bar}\n- &b {foo: 123}\n- <<: [*a, *b]",
             r#"[{"hello": "world", "foo": "bar"}, {"foo": 123}, {"hello": "world", "foo": "bar"}]"#);
