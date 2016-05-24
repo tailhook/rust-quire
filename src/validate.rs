@@ -28,11 +28,11 @@ pub trait Validator {
 
 #[derive(Default)]
 pub struct Scalar {
-    pub descr: Option<String>,
-    pub optional: bool,
-    pub default: Option<String>,
-    pub min_length: Option<usize>,
-    pub max_length: Option<usize>,
+    descr: Option<String>,
+    optional: bool,
+    default: Option<String>,
+    min_length: Option<usize>,
+    max_length: Option<usize>,
 }
 
 impl Scalar {
@@ -98,11 +98,11 @@ impl Validator for Scalar {
 
 #[derive(Default)]
 pub struct Numeric {
-    pub descr: Option<String>,
-    pub optional: bool,
-    pub default: Option<i64>,
-    pub min: Option<i64>,
-    pub max: Option<i64>,
+    descr: Option<String>,
+    optional: bool,
+    default: Option<i64>,
+    min: Option<i64>,
+    max: Option<i64>,
 }
 
 fn from_numeric(mut src: &str) -> Option<i64>
@@ -201,10 +201,10 @@ impl Validator for Numeric {
 
 #[derive(Default)]
 pub struct Directory {
-    pub descr: Option<String>,
-    pub optional: bool,
-    pub default: Option<PathBuf>,
-    pub absolute: Option<bool>,
+    descr: Option<String>,
+    optional: bool,
+    default: Option<PathBuf>,
+    absolute: Option<bool>,
 }
 
 impl Directory {
@@ -286,9 +286,9 @@ impl Validator for Directory {
 
 #[derive(Default)]
 pub struct Structure<'a> {
-    pub descr: Option<String>,
-    pub members: Vec<(String, Box<Validator + 'a>)>,
-    pub optional: bool,
+    descr: Option<String>,
+    members: Vec<(String, Box<Validator + 'a>)>,
+    optional: bool,
 }
 
 impl<'a> Structure<'a> {
@@ -376,11 +376,11 @@ impl<'a> Validator for Structure<'a> {
 
 #[derive(Default)]
 pub struct Enum<'a> {
-    pub descr: Option<String>,
-    pub options: Vec<(String, Box<Validator + 'a>)>,
-    pub optional: bool,
-    pub default_tag: Option<String>,
-    pub allow_plain: bool,
+    descr: Option<String>,
+    options: Vec<(String, Box<Validator + 'a>)>,
+    optional: bool,
+    default_tag: Option<String>,
+    allow_plain: bool,
 }
 
 impl<'a> Enum<'a> {
@@ -472,9 +472,9 @@ impl<'a> Validator for Enum<'a> {
 
 #[derive(Default)]
 pub struct Mapping<'a> {
-    pub descr: Option<String>,
-    pub key_element: Box<Validator + 'a>,
-    pub value_element: Box<Validator + 'a>,
+    descr: Option<String>,
+    key_element: Box<Validator + 'a>,
+    value_element: Box<Validator + 'a>,
 }
 
 impl<'a> Mapping<'a> {
@@ -526,9 +526,9 @@ impl<'a> Validator for Mapping<'a> {
 
 #[derive(Default)]
 pub struct Sequence<'a> {
-    pub descr: Option<String>,
-    pub element: Box<Validator + 'a>,
-    pub from_scalar: Option<fn (scalar: Ast) -> Vec<Ast>>,
+    descr: Option<String>,
+    element: Box<Validator + 'a>,
+    from_scalar: Option<fn (scalar: Ast) -> Vec<Ast>>,
 }
 
 impl<'a> Sequence<'a> {
