@@ -59,3 +59,34 @@ pub fn parse_config<T: Decodable, P: AsRef<Path>>(
         }
     }
 }
+
+pub fn parse_string<T: Decodable>(filename: &str, data: &str,
+    validator: &Validator, options: ast::Options)
+    -> Result<T, Vec<Error>>
+{
+    let (ast, mut warnings) = try!(parse(
+            Rc::new(filename.to_string()),
+            data,
+            |doc| { ast::process(options, doc) })
+        .map_err(|e| vec![e]));
+    let (ast, nwarn) = validator.validate(ast);
+    warnings.extend(nwarn.into_iter());
+    let (tx, rx) = channel();
+    let res = {
+        let mut dec = YamlDecoder::new(ast, tx);
+        Decodable::decode(&mut dec)
+    };
+    warnings.extend(rx.iter());
+    match res {
+        Ok(val) => {
+            if warnings.len() == 0 {
+                return Ok(val);
+            }
+        }
+        Err(e) => {
+            warnings.push(e);
+        }
+    }
+    return Err(warnings);
+}
+

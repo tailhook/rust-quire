@@ -5,7 +5,7 @@
 extern crate rustc_serialize;
 #[macro_use] extern crate quick_error;
 
-pub use sky::parse_config;
+pub use sky::{parse_config, parse_string};
 pub use ast::Options;
 
 mod chars;
