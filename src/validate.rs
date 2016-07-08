@@ -486,6 +486,7 @@ pub struct Mapping<'a> {
     descr: Option<String>,
     key_element: Box<Validator + 'a>,
     value_element: Box<Validator + 'a>,
+    from_scalar: Option<fn (scalar: Ast) -> BTreeMap<String, Ast>>,
 }
 
 impl<'a> Mapping<'a> {
@@ -496,7 +497,15 @@ impl<'a> Mapping<'a> {
             descr: None,
             key_element: Box::new(key),
             value_element: Box::new(val),
+            from_scalar: None,
         }
+    }
+    pub fn parser(mut self,
+        f: fn (scalar: Ast) -> BTreeMap<String, Ast>)
+        -> Mapping<'a>
+    {
+        self.from_scalar = Some(f);
+        self
     }
 }
 
@@ -506,14 +515,17 @@ impl<'a> Validator for Mapping<'a> {
     }
     fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
-        let (pos, map) = match ast {
-            A::Map(pos, _, items) => {
+        let (pos, map) = match (ast, self.from_scalar) {
+            (A::Map(pos, _, items), _) => {
                 (pos, items)
             }
-            A::Null(pos, _, NullKind::Implicit) => {
+            (A::Null(pos, _, NullKind::Implicit), _) => {
                 return (A::Map(pos, T::NonSpecific, BTreeMap::new()), warnings);
             }
-            ast => {
+            (ast@A::Scalar(..), Some(from_scalar)) => {
+                (ast.pos(), from_scalar(ast))
+            }
+            (ast, _) => {
                 warnings.push(Error::validation_error(&ast.pos(),
                     format!("Value must be mapping")));
                 return (ast, warnings);
@@ -825,13 +837,25 @@ mod test {
     }
 
     fn parse_map<T:Decodable>(body: &str) -> T {
+        fn parse_default(ast: A) -> BTreeMap<String, A> {
+            match ast {
+                A::Scalar(pos, _, style, value) => {
+                    let mut map = BTreeMap::new();
+                    map.insert("default_value".to_string(),
+                        A::Scalar(pos.clone(), NonSpecific, style, value));
+                    map
+                },
+                _ => unreachable!(),
+            }
+        }
+
         let validator = Mapping {
             key_element: Box::new(Scalar { .. Default::default()}),
             value_element: Box::new(Numeric {
                 default: Some(0),
                 .. Default::default()}),
             .. Default::default()
-        };
+        }.parser(parse_default);
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
@@ -879,6 +903,14 @@ mod test {
     fn test_map_null() {
         let m = BTreeMap::new();
         let res: BTreeMap<String, usize> = parse_map("");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_map_with_parser() {
+        let mut m = HashMap::new();
+        m.insert("default_value".to_string(), 404);
+        let res: HashMap<String, usize> = parse_map("404");
         assert_eq!(res, m);
     }
 
