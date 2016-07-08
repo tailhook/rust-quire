@@ -622,7 +622,9 @@ mod test {
     use std::collections::HashMap;
 
     use super::super::decode::YamlDecoder;
-    use super::super::ast::process;
+    use super::super::ast::{process, Ast as A};
+    use super::super::ast::Tag::{NonSpecific};
+    use super::super::ast::ScalarKind::{Plain};
     use super::super::parser::parse;
     use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
     use super::{Enum, Nothing, Directory};
@@ -926,12 +928,26 @@ mod test {
     }
 
     fn parse_seq(body: &str) -> Vec<usize> {
+        fn split(ast: A) -> Vec<A> {
+            match ast {
+                A::Scalar(pos, _, style, value) => {
+                    value
+                        .split(" ")
+                        .map(|v| {
+                            A::Scalar(pos.clone(), NonSpecific, Plain, v.to_string())
+                        })
+                        .collect::<Vec<_>>()
+                },
+                _ => unreachable!(),
+            }
+        }
+
         let validator = Sequence {
             element: Box::new(Numeric {
                 default: None,
                 .. Default::default()}),
             .. Default::default()
-        };
+        }.parser(split);
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
@@ -967,6 +983,13 @@ mod test {
     fn test_seq_null() {
         let m = Vec::new();
         let res: Vec<usize> = parse_seq("");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_seq_parser() {
+        let m = vec!(1, 2, 3);
+        let res: Vec<usize> = parse_seq("1 2 3");
         assert_eq!(res, m);
     }
 
