@@ -289,6 +289,7 @@ pub struct Structure<'a> {
     descr: Option<String>,
     members: Vec<(String, Box<Validator + 'a>)>,
     optional: bool,
+    from_scalar: Option<fn (scalar: Ast) -> BTreeMap<String, Ast>>,
 }
 
 impl<'a> Structure<'a> {
@@ -303,6 +304,13 @@ impl<'a> Structure<'a> {
     }
     pub fn optional(mut self) -> Structure<'a> {
         self.optional = true;
+        self
+    }
+    pub fn parser(mut self,
+        f: fn (scalar: Ast) -> BTreeMap<String, Ast>)
+        -> Structure<'a>
+    {
+        self.from_scalar = Some(f);
         self
     }
 }
@@ -325,14 +333,17 @@ impl<'a> Validator for Structure<'a> {
     }
     fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
-        let (pos, mut map) = match ast {
-            A::Map(pos, _, items) => {
+        let (pos, mut map) = match (ast, self.from_scalar) {
+            (A::Map(pos, _, items), _) => {
                 (pos, items)
             }
-            A::Null(pos, _, NullKind::Implicit) => {
+            (A::Null(pos, _, NullKind::Implicit), _) => {
                 return (self.default(pos).unwrap(), warnings);
             }
-            ast => {
+            (ast@A::Scalar(..), Some(from_scalar)) => {
+                (ast.pos(), from_scalar(ast))
+            }
+            (ast, _) => {
                 warnings.push(Error::validation_error(&ast.pos(),
                     format!("Value must be mapping")));
                 return (ast, warnings);
@@ -1280,5 +1291,53 @@ mod test {
     fn test_enum_val_some() {
         assert_eq!(parse_enum_opt("val: !Epsilon"),
                    EnumOpt { val: Some(Epsilon(None)) });
+    }
+
+    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    struct Parsed {
+        value: String,
+    }
+
+    fn parse_struct_with_parser(body: &str) -> Parsed {
+        fn value_parser(ast: A) -> BTreeMap<String, A> {
+            match ast {
+                A::Scalar(pos, _, style, value) => {
+                    let mut map = BTreeMap::new();
+                    map.insert("value".to_string(),
+                        A::Scalar(pos.clone(), NonSpecific, style, value));
+                    map
+                }
+                _ => unreachable!(),
+            }
+        }
+        
+        let validator = Structure::new()
+            .member("value", Scalar::new())
+            .parser(value_parser);
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        assert_eq!(warnings.len(), 0);
+        let (ast, warnings) = validator.validate(ast);
+        ::emit::emit_ast(&ast, &mut ::std::io::stdout()).unwrap();
+        if warnings.len() != 0 {
+            panic!("Warnings: {}", warnings.iter()
+                .map(|x| x.to_string()).collect::<Vec<_>>()
+                .join("\n    "));
+        }
+        let (tx, _) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    fn test_struct_with_parser() {
+        assert_eq!(parse_struct_with_parser("value: test"),
+                   Parsed { value: "test".to_string() });
+    }
+
+    #[test]
+    fn test_struct_with_parser_custom() {
+        assert_eq!(parse_struct_with_parser("test"),
+                   Parsed { value: "test".to_string() });
     }
 }
