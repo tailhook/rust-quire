@@ -289,6 +289,7 @@ pub struct Structure<'a> {
     descr: Option<String>,
     members: Vec<(String, Box<Validator + 'a>)>,
     optional: bool,
+    from_scalar: Option<fn (scalar: Ast) -> BTreeMap<String, Ast>>,
 }
 
 impl<'a> Structure<'a> {
@@ -303,6 +304,13 @@ impl<'a> Structure<'a> {
     }
     pub fn optional(mut self) -> Structure<'a> {
         self.optional = true;
+        self
+    }
+    pub fn parser(mut self,
+        f: fn (scalar: Ast) -> BTreeMap<String, Ast>)
+        -> Structure<'a>
+    {
+        self.from_scalar = Some(f);
         self
     }
 }
@@ -325,14 +333,17 @@ impl<'a> Validator for Structure<'a> {
     }
     fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
-        let (pos, mut map) = match ast {
-            A::Map(pos, _, items) => {
+        let (pos, mut map) = match (ast, self.from_scalar) {
+            (A::Map(pos, _, items), _) => {
                 (pos, items)
             }
-            A::Null(pos, _, NullKind::Implicit) => {
+            (A::Null(pos, _, NullKind::Implicit), _) => {
                 return (self.default(pos).unwrap(), warnings);
             }
-            ast => {
+            (ast@A::Scalar(..), Some(from_scalar)) => {
+                (ast.pos(), from_scalar(ast))
+            }
+            (ast, _) => {
                 warnings.push(Error::validation_error(&ast.pos(),
                     format!("Value must be mapping")));
                 return (ast, warnings);
@@ -475,6 +486,7 @@ pub struct Mapping<'a> {
     descr: Option<String>,
     key_element: Box<Validator + 'a>,
     value_element: Box<Validator + 'a>,
+    from_scalar: Option<fn (scalar: Ast) -> BTreeMap<String, Ast>>,
 }
 
 impl<'a> Mapping<'a> {
@@ -485,7 +497,15 @@ impl<'a> Mapping<'a> {
             descr: None,
             key_element: Box::new(key),
             value_element: Box::new(val),
+            from_scalar: None,
         }
+    }
+    pub fn parser(mut self,
+        f: fn (scalar: Ast) -> BTreeMap<String, Ast>)
+        -> Mapping<'a>
+    {
+        self.from_scalar = Some(f);
+        self
     }
 }
 
@@ -495,14 +515,17 @@ impl<'a> Validator for Mapping<'a> {
     }
     fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
         let mut warnings = vec!();
-        let (pos, map) = match ast {
-            A::Map(pos, _, items) => {
+        let (pos, map) = match (ast, self.from_scalar) {
+            (A::Map(pos, _, items), _) => {
                 (pos, items)
             }
-            A::Null(pos, _, NullKind::Implicit) => {
+            (A::Null(pos, _, NullKind::Implicit), _) => {
                 return (A::Map(pos, T::NonSpecific, BTreeMap::new()), warnings);
             }
-            ast => {
+            (ast@A::Scalar(..), Some(from_scalar)) => {
+                (ast.pos(), from_scalar(ast))
+            }
+            (ast, _) => {
                 warnings.push(Error::validation_error(&ast.pos(),
                     format!("Value must be mapping")));
                 return (ast, warnings);
@@ -622,7 +645,9 @@ mod test {
     use std::collections::HashMap;
 
     use super::super::decode::YamlDecoder;
-    use super::super::ast::process;
+    use super::super::ast::{process, Ast as A};
+    use super::super::ast::Tag::{NonSpecific};
+    use super::super::ast::ScalarKind::{Plain};
     use super::super::parser::parse;
     use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
     use super::{Enum, Nothing, Directory};
@@ -812,13 +837,25 @@ mod test {
     }
 
     fn parse_map<T:Decodable>(body: &str) -> T {
+        fn parse_default(ast: A) -> BTreeMap<String, A> {
+            match ast {
+                A::Scalar(pos, _, style, value) => {
+                    let mut map = BTreeMap::new();
+                    map.insert("default_value".to_string(),
+                        A::Scalar(pos.clone(), NonSpecific, style, value));
+                    map
+                },
+                _ => unreachable!(),
+            }
+        }
+
         let validator = Mapping {
             key_element: Box::new(Scalar { .. Default::default()}),
             value_element: Box::new(Numeric {
                 default: Some(0),
                 .. Default::default()}),
             .. Default::default()
-        };
+        }.parser(parse_default);
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
@@ -866,6 +903,14 @@ mod test {
     fn test_map_null() {
         let m = BTreeMap::new();
         let res: BTreeMap<String, usize> = parse_map("");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_map_with_parser() {
+        let mut m = HashMap::new();
+        m.insert("default_value".to_string(), 404);
+        let res: HashMap<String, usize> = parse_map("404");
         assert_eq!(res, m);
     }
 
@@ -926,12 +971,26 @@ mod test {
     }
 
     fn parse_seq(body: &str) -> Vec<usize> {
+        fn split(ast: A) -> Vec<A> {
+            match ast {
+                A::Scalar(pos, _, style, value) => {
+                    value
+                        .split(" ")
+                        .map(|v| {
+                            A::Scalar(pos.clone(), NonSpecific, Plain, v.to_string())
+                        })
+                        .collect::<Vec<_>>()
+                },
+                _ => unreachable!(),
+            }
+        }
+
         let validator = Sequence {
             element: Box::new(Numeric {
                 default: None,
                 .. Default::default()}),
             .. Default::default()
-        };
+        }.parser(split);
         let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
@@ -967,6 +1026,13 @@ mod test {
     fn test_seq_null() {
         let m = Vec::new();
         let res: Vec<usize> = parse_seq("");
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_seq_parser() {
+        let m = vec!(1, 2, 3);
+        let res: Vec<usize> = parse_seq("1 2 3");
         assert_eq!(res, m);
     }
 
@@ -1257,5 +1323,53 @@ mod test {
     fn test_enum_val_some() {
         assert_eq!(parse_enum_opt("val: !Epsilon"),
                    EnumOpt { val: Some(Epsilon(None)) });
+    }
+
+    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    struct Parsed {
+        value: String,
+    }
+
+    fn parse_struct_with_parser(body: &str) -> Parsed {
+        fn value_parser(ast: A) -> BTreeMap<String, A> {
+            match ast {
+                A::Scalar(pos, _, style, value) => {
+                    let mut map = BTreeMap::new();
+                    map.insert("value".to_string(),
+                        A::Scalar(pos.clone(), NonSpecific, style, value));
+                    map
+                }
+                _ => unreachable!(),
+            }
+        }
+        
+        let validator = Structure::new()
+            .member("value", Scalar::new())
+            .parser(value_parser);
+        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
+            |doc| { process(Default::default(), doc) }).unwrap();
+        assert_eq!(warnings.len(), 0);
+        let (ast, warnings) = validator.validate(ast);
+        ::emit::emit_ast(&ast, &mut ::std::io::stdout()).unwrap();
+        if warnings.len() != 0 {
+            panic!("Warnings: {}", warnings.iter()
+                .map(|x| x.to_string()).collect::<Vec<_>>()
+                .join("\n    "));
+        }
+        let (tx, _) = channel();
+        let mut dec = YamlDecoder::new(ast, tx);
+        return Decodable::decode(&mut dec).unwrap();
+    }
+
+    #[test]
+    fn test_struct_with_parser() {
+        assert_eq!(parse_struct_with_parser("value: test"),
+                   Parsed { value: "test".to_string() });
+    }
+
+    #[test]
+    fn test_struct_with_parser_custom() {
+        assert_eq!(parse_struct_with_parser("test"),
+                   Parsed { value: "test".to_string() });
     }
 }
