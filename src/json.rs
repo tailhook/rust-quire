@@ -406,4 +406,24 @@ mod test {
         assert_yaml_eq_json("- &a {hello: world, foo: bar}\n- &b {foo: 123}\n- <<: [*a, *b]",
             r#"[{"hello": "world", "foo": "bar"}, {"foo": 123}, {"hello": "world", "foo": "bar"}]"#);
     }
+
+    #[test]
+    fn wrong_escape_incrorrect_tofix() {
+        assert_yaml_eq_json(r#"a: "a\.b""#, r#"{"a": "a\\.b"}"#);
+    }
+
+    #[test]
+    fn wrong_escape_raw_incorrect_tofix() {
+        assert_yaml_eq_json(r#"a: a\.b"#, r#"{"a": "a\\.b"}"#);
+    }
+
+    #[test]
+    fn wrong_escape_correct() {
+        assert_yaml_eq_json(r#"a: "a\\.b""#, r#"{"a": "a\\.b"}"#);
+    }
+
+    #[test]
+    fn wrong_escape_raw_correct() {
+        assert_yaml_eq_json(r#"a: "a\\.b""#, r#"{"a": "a\\.b"}"#);
+    }
 }
