@@ -57,10 +57,14 @@ mod test {
     use rustc_serialize::json as J;
     use super::super::parser::parse;
     use super::super::ast::process;
+    use errors::ErrorCollector;
 
     fn assert_yaml_eq_json(a: &'static str, b: &'static str) {
-        let (ast, _) = parse(Rc::new("<inline text>".to_string()), a,
-            |doc| { process(Default::default(), doc) }).unwrap();
+        let err = ErrorCollector::new();
+        let ast = parse(Rc::new("<inline text>".to_string()), a,
+            |doc| { process(Default::default(), doc, &err) },
+            ).map_err(|e| err.into_fatal(e)).unwrap();
+        err.into_result(()).unwrap();
         let aj = ast.to_json();
         let bj = J::Json::from_str(&b).unwrap();
         assert_eq!(aj, bj);

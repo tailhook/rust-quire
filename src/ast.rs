@@ -5,7 +5,7 @@ use std::default::Default;
 use std::collections::BTreeMap;
 
 use super::tokenizer::Pos;
-use super::errors::Error;
+use super::errors::{Error, ErrorCollector};
 use super::parser::Node as P;
 use super::parser::{Directive, Node, Document};
 use super::tokenizer::TokenType as T;
@@ -19,7 +19,6 @@ use self::Tag::*;
 pub struct Options {
     pub merges: bool,
     pub aliases: bool,
-    pub print_warnings: bool,
 }
 
 impl Default for Options {
@@ -27,7 +26,6 @@ impl Default for Options {
         return Options {
             merges: true,
             aliases: true,
-            print_warnings: true,
         }
     }
 }
@@ -108,8 +106,8 @@ impl Ast {
 
 struct Context<'a> {
     options: Options,
-    warnings: Vec<Error>,
     directives: Vec<Directive<'a>>,
+    err: &'a ErrorCollector,
 }
 
 
@@ -199,7 +197,7 @@ impl<'a> Context<'a> {
                         Ok(k) => k,
                         Err(None) => continue,  // merge key
                         Err(Some(e)) => {
-                            self.warnings.push(e);
+                            self.err.add_error(e);
                             continue;
                         }
                     };
@@ -223,7 +221,7 @@ impl<'a> Context<'a> {
                 self.merge_mapping(target, node);
             }
             _ => {
-                self.warnings.push(Error::preprocess_error(&pos_for_node(node),
+                self.err.add_error(Error::preprocess_error(&pos_for_node(node),
                     "Value of merge key must be either mapping or \
                      list of mappings".to_string()));
             }
@@ -253,7 +251,7 @@ impl<'a> Context<'a> {
                 self.merge_sequence(target, node);
             }
             _ => {
-                self.warnings.push(Error::preprocess_error(&pos_for_node(node),
+                self.err.add_error(Error::preprocess_error(&pos_for_node(node),
                     "The of !*Unpack node must be sequence".to_string()));
             }
         }
@@ -268,7 +266,7 @@ impl<'a> Context<'a> {
                 assert!(pieces.next().unwrap() == "");
                 match (pieces.next().unwrap(), pieces.next()) {
                     ("", None) => {
-                        self.warnings.push(Error::preprocess_error(pos,
+                        self.err.add_error(Error::preprocess_error(pos,
                             "Unexpected empty tag".to_string()));
                         NonSpecific
                     }
@@ -276,12 +274,12 @@ impl<'a> Context<'a> {
                         LocalTag(val.to_string())
                     }
                     ("", Some(_)) => {
-                        self.warnings.push(Error::preprocess_error(pos,
+                        self.err.add_error(Error::preprocess_error(pos,
                             "Global tags are unsupported yet".to_string()));
                         NonSpecific
                     }
                     (_, Some(_)) => {
-                        self.warnings.push(Error::preprocess_error(pos,
+                        self.err.add_error(Error::preprocess_error(pos,
                             "Tag prefixes are unsupported yet".to_string()));
                         NonSpecific
                     }
@@ -293,15 +291,12 @@ impl<'a> Context<'a> {
 }
 
 
-pub fn process(opt: Options, doc: Document)
-    -> (Ast, Vec<Error>)
-{
+pub fn process(opt: Options, doc: Document, err: &ErrorCollector) -> Ast {
     let mut ctx = Context {
         options: opt,
         directives: doc.directives,
-        warnings: Vec::new(),
+        err: err,
     };
-    let ast = ctx.process(&doc.root);
-    return (ast, ctx.warnings);
+    return ctx.process(&doc.root);
 }
 

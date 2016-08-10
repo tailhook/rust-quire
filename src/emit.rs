@@ -569,8 +569,8 @@ mod test {
     use std::str::{from_utf8};
     use std::rc::Rc;
     use std::default::Default;
-    use rustc_serialize::{Encodable, Encoder};
 
+    use errors::ErrorCollector;
     use super::super::parser::parse;
     use super::{Null, Opcode};
     use super::super::ast::process;
@@ -626,9 +626,11 @@ mod test {
         assert_eq!(value, output);
 
         let mut bytes = Vec::new();
-        let (ast, _) = parse(filen, source, |doc| {
-            process(Default::default(), doc)
-        }).unwrap();
+        let err = ErrorCollector::new();
+        let ast = parse(filen, source, |doc| {
+            process(Default::default(), doc, &err)
+        }).map_err(|e| err.into_fatal(e)).unwrap();
+        err.into_result(()).unwrap();
 
         {
             let mut ctx = Context::new(&mut bytes);

@@ -1,11 +1,21 @@
+use std::io;
+use std::fmt;
+use std::rc::Rc;
+use std::slice::Iter;
+use std::path::PathBuf;
+use std::cell::RefCell;
+
 use super::tokenizer::{self, Pos};
 
 #[derive(Clone, Debug)]
 pub struct ErrorPos(String, usize, usize);
 
 quick_error! {
-    #[derive(Clone, Debug)]
+    #[derive(Debug)]
     pub enum Error {
+        OpenError(filename: PathBuf, err: io::Error) {
+            display("{}: Error reading file: {}", filename.display(), err)
+        }
         TokenizerError(pos: ErrorPos, err: tokenizer::Error) {
             display("{filename}:{line}:{offset}: Tokenizer Error: {err}",
                     filename=pos.0, line=pos.1, offset=pos.2, err=err)
@@ -59,5 +69,67 @@ impl Error {
         return Error::PreprocessError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             message);
+    }
+}
+
+#[must_use]
+pub struct ErrorList {
+    errors: Vec<Error>,
+}
+
+impl ErrorList {
+    pub fn add_error(&mut self, err: Error) {
+        self.errors.push(err);
+    }
+    pub fn errors(&self) -> Iter<Error> {
+        self.errors.iter()
+    }
+}
+
+impl fmt::Display for ErrorList {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        for err in &self.errors {
+            try!(writeln!(fmt, "{}", err));
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Debug for ErrorList {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        for err in &self.errors {
+            try!(writeln!(fmt, "{}", err));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+pub struct ErrorCollector(Rc<RefCell<Option<ErrorList>>>);
+
+impl ErrorCollector {
+    pub fn new() -> ErrorCollector {
+        ErrorCollector(Rc::new(RefCell::new(Some(ErrorList {
+            errors: Vec::new()
+        }))))
+    }
+    pub fn add_error(&self, err: Error) {
+        self.0.borrow_mut().as_mut().unwrap().add_error(err)
+    }
+    pub fn into_fatal(&self, err: Error) -> ErrorList {
+        let mut lst = self.0.borrow_mut().take().unwrap();
+        lst.add_error(err);
+        return lst;
+    }
+    pub fn into_result<T>(&self, val: T) -> Result<T, ErrorList> {
+        let lst = self.0.borrow_mut().take().unwrap();
+        if lst.errors.len() > 0 {
+            Err(lst)
+        } else {
+            Ok(val)
+        }
+    }
+    pub fn unwrap(&self) -> ErrorList {
+        self.0.borrow_mut().take().unwrap()
     }
 }

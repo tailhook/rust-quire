@@ -4,7 +4,7 @@ use std::path::{PathBuf, Path, Component};
 use std::default::Default;
 use std::collections::{BTreeMap, HashSet};
 
-use super::errors::Error;
+use super::errors::{Error, ErrorCollector};
 pub use super::tokenizer::Pos;
 use super::ast::Ast as A;
 use super::ast::Tag as T;
@@ -22,7 +22,7 @@ static NUMERIC_SUFFIXES: &'static [(&'static str, i64)] = &[
     ];
 
 pub trait Validator {
-    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>);
+    fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast;
     fn default(&self, pos: Pos) -> Option<Ast>;
 }
 
@@ -65,34 +65,33 @@ impl Validator for Scalar {
         self.default.as_ref().map(|val| {
             A::Scalar(pos.clone(), T::NonSpecific, Quoted, val.clone()) })
     }
-    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
-        let mut warnings = vec!();
+    fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         let (pos, kind, val) = match ast {
             A::Scalar(pos, _, kind, string) => {
                 (pos, kind, string)
             }
             A::Null(_, _, _) if self.optional => {
-                return (ast, warnings);
+                return ast;
             }
             ast => {
-                warnings.push(Error::validation_error(&ast.pos(),
+                err.add_error(Error::validation_error(&ast.pos(),
                     format!("Value must be scalar")));
-                return (ast, warnings);
+                return ast;
             }
         };
         self.min_length.map(|minl| {
             if val.len() < minl {
-                warnings.push(Error::validation_error(&pos,
+                err.add_error(Error::validation_error(&pos,
                     format!("Value must be at least {} characters", minl)));
             }
         });
         self.max_length.map(|maxl| {
             if val.len() > maxl {
-                warnings.push(Error::validation_error(&pos,
+                err.add_error(Error::validation_error(&pos,
                     format!("Value must be at most {} characters", maxl)));
             }
         });
-        return (A::Scalar(pos, T::NonSpecific, kind, val), warnings);
+        return A::Scalar(pos, T::NonSpecific, kind, val);
     }
 }
 
@@ -161,41 +160,39 @@ impl Validator for Numeric {
             A::Scalar(pos.clone(), T::NonSpecific, Quoted, val.to_string())
         })
     }
-    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
-        let mut warnings = vec!();
+    fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         let (pos, val): (Pos, i64)  = match ast {
             A::Scalar(pos, tag, kind, string)
             => match from_numeric(&string) {
                 Some(val) => (pos, val),
                 None => {
-                    warnings.push(Error::validation_error(&pos,
+                    err.add_error(Error::validation_error(&pos,
                         format!("Value must be numeric")));
-                    return (A::Scalar(pos, tag, kind, string), warnings);
+                    return A::Scalar(pos, tag, kind, string);
                 }
             },
             A::Null(_, _, _) if self.optional => {
-                return (ast, warnings);
+                return ast;
             }
             ast => {
-                warnings.push(Error::validation_error(&ast.pos(),
+                err.add_error(Error::validation_error(&ast.pos(),
                     format!("Value must be scalar")));
-                return (ast, warnings);
+                return ast;
             }
         };
         self.min.as_ref().map(|min| {
             if val < *min {
-                warnings.push(Error::validation_error(&pos,
+                err.add_error(Error::validation_error(&pos,
                     format!("Value must be at least {}", min)));
             }
         });
         self.max.as_ref().map(|max| {
             if val > *max {
-                warnings.push(Error::validation_error(&pos,
+                err.add_error(Error::validation_error(&pos,
                     format!("Value must be at most {}", max)));
             }
         });
-        return (A::Scalar(pos, T::NonSpecific, Plain, val.to_string()),
-                warnings);
+        return A::Scalar(pos, T::NonSpecific, Plain, val.to_string());
     }
 }
 
@@ -234,19 +231,18 @@ impl Validator for Directory {
             A::Scalar(pos.clone(), T::NonSpecific, Quoted,
                       val.display().to_string()) })
     }
-    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
-        let mut warnings = vec!();
+    fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         let (pos, kind, val) = match ast {
             A::Scalar(pos, _, kind, string) => {
                 (pos, kind, string)
             }
             A::Null(_, _, _) if self.optional => {
-                return (ast, warnings);
+                return ast;
             }
             ast => {
-                warnings.push(Error::validation_error(&ast.pos(),
+                err.add_error(Error::validation_error(&ast.pos(),
                     format!("Path expected")));
-                return (ast, warnings);
+                return ast;
             }
         };
         {
@@ -254,13 +250,13 @@ impl Validator for Directory {
             match self.absolute {
                 Some(true) => {
                     if !path.is_absolute() {
-                        warnings.push(Error::validation_error(&pos,
+                        err.add_error(Error::validation_error(&pos,
                             format!("Path must be absolute")));
                     }
                 }
                 Some(false) => {
                     if path.is_absolute() {
-                        warnings.push(Error::validation_error(&pos,
+                        err.add_error(Error::validation_error(&pos,
                             format!("Path must not be absolute")));
                     } else {
                         // Still for non-absolute paths we must check if
@@ -270,7 +266,7 @@ impl Validator for Directory {
                         // to None instead of Some(false)
                         for cmp in path.components() {
                             if cmp == Component::ParentDir {
-                                warnings.push(Error::validation_error(&pos,
+                                err.add_error(Error::validation_error(&pos,
                                     format!("The /../ is not allowed in path")));
                             }
                         }
@@ -279,8 +275,7 @@ impl Validator for Directory {
                 None => {}
             };
         }
-        return (A::Scalar(pos, T::NonSpecific, kind, val),
-                warnings);
+        return A::Scalar(pos, T::NonSpecific, kind, val);
     }
 }
 
@@ -331,37 +326,34 @@ impl<'a> Validator for Structure<'a> {
         }
         return Some(A::Map(pos, T::NonSpecific, map));
     }
-    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
-        let mut warnings = vec!();
+    fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         let (pos, mut map) = match (ast, self.from_scalar) {
             (A::Map(pos, _, items), _) => {
                 (pos, items)
             }
             (A::Null(pos, _, NullKind::Implicit), _) => {
-                return (self.default(pos).unwrap(), warnings);
+                return self.default(pos).unwrap();
             }
             (ast@A::Scalar(..), Some(from_scalar)) => {
                 (ast.pos(), from_scalar(ast))
             }
             (ast, _) => {
-                warnings.push(Error::validation_error(&ast.pos(),
+                err.add_error(Error::validation_error(&ast.pos(),
                     format!("Value must be mapping")));
-                return (ast, warnings);
+                return ast;
             }
         };
         for &(ref k, ref validator) in self.members.iter() {
             let value = match map.remove(k)
                 .or(map.remove(&k[..].replace("_", "-"))) {
                 Some(src) => {
-                    let (value, wrn) = validator.validate(src);
-                    warnings.extend(wrn.into_iter());
-                    value
+                    validator.validate(src, err)
                 }
                 None => {
                     match validator.default(pos.clone()) {
                         Some(x) => x,
                         None => {
-                            warnings.push(Error::validation_error(&pos,
+                            err.add_error(Error::validation_error(&pos,
                                 format!("Field {} is expected", k)));
                             continue;
                         }
@@ -378,10 +370,10 @@ impl<'a> Validator for Structure<'a> {
             keys.remove(k);
         }
         if keys.len() > 0 {
-            warnings.push(Error::validation_error(&pos,
+            err.add_error(Error::validation_error(&pos,
                 format!("Keys {:?} are not expected", keys)));
         }
-        return (A::Map(pos, T::NonSpecific, map), warnings);
+        return A::Map(pos, T::NonSpecific, map);
     }
 }
 
@@ -435,8 +427,7 @@ impl<'a> Validator for Enum<'a> {
         }
         return None;
     }
-    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
-        let mut warnings = vec!();
+    fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         let tag_name = match ast.tag() {
             &T::LocalTag(ref tag_name) => {
                 Some(tag_name.clone())
@@ -446,18 +437,17 @@ impl<'a> Validator for Enum<'a> {
                     if let A::Scalar(ref pos, _, _, ref val) = ast {
                         for &(ref k, ref validator) in self.options.iter() {
                             if &k[..] == val {
-                                let (value, wrn) = validator.validate(
+                                let value = validator.validate(
                                     A::Null(pos.clone(), T::NonSpecific,
-                                            NullKind::Implicit));
-                                warnings.extend(wrn.into_iter());
-                                return (value.with_tag(
-                                            T::LocalTag(k.to_string())),
-                                        warnings);
+                                            NullKind::Implicit),
+                                    err);
+                                return value.with_tag(
+                                            T::LocalTag(k.to_string()));
                             }
                         }
                     }
                 }
-                warnings.push(Error::validation_error(&ast.pos(),
+                err.add_error(Error::validation_error(&ast.pos(),
                     format!("One of the tags {:?} expected",
                         self.options.iter().map(|&(ref k, _)| k)
                             .collect::<Vec<&String>>())));
@@ -469,15 +459,14 @@ impl<'a> Validator for Enum<'a> {
             let pos = ast.pos().clone();
             for &(ref k, ref validator) in self.options.iter() {
                 if &k[..] == &tag_name[..] {
-                    let (value, wrn) = validator.validate(ast);
-                    warnings.extend(wrn.into_iter());
-                    return (value.with_tag(T::LocalTag(tag_name)), warnings);
+                    let value = validator.validate(ast, err);
+                    return value.with_tag(T::LocalTag(tag_name));
                 }
             }
-            warnings.push(Error::validation_error(&pos,
+            err.add_error(Error::validation_error(&pos,
                 format!("The tag {} is not expected", tag_name)));
         }
-        return (ast, warnings);
+        return ast;
     }
 }
 
@@ -513,37 +502,34 @@ impl<'a> Validator for Mapping<'a> {
     fn default(&self, pos: Pos) -> Option<Ast> {
         return Some(A::Map(pos, T::NonSpecific, BTreeMap::new()));
     }
-    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
-        let mut warnings = vec!();
+    fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         let (pos, map) = match (ast, self.from_scalar) {
             (A::Map(pos, _, items), _) => {
                 (pos, items)
             }
             (A::Null(pos, _, NullKind::Implicit), _) => {
-                return (A::Map(pos, T::NonSpecific, BTreeMap::new()), warnings);
+                return A::Map(pos, T::NonSpecific, BTreeMap::new());
             }
             (ast@A::Scalar(..), Some(from_scalar)) => {
                 (ast.pos(), from_scalar(ast))
             }
             (ast, _) => {
-                warnings.push(Error::validation_error(&ast.pos(),
+                err.add_error(Error::validation_error(&ast.pos(),
                     format!("Value must be mapping")));
-                return (ast, warnings);
+                return ast;
             }
         };
         let mut res = BTreeMap::new();
         for (k, v) in map.into_iter() {
-            let (key, wrn) = match self.key_element.validate(
-                A::Scalar(v.pos().clone(), T::NonSpecific, Plain, k)) {
-                (A::Scalar(_, _, _, val), wrn) => (val, wrn),
+            let key = match self.key_element.validate(
+                A::Scalar(v.pos().clone(), T::NonSpecific, Plain, k), err) {
+                A::Scalar(_, _, _, val) => val,
                 _ => unreachable!(),
             };
-            warnings.extend(wrn.into_iter());
-            let (value, wrn) = self.value_element.validate(v);
-            warnings.extend(wrn.into_iter());
+            let value = self.value_element.validate(v, err);
             res.insert(key, value);
         }
-        return (A::Map(pos, T::NonSpecific, res), warnings);
+        return A::Map(pos, T::NonSpecific, res);
     }
 }
 
@@ -572,31 +558,29 @@ impl<'a> Validator for Sequence<'a> {
     fn default(&self, pos: Pos) -> Option<Ast> {
         return Some(A::List(pos, T::NonSpecific, Vec::new()));
     }
-    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
-        let mut warnings = vec!();
+    fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         let (pos, children) = match (ast, self.from_scalar) {
             (A::List(pos, _, items), _) => {
                 (pos, items)
             }
             (A::Null(pos, _, NullKind::Implicit), _) => {
-                return (A::List(pos, T::NonSpecific, Vec::new()), warnings);
+                return A::List(pos, T::NonSpecific, Vec::new());
             }
             (ast@A::Scalar(_, _, _, _), Some(fun)) => {
                 (ast.pos().clone(), fun(ast))
             }
             (ast, _) => {
-                warnings.push(Error::validation_error(&ast.pos(),
+                err.add_error(Error::validation_error(&ast.pos(),
                     format!("Value must be sequence")));
-                return (ast, warnings);
+                return ast;
             }
         };
         let mut res = Vec::new();
         for val in children.into_iter() {
-            let (value, wrn) = self.element.validate(val);
-            warnings.extend(wrn.into_iter());
+            let value = self.element.validate(val, err);
             res.push(value);
         }
-        return (A::List(pos, T::NonSpecific, res), warnings);
+        return A::List(pos, T::NonSpecific, res);
     }
 }
 
@@ -606,8 +590,8 @@ impl Validator for Anything {
     fn default(&self, _: Pos) -> Option<Ast> {
         return None;
     }
-    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
-        return (ast, Vec::new());
+    fn validate(&self, ast: Ast, _err: &ErrorCollector) -> Ast {
+        return ast;
     }
 }
 
@@ -617,14 +601,13 @@ impl Validator for Nothing {
     fn default(&self, _: Pos) -> Option<Ast> {
         return None;
     }
-    fn validate(&self, ast: Ast) -> (Ast, Vec<Error>) {
-        let mut wrn = vec!();
+    fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         if let A::Null(_, _, _) = ast {
         } else {
-            wrn.push(Error::parse_error(&ast.pos(),
+            err.add_error(Error::parse_error(&ast.pos(),
                 format!("Null expected, {} found", ast)));
         }
-        return (ast, wrn);
+        return ast;
     }
 }
 
@@ -637,7 +620,6 @@ impl<'a> Default for Box<Validator + 'a> {
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
-    use std::sync::mpsc::channel;
     use std::default::Default;
     use std::path::PathBuf;
     use rustc_serialize::Decodable;
@@ -649,8 +631,10 @@ mod test {
     use super::super::ast::Tag::{NonSpecific};
     use super::super::ast::ScalarKind::{Plain};
     use super::super::parser::parse;
+    use super::super::sky::parse_string;
     use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
     use super::{Enum, Nothing, Directory};
+    use super::super::errors::ErrorCollector;
     use self::TestEnum::*;
 
     #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
@@ -668,20 +652,8 @@ mod test {
                 default: Some("default_value".to_string()),
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        for w in warnings.iter() {
-            println!("WARNING: {}", w);
-        }
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = str_val.validate(ast);
-        for w in warnings.iter() {
-            println!("WARNING: {}", w);
-        }
-        assert_eq!(warnings.len(), 0);
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &str_val, Default::default())
+        .unwrap()
     }
 
     #[test]
@@ -735,14 +707,8 @@ mod test {
                 default: Some(123),
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = str_val.validate(ast);
-        assert_eq!(warnings.len(), 0);
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &str_val, Default::default())
+        .unwrap()
     }
 
     #[test]
@@ -765,13 +731,21 @@ mod test {
                 default: Some(123),
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        let (ast, warnings) = str_val.validate(ast);
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return (Decodable::decode(&mut dec).unwrap(),
-                warnings.iter().map(|x| x.to_string()).collect());
+        let err = ErrorCollector::new();
+        let ast = parse(
+                Rc::new("<inline text>".to_string()),
+                body,
+                |doc| { process(Default::default(), doc, &err) }
+            ).map_err(|e| err.into_fatal(e)).unwrap();
+        let ast = str_val.validate(ast, &err);
+        match Decodable::decode(&mut YamlDecoder::new(ast, &err)) {
+            Ok(val) => {
+                (val, err.unwrap().errors().map(|x| x.to_string()).collect())
+            }
+            Err(e) => {
+                panic!("{}", err.into_fatal(e));
+            }
+        }
     }
 
     #[test]
@@ -804,15 +778,8 @@ mod test {
                 optional: true,
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = str_val.validate(ast);
-        println!("WARNINGS {:?}", warnings);
-        assert_eq!(warnings.len(), 0);
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &str_val, Default::default())
+        .unwrap()
     }
 
     #[test]
@@ -856,14 +823,8 @@ mod test {
                 .. Default::default()}),
             .. Default::default()
         }.parser(parse_default);
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = validator.validate(ast);
-        assert_eq!(warnings.len(), 0);
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &validator, Default::default())
+        .unwrap()
     }
 
     #[test]
@@ -926,16 +887,8 @@ mod test {
             ),.. Default::default()}) as Box<Validator>,
             .. Default::default()
         };
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        warnings.iter().all(|w| { println!("WARNING: {}", w); true });
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = validator.validate(ast);
-        warnings.iter().all(|w| { println!("WARNING: {}", w); true });
-        assert_eq!(warnings.len(), 0);
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &validator, Default::default())
+        .unwrap()
     }
 
     #[test]
@@ -991,14 +944,8 @@ mod test {
                 .. Default::default()}),
             .. Default::default()
         }.parser(split);
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = validator.validate(ast);
-        assert_eq!(warnings.len(), 0);
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &validator, Default::default())
+        .unwrap()
     }
 
     #[test]
@@ -1086,14 +1033,8 @@ mod test {
 
     fn parse_enum(body: &str) -> TestEnum {
         let validator = enum_validator();
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = validator.validate(ast);
-        assert_eq!(warnings.len(), 0);
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &validator, Default::default())
+        .unwrap()
     }
 
     #[test]
@@ -1179,16 +1120,8 @@ mod test {
                 absolute: abs,
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = str_val.validate(ast);
-        for w in warnings.iter() {
-            panic!(w.to_string());
-        }
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &str_val, Default::default())
+        .unwrap()
     }
 
     #[test]
@@ -1270,14 +1203,8 @@ mod test {
         let validator = Sequence {
             element: Box::new(enum_validator()),
             .. Default::default() };
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = validator.validate(ast);
-        assert_eq!(warnings.len(), 0);
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &validator, Default::default())
+        .unwrap()
     }
 
     #[test]
@@ -1299,18 +1226,8 @@ mod test {
     fn parse_enum_opt(body: &str) -> EnumOpt {
         let validator = Structure::new()
             .member("val", enum_validator().optional());
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = validator.validate(ast);
-        if warnings.len() != 0 {
-            panic!("Warnings: {}", warnings.iter()
-                .map(|x| x.to_string()).collect::<Vec<_>>()
-                .join("\n    "));
-        }
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &validator, Default::default())
+        .unwrap()
     }
 
     #[test]
@@ -1345,18 +1262,8 @@ mod test {
         let validator = Structure::new()
             .member("value", Scalar::new())
             .parser(value_parser);
-        let (ast, warnings) = parse(Rc::new("<inline text>".to_string()), body,
-            |doc| { process(Default::default(), doc) }).unwrap();
-        assert_eq!(warnings.len(), 0);
-        let (ast, warnings) = validator.validate(ast);
-        if warnings.len() != 0 {
-            panic!("Warnings: {}", warnings.iter()
-                .map(|x| x.to_string()).collect::<Vec<_>>()
-                .join("\n    "));
-        }
-        let (tx, _) = channel();
-        let mut dec = YamlDecoder::new(ast, tx);
-        return Decodable::decode(&mut dec).unwrap();
+        parse_string("<inline text>", body, &validator, Default::default())
+        .unwrap()
     }
 
     #[test]
