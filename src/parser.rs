@@ -352,6 +352,7 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
         }
         tokiter.next().unwrap();
         let tok = tokiter.peek(0);
+        let tok_ahead = tokiter.peek(1);
         match tok.kind {
             T::SequenceEntry if tok.start.line > delim.end.line => {
                 // Allow sequences on the same indentation level as a key in
@@ -371,6 +372,16 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
                 children.insert(key, ImplicitNull(
                     None, None, tok.start.clone()));
                 break;
+            }
+            T::Tag if tok_ahead.start.line > tok.end.line &&
+                tok_ahead.kind != T::Indent =>
+            {
+                let value = ImplicitNull(maybe_parse_tag(tokiter), None, delim.end.clone());
+                if children.insert(key, value).is_some() {
+                    return Err(Error::parse_error(&ktoken.start,
+                        "Duplicate key".to_string()));
+                }
+                continue;
             }
             _ if tok.start.line == delim.end.line ||
                  tok.start.indent > delim.end.indent => {
@@ -734,4 +745,3 @@ pub fn parse<'x, T, F>(name: Rc<String>, data: &str, process: F)
     };
     return Ok(process(doc));
 }
-

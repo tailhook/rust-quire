@@ -121,16 +121,12 @@ impl<'a> Context<'a> {
     fn emit_null(&mut self, space:bool, style: Null) -> IoResult<()> {
         return match style {
             Null::Nothing => {
-                if self.line == L::Start {
-                    Ok(0)
-                } else {
-                    self.stream.write(b"\n")
-                }
+                Ok(0)
             }
             Null::Tilde =>
-                self.stream.write(if space { b" ~\n" } else { b"~\n" }),
+                self.stream.write(if space { b" ~" } else { b"~" }),
             Null::Null =>
-                self.stream.write(if space { b" null\n" } else { b"null\n"}),
+                self.stream.write(if space { b" null" } else { b"null"}),
         }.map(|_| ());
     }
 
@@ -615,6 +611,18 @@ mod test {
         ], "a: val\nb: 2\n");
     }
 
+    #[test]
+    fn test_map_null() {
+        emit_and_compare(&[
+            Opcode::MapStart(None, None),
+            Opcode::Scalar(None, None, ScalarStyle::Auto, "a"),
+            Opcode::Null(None, None, Null::Nothing),
+            Opcode::Scalar(None, None, ScalarStyle::Auto, "b"),
+            Opcode::Scalar(None, None, ScalarStyle::Auto, "2"),
+            Opcode::MapEnd,
+        ], "a: \nb: 2\n");
+    }
+
     fn assert_yaml_eq_yaml(source: &'static str, output: &'static str) {
         let mut bytes = Vec::new();
         let filen = Rc::new("<inline test>".to_string());
@@ -682,6 +690,26 @@ mod test {
     #[test]
     fn yaml_tag_map() {
         assert_yaml_eq_yaml("!Tag {a: b}", "!Tag\na: b\n");
+    }
+
+    #[test]
+    fn yaml_null_in_map() {
+        assert_yaml_eq_yaml("a: \nb: x", "a: \nb: x\n");
+    }
+
+    #[test]
+    fn yaml_tag_null_in_map() {
+        assert_yaml_eq_yaml("a: !Tag\nb: x", "a: !Tag\nb: x\n");
+    }
+
+    #[test]
+    fn yaml_tag_null_in_map_nessted() {
+        assert_yaml_eq_yaml("x: \n  a: !Tag\n  b: x", "x:\n  a: !Tag\n  b: x\n");
+    }
+
+    #[test]
+    fn yaml_tag_null_in_map_unindent() {
+        assert_yaml_eq_yaml("x: \n  a: !Tag\ny: z", "x:\n  a: !Tag\ny: z\n");
     }
 
     #[test]
