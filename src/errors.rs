@@ -1,4 +1,4 @@
-use super::tokenizer::Pos;
+use super::tokenizer::{self, Pos};
 
 #[derive(Clone, Debug)]
 pub struct ErrorPos(String, usize, usize);
@@ -6,9 +6,9 @@ pub struct ErrorPos(String, usize, usize);
 quick_error! {
     #[derive(Clone, Debug)]
     pub enum Error {
-        TokenizerError(pos: ErrorPos, msg: String) {
-            display("{filename}:{line}:{offset}: Tokenizer Error: {text}",
-                    filename=pos.0, line=pos.1, offset=pos.2, text=msg)
+        TokenizerError(pos: ErrorPos, err: tokenizer::Error) {
+            display("{filename}:{line}:{offset}: Tokenizer Error: {err}",
+                    filename=pos.0, line=pos.1, offset=pos.2, err=err)
         }
         ParseError(pos: ErrorPos, msg: String) {
             display("{filename}:{line}:{offset}: Parse Error: {text}",
@@ -39,10 +39,10 @@ impl Error {
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             message);
     }
-    pub fn tokenizer_error(pos: &Pos, message: String) -> Error {
+    pub fn tokenizer_error((pos, err): (Pos, tokenizer::Error)) -> Error {
         return Error::TokenizerError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
-            message);
+            err);
     }
     pub fn validation_error(pos: &Pos, message: String) -> Error {
         return Error::ValidationError(

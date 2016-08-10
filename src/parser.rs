@@ -727,10 +727,7 @@ pub fn parse<'x, T, F>(name: Rc<String>, data: &str, process: F)
     -> Result<T, Error>
     where F: FnOnce(Document) -> T
 {
-    let tokens = match tokenize(name, data) {
-        Ok(lst) => lst,
-        Err(e) => return Err(e),
-    };
+    let tokens = try!(tokenize(name, data).map_err(Error::tokenizer_error));
     let doc = match parse_tokens(&tokens) {
         Ok(doc) => doc,
         Err(e) => return Err(e),
