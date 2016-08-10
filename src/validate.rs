@@ -1303,7 +1303,6 @@ mod test {
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = validator.validate(ast);
-        ::emit::emit_ast(&ast, &mut ::std::io::stdout()).unwrap();
         if warnings.len() != 0 {
             panic!("Warnings: {}", warnings.iter()
                 .map(|x| x.to_string()).collect::<Vec<_>>()
@@ -1342,7 +1341,7 @@ mod test {
                 _ => unreachable!(),
             }
         }
-        
+
         let validator = Structure::new()
             .member("value", Scalar::new())
             .parser(value_parser);
@@ -1350,7 +1349,6 @@ mod test {
             |doc| { process(Default::default(), doc) }).unwrap();
         assert_eq!(warnings.len(), 0);
         let (ast, warnings) = validator.validate(ast);
-        ::emit::emit_ast(&ast, &mut ::std::io::stdout()).unwrap();
         if warnings.len() != 0 {
             panic!("Warnings: {}", warnings.iter()
                 .map(|x| x.to_string()).collect::<Vec<_>>()
