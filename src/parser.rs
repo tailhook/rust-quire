@@ -305,7 +305,7 @@ fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
             T::SequenceEntry if tok.start.indent == marker.start.indent => {
                 children.push(ImplicitNull(None, None, marker.end.clone()));
             }
-            T::Eof | T::Unindent => {
+            T::DocumentEnd | T::Eof | T::Unindent => {
                 children.push(ImplicitNull(None, None, tok.start.clone()));
                 break;
             }
@@ -334,6 +334,7 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
         let ktoken = tokiter.peek(0);
         let key = match ktoken.kind {
             T::Eof => break,
+            T::DocumentEnd => break,
             T::Unindent => break,
             T::PlainString | T::SingleString | T::DoubleString
             => Scalar(None, None, plain_value(ktoken), ktoken),
@@ -693,7 +694,10 @@ fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
             T::Eof => return Ok((directives,
                                  ImplicitNull(None, None, tok.start.clone()))),
             T::Directive => directives.push(Directive(tok)),
-            T::DocumentStart => break,
+            T::DocumentStart => {
+                tokiter.next();
+                break;
+            }
             _ => break,  // Start reading node
         }
         tokiter.next();
@@ -708,7 +712,7 @@ fn parse_root<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
             None => break,
         };
         match tok.kind {
-            T::DocumentEnd => {}
+            T::DocumentEnd => break,
             _ => {
                 return Err(Error::parse_error(&tok.start,
                     format!("Expected document end, got {:?}", tok.kind)));

@@ -284,6 +284,21 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                                         niter.position);
                                     return;
                                 }
+                                Some('.') => {
+                                    let slice = &self.data[
+                                        niter.position.offset..];
+                                    if slice.starts_with("... ") ||
+                                       slice.starts_with("...\r") ||
+                                       slice.starts_with("...\n") ||
+                                       slice == "..."
+                                    {
+                                        self.add_token(PlainString,
+                                            start, pos.clone());
+                                        self.add_token(Whitespace, pos,
+                                            niter.position);
+                                        return;
+                                    }
+                                }
                                 _ => {}
                             }
                         } else {
@@ -420,9 +435,24 @@ impl<'a, 'b> Tokenizer<'a, 'b> {
                             let end = self.iter.position.clone();
                             self.add_token(SequenceEntry, start, end);
                             break;
-                            }
-                        };
+                        }
                     }
+                }
+                Some((ref start, '.')) if start.indent == 0 => {
+                    match (self.iter.next(), self.iter.next(),
+                           self.iter.next_value) {
+                        (Some((_, '.')), Some((_, '.')), ref end)
+                        if end.is_none() || end.is_some() &&
+                                    is_whitespace(end.as_ref().unwrap().1)
+                        => { // document end
+                            let end = self.iter.position.clone();
+                            self.add_token(DocumentEnd, start.clone(), end);
+                        }
+                        _ => {
+                            self.read_plain(start.clone());
+                        }
+                    }
+                }
                 Some((start, '?')) => { // key, plainstring
                     // TODO(tailhook) in flow context space is not required
                     match self.iter.next() {
@@ -1194,4 +1224,59 @@ fn test_flow_map_map() {
 fn test_plain_scalar_braces() {
     assert_eq!(simple_tokens(test_tokenize(r#"a:{}"#)),
         vec!((PlainString, "a:{}")));
+}
+
+#[test]
+fn test_doc_end() {
+    assert_eq!(simple_tokens(test_tokenize("...")),
+        vec!((DocumentEnd, "...")));
+    assert_eq!(simple_tokens(test_tokenize("...\n")),
+        vec![(DocumentEnd, "..."), (Whitespace, "\n")]);
+    assert_eq!(simple_tokens(test_tokenize("... \n")),
+        vec![(DocumentEnd, "..."), (Whitespace, " \n")]);
+    assert_eq!(simple_tokens(test_tokenize("... x")),
+        vec![(DocumentEnd, "..."), (Whitespace, " "), (PlainString, "x")]);
+    assert_eq!(simple_tokens(test_tokenize("test\n...")),
+        vec![
+            (PlainString, "test"),
+            (Whitespace, "\n"),
+            (DocumentEnd, "..."),
+        ]);
+    assert_eq!(simple_tokens(test_tokenize("test\n...\n")),
+        vec![
+            (PlainString, "test"),
+            (Whitespace, "\n"),
+            (DocumentEnd, "..."),
+            (Whitespace, "\n"),
+        ]);
+    assert_eq!(simple_tokens(test_tokenize("test\n...xxx\n")),
+        vec![(PlainString, "test\n...xxx\n")]);
+    assert_eq!(simple_tokens(test_tokenize("test\n ...\n")),
+        vec![
+            (PlainString, "test"),
+            (Whitespace, "\n "),
+            (Indent, ""),
+            (PlainString, "..."),
+            (Whitespace, "\n"),
+            (Unindent, ""),
+        ]);
+    assert_eq!(simple_tokens(test_tokenize("x: 1\n...")),
+        vec![
+            (PlainString, "x"),
+            (MappingValue, ":"),
+            (Whitespace, " "),
+            (PlainString, "1"),
+            (Whitespace, "\n"),
+            (DocumentEnd, "..."),
+        ]);
+    assert_eq!(simple_tokens(test_tokenize("- 1\n...")),
+        vec![
+            (SequenceEntry, "-"),
+            (Whitespace, " "),
+            (Indent, ""),
+            (PlainString, "1"),
+            (Whitespace, "\n"),
+            (Unindent, ""),
+            (DocumentEnd, "..."),
+        ]);
 }

@@ -488,4 +488,39 @@ mod test {
             r#"{"x": 7, "y": 1}"#);
     }
 
+    #[test]
+    fn test_doc_start() {
+        assert_yaml_eq_json("---\nx: 1", r#"{"x": 1}"#);
+    }
+
+    #[test]
+    fn test_doc_end_map() {
+        assert_yaml_eq_json("x: 1\n...", r#"{"x": 1}"#);
+    }
+
+    #[test]
+    fn test_doc_end_map_early() {
+        assert_yaml_eq_json("x:\n...", r#"{"x": null}"#);
+    }
+
+    #[test]
+    fn test_doc_end_list() {
+        assert_yaml_eq_json("- x\n...", r#"["x"]"#);
+    }
+
+    #[test]
+    fn test_doc_both() {
+        assert_yaml_eq_json("---\nx: 1\n...", r#"{"x": 1}"#);
+    }
+
+    #[test]
+    fn test_doc_end_trailing() {
+        assert_yaml_eq_json("x: 1\n...\nhell@", r#"{"x": 1}"#);
+    }
+
+    #[test]
+    fn test_doc_end_trailing2() {
+        assert_yaml_eq_json("- t\n...\nhell@", r#"["t"]"#);
+    }
+
 }
