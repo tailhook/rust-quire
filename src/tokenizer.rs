@@ -756,6 +756,28 @@ fn test_tag_map() {
 }
 
 #[test]
+fn test_map_tag_null() {
+    let tokens = test_tokenize("x: \n  a: !Tag\n  b:  c");
+    let strings = simple_tokens(tokens);
+    assert_eq!(strings, vec!(
+        (PlainString, "x"),
+        (MappingValue, ":"),
+        (Whitespace, " \n  "),
+        (Indent, ""),
+        (PlainString, "a"),
+        (MappingValue, ":"),
+        (Whitespace, " "),
+        (Tag, "!Tag"),
+        (Whitespace, "\n  "),
+        (PlainString, "b"),
+        (MappingValue, ":"),
+        (Whitespace, "  "),
+        (PlainString, "c"),
+        (Unindent, ""),
+        ));
+}
+
+#[test]
 fn test_tag_map_flow() {
     let tokens = test_tokenize("a: !Tag { a:  b }");
     let strings = simple_tokens(tokens);

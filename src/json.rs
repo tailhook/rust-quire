@@ -430,4 +430,10 @@ mod test {
     fn wrong_escape_raw_correct() {
         assert_yaml_eq_json(r#"a: "a\\.b""#, r#"{"a": "a\\.b"}"#);
     }
+
+    #[test]
+    fn yaml_tag_null_in_map() {
+        assert_yaml_eq_json("x: \n  a: !Tag\n  b: x",
+            r#"{"x": {"a": null, "b": "x"}}"#);
+    }
 }
