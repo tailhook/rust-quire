@@ -210,11 +210,46 @@ impl<'a, 'b: 'a> Context<'a, 'b> {
                     self.merge_mapping(target, item);
                 }
             }
+            P::Scalar(Some("!*Include"), _anch, ref val, ref tok) => {
+                self.merge_mapping_ast(target,
+                    self.options.include(&tok.start,
+                        &Include::File { filename: val }, self.err));
+            }
             P::Alias(_, _, ref node) => {
                 self.merge_mapping(target, node);
             }
             _ => {
                 self.err.add_error(Error::preprocess_error(&pos_for_node(node),
+                    "Value of merge key must be either mapping or \
+                     list of mappings".to_string()));
+            }
+        }
+    }
+    /// This is same as merge_mapping but for asts
+    ///
+    /// Used for includes, may be this function can be used for everything
+    /// but we don't use it perhaps for efficiency
+    fn merge_mapping_ast(&mut self, target: &mut BTreeMap<String, Ast>,
+        ast: Ast)
+    {
+        match ast {
+            Map(_, _, children) => {
+                for (k, v) in children.into_iter() {
+                    if !target.contains_key(&k) {
+                        // We don't make deep merging here, because other map
+                        // is already merged
+                        target.insert(k, v);
+                    }
+                }
+            }
+            List(_, _, lst) => {
+                // TODO(tailhook) check and assert on tags?
+                for item in lst.into_iter() {
+                    self.merge_mapping_ast(target, item);
+                }
+            }
+            node => {
+                self.err.add_error(Error::preprocess_error(&node.pos(),
                     "Value of merge key must be either mapping or \
                      list of mappings".to_string()));
             }
@@ -242,6 +277,24 @@ impl<'a, 'b: 'a> Context<'a, 'b> {
             }
             P::Alias(_, _, ref node) => {
                 self.merge_sequence(target, node);
+            }
+            P::Scalar(Some("!*Include"), _anch, ref val, ref tok) => {
+                let ast = self.options.include(&tok.start,
+                    &Include::File { filename: val }, self.err);
+                // We don't make deep unpacking here, because other map
+                // is already unpacked
+                match ast {
+                    List(_, _, vec) => {
+                        target.extend(vec)
+                    }
+                    other => {
+                        self.err.add_error(
+                            Error::preprocess_error(&pos_for_node(node),
+                                "The of !*Unpack node must be sequence"
+                                .to_string()));
+                        target.push(other);
+                    }
+                }
             }
             _ => {
                 self.err.add_error(Error::preprocess_error(&pos_for_node(node),

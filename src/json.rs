@@ -470,4 +470,22 @@ mod test {
             "y: 1",
             r#"{"x": {"y": 1}}"#);
     }
+
+    #[test]
+    fn test_incl_unpack() {
+        assert_yaml_eq_json_incl(
+            "- !*Unpack [!*Include 'y.yaml']\n\
+             - !*Unpack [!*Include 'y.yaml']",
+            "[7, 8]",
+            r#"[7, 8, 7, 8]"#);
+    }
+
+    #[test]
+    fn test_incl_merge() {
+        assert_yaml_eq_json_incl(
+            "x: 7\n<<: !*Include 'y.yaml'",
+            "y: 1",
+            r#"{"x": 7, "y": 1}"#);
+    }
+
 }
