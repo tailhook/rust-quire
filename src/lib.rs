@@ -7,6 +7,7 @@ extern crate rustc_serialize;
 
 pub use sky::{parse_config, parse_string};
 pub use ast::Options;
+pub use errors::{Error, ErrorList, ErrorCollector};
 
 mod chars;
 mod errors;
