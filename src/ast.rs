@@ -1,7 +1,6 @@
 use std::fmt::Display;
 use std::fmt::Error as FormatError;
 use std::fmt::{Formatter};
-use std::default::Default;
 use std::collections::BTreeMap;
 
 use super::tokenizer::Pos;
@@ -13,22 +12,8 @@ use self::Ast::*;
 use self::NullKind::*;
 use self::ScalarKind::*;
 use self::Tag::*;
+use options::{Options, Include, DoInclude};
 
-
-#[derive(Clone, Copy)]
-pub struct Options {
-    pub merges: bool,
-    pub aliases: bool,
-}
-
-impl Default for Options {
-    fn default() -> Options {
-        return Options {
-            merges: true,
-            aliases: true,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum ScalarKind {
@@ -102,10 +87,14 @@ impl Ast {
             Null(pos, _, kind) => Null(pos, tag, kind),
         }
     }
+    /// A special null value that is used when node inside is errorneous
+    pub fn void(pos: &Pos) -> Ast {
+        Ast::Null(pos.clone(), Tag::NonSpecific, NullKind::Implicit)
+    }
 }
 
-struct Context<'a> {
-    options: Options,
+struct Context<'a, 'b: 'a> {
+    options: &'a Options<'b>,
     directives: Vec<Directive<'a>>,
     err: &'a ErrorCollector,
 }
@@ -144,7 +133,7 @@ fn parse_key<'x>(node: &Node, value: &'x Node<'x>, merge: &mut Option<&Node<'x>>
     }
 }
 
-impl<'a> Context<'a> {
+impl<'a, 'b: 'a> Context<'a, 'b> {
     fn process(&mut self, node: &'a Node<'a>) -> Ast {
         match *node {
             P::Map(ref origtag, _, _, ref tokens) => {
@@ -162,6 +151,10 @@ impl<'a> Context<'a> {
                 self.merge_sequence(&mut seq, node);
 
                 return List(pos, tag, seq);
+            }
+            P::Scalar(Some("!*Include"), _anch, ref val, ref tok) => {
+                return self.options.include(&tok.start,
+                    &Include::File { filename: val }, self.err);
             }
             P::Scalar(ref tag, _, ref val, ref tok) => {
                 let pos = tok.start.clone();
@@ -291,7 +284,7 @@ impl<'a> Context<'a> {
 }
 
 
-pub fn process(opt: Options, doc: Document, err: &ErrorCollector) -> Ast {
+pub fn process(opt: &Options, doc: Document, err: &ErrorCollector) -> Ast {
     let mut ctx = Context {
         options: opt,
         directives: doc.directives,

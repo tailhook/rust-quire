@@ -540,7 +540,6 @@ impl Decoder for YamlDecoder {
 mod test {
     use std::rc::Rc;
     use std::path::PathBuf;
-    use std::default::Default;
     use std::collections::BTreeMap;
     use rustc_serialize::Decodable;
 
@@ -550,6 +549,7 @@ mod test {
     use super::super::errors::ErrorCollector;
     //use super::AnyJson;
     use self::TestEnum::*;
+    use {Options};
 
     #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestStruct {
@@ -562,7 +562,7 @@ mod test {
         let ast = parse(
                 Rc::new("<inline text>".to_string()),
                 data,
-                |doc| { process(Default::default(), doc, &err) }
+                |doc| { process(&Options::default(), doc, &err) }
             ).map_err(|e| err.into_fatal(e)).unwrap();
         Decodable::decode(&mut YamlDecoder::new(ast, &err))
         .map_err(|e| err.into_fatal(e))

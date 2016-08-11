@@ -564,7 +564,6 @@ impl<'a> Encoder for Context<'a> {
 mod test {
     use std::str::{from_utf8};
     use std::rc::Rc;
-    use std::default::Default;
 
     use errors::ErrorCollector;
     use super::super::parser::parse;
@@ -572,6 +571,7 @@ mod test {
     use super::super::ast::process;
     use super::Context;
     use super::ScalarStyle;
+    use {Options};
 
     fn emit_and_compare(list: &[Opcode], output: &str) {
         let mut bytes = Vec::new();
@@ -636,7 +636,7 @@ mod test {
         let mut bytes = Vec::new();
         let err = ErrorCollector::new();
         let ast = parse(filen, source, |doc| {
-            process(Default::default(), doc, &err)
+            process(&Options::default(), doc, &err)
         }).map_err(|e| err.into_fatal(e)).unwrap();
         err.into_result(()).unwrap();
 

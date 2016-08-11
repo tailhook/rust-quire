@@ -52,17 +52,18 @@ impl ToJson for Ast {
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
-    use std::default::Default;
     use rustc_serialize::json::ToJson;
     use rustc_serialize::json as J;
     use super::super::parser::parse;
     use super::super::ast::process;
+    use ast::Ast;
     use errors::ErrorCollector;
+    use {Options, Include};
 
     fn assert_yaml_eq_json(a: &'static str, b: &'static str) {
         let err = ErrorCollector::new();
         let ast = parse(Rc::new("<inline text>".to_string()), a,
-            |doc| { process(Default::default(), doc, &err) },
+            |doc| { process(&Options::default(), doc, &err) },
             ).map_err(|e| err.into_fatal(e)).unwrap();
         err.into_result(()).unwrap();
         let aj = ast.to_json();
@@ -435,5 +436,38 @@ mod test {
     fn yaml_tag_null_in_map() {
         assert_yaml_eq_json("x: \n  a: !Tag\n  b: x",
             r#"{"x": {"a": null, "b": "x"}}"#);
+    }
+
+    fn assert_yaml_eq_json_incl(a: &'static str, inc_data: &'static str,
+                                b: &'static str)
+    {
+        let mut opt = Options::default();
+        opt.allow_include(|pos, incl, err, opt| {
+            // any include is the same in example
+            match *incl {
+                Include::File { filename } => {
+                    parse(Rc::new(filename.to_string()), inc_data,
+                        |doc| { process(&opt, doc, err) },
+                    ).map_err(|e| err.add_error(e))
+                     .unwrap_or_else(|_| Ast::void(pos))
+                }
+            }
+        });
+        let err = ErrorCollector::new();
+        let ast = parse(Rc::new("<inline text>".to_string()), a,
+            |doc| { process(&opt, doc, &err) },
+            ).map_err(|e| err.into_fatal(e)).unwrap();
+        err.into_result(()).unwrap();
+        let aj = ast.to_json();
+        let bj = J::Json::from_str(&b).unwrap();
+        assert_eq!(aj, bj);
+    }
+
+    #[test]
+    fn test_incl_one() {
+        assert_yaml_eq_json_incl(
+            "x: !*Include 'y.yaml'",
+            "y: 1",
+            r#"{"x": {"y": 1}}"#);
     }
 }

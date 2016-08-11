@@ -6,12 +6,13 @@ extern crate rustc_serialize;
 #[macro_use] extern crate quick_error;
 
 pub use sky::{parse_config, parse_string};
-pub use ast::Options;
+pub use options::{Options, Include};
 pub use errors::{Error, ErrorList, ErrorCollector};
 
 mod chars;
 mod errors;
 mod tokenizer;
+mod options;
 pub mod parser;
 pub mod json;
 pub mod emit;

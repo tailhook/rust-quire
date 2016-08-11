@@ -10,10 +10,11 @@ use super::errors::ErrorCollector;
 use super::parser::parse;
 use super::decode::YamlDecoder;
 use super::validate::Validator;
+use {Options};
 
 
 pub fn parse_config<T: Decodable, P: AsRef<Path>>(
-    filename: P, validator: &Validator, options: ast::Options)
+    filename: P, validator: &Validator, options: &Options)
     -> Result<T, ErrorList>
 {
     let filename = filename.as_ref();
@@ -34,7 +35,7 @@ pub fn parse_config<T: Decodable, P: AsRef<Path>>(
 }
 
 pub fn parse_string<T: Decodable>(filename: &str, data: &str,
-    validator: &Validator, options: ast::Options)
+    validator: &Validator, options: &Options)
     -> Result<T, ErrorList>
 {
     let err = ErrorCollector::new();

@@ -626,6 +626,7 @@ mod test {
     use std::collections::BTreeMap;
     use std::collections::HashMap;
 
+    use {Options};
     use super::super::decode::YamlDecoder;
     use super::super::ast::{process, Ast as A};
     use super::super::ast::Tag::{NonSpecific};
@@ -652,7 +653,7 @@ mod test {
                 default: Some("default_value".to_string()),
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
-        parse_string("<inline text>", body, &str_val, Default::default())
+        parse_string("<inline text>", body, &str_val, &Options::default())
         .unwrap()
     }
 
@@ -707,7 +708,7 @@ mod test {
                 default: Some(123),
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
-        parse_string("<inline text>", body, &str_val, Default::default())
+        parse_string("<inline text>", body, &str_val, &Options::default())
         .unwrap()
     }
 
@@ -735,7 +736,7 @@ mod test {
         let ast = parse(
                 Rc::new("<inline text>".to_string()),
                 body,
-                |doc| { process(Default::default(), doc, &err) }
+                |doc| { process(&Options::default(), doc, &err) }
             ).map_err(|e| err.into_fatal(e)).unwrap();
         let ast = str_val.validate(ast, &err);
         match Decodable::decode(&mut YamlDecoder::new(ast, &err)) {
@@ -778,7 +779,7 @@ mod test {
                 optional: true,
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
-        parse_string("<inline text>", body, &str_val, Default::default())
+        parse_string("<inline text>", body, &str_val, &Options::default())
         .unwrap()
     }
 
@@ -823,7 +824,7 @@ mod test {
                 .. Default::default()}),
             .. Default::default()
         }.parser(parse_default);
-        parse_string("<inline text>", body, &validator, Default::default())
+        parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
 
@@ -887,7 +888,7 @@ mod test {
             ),.. Default::default()}) as Box<Validator>,
             .. Default::default()
         };
-        parse_string("<inline text>", body, &validator, Default::default())
+        parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
 
@@ -944,7 +945,7 @@ mod test {
                 .. Default::default()}),
             .. Default::default()
         }.parser(split);
-        parse_string("<inline text>", body, &validator, Default::default())
+        parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
 
@@ -1033,7 +1034,7 @@ mod test {
 
     fn parse_enum(body: &str) -> TestEnum {
         let validator = enum_validator();
-        parse_string("<inline text>", body, &validator, Default::default())
+        parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
 
@@ -1120,7 +1121,7 @@ mod test {
                 absolute: abs,
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default()};
-        parse_string("<inline text>", body, &str_val, Default::default())
+        parse_string("<inline text>", body, &str_val, &Options::default())
         .unwrap()
     }
 
@@ -1203,7 +1204,7 @@ mod test {
         let validator = Sequence {
             element: Box::new(enum_validator()),
             .. Default::default() };
-        parse_string("<inline text>", body, &validator, Default::default())
+        parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
 
@@ -1226,7 +1227,7 @@ mod test {
     fn parse_enum_opt(body: &str) -> EnumOpt {
         let validator = Structure::new()
             .member("val", enum_validator().optional());
-        parse_string("<inline text>", body, &validator, Default::default())
+        parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
 
@@ -1262,7 +1263,7 @@ mod test {
         let validator = Structure::new()
             .member("value", Scalar::new())
             .parser(value_parser);
-        parse_string("<inline text>", body, &validator, Default::default())
+        parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
 

@@ -1,7 +1,7 @@
 use std::rc::Rc;
-use std::default::Default;
 use rustc_serialize::Decodable;
 
+use {Options};
 use super::decode::YamlDecoder;
 use super::ast::process;
 use super::parser::parse;
@@ -24,7 +24,7 @@ fn decode_struct(data: &str) -> Result<Struct1, String> {
     parse(
             Rc::new("<inline text>".to_string()),
             data,
-            |doc| { process(Default::default(), doc, &err) }
+            |doc| { process(&Options::default(), doc, &err) }
     ).map_err(|e| err.into_fatal(e))
     .and_then(|ast| {
         Decodable::decode(&mut YamlDecoder::new(ast, &err))
@@ -54,4 +54,11 @@ fn test_unknown_alias_flow() {
     assert_eq!(decode_struct("- [ *x ]"),
         Err("<inline text>:1:5: Parse Error: \
             Unknown alias \"x\"\n".to_string()));
+}
+
+#[test]
+fn test_non_working_includes() {
+    assert_eq!(decode_struct("list: !*Include 'y.yaml'"),
+        Err("<inline text>:1:17: Preprocess Error: \
+            Includes are not supported\n".to_string()));
 }

@@ -734,7 +734,7 @@ pub fn parse_tokens<'x>(tokens: &'x Vec<Token<'x>>)
         });
 }
 
-pub fn parse<'x, T, F>(name: Rc<String>, data: &str, process: F)
+pub fn parse<T, F>(name: Rc<String>, data: &str, process: F)
     -> Result<T, Error>
     where F: FnOnce(Document) -> T
 {
