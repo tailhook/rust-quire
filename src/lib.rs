@@ -8,6 +8,7 @@ extern crate rustc_serialize;
 pub use sky::{parse_config, parse_string};
 pub use options::{Options, Include};
 pub use errors::{Error, ErrorList, ErrorCollector};
+pub use tokenizer::{Pos};
 
 mod chars;
 mod errors;
@@ -19,5 +20,5 @@ pub mod emit;
 pub mod ast;
 pub mod decode;
 pub mod validate;
-pub mod sky;
+mod sky;
 #[cfg(test)] mod test_errors;
