@@ -1,5 +1,11 @@
 containers:
 
+  doc:
+    setup:
+    - !Alpine v3.4
+    - !Repo edge/main
+    - !Install [make, py-sphinx]
+
   build:
     setup:
     - !Ubuntu xenial
@@ -26,3 +32,13 @@ commands:
   cargo: !Command
     container: build
     run: [cargo]
+
+  doc: !Command
+    container: doc
+    description: Build sphinx documentation
+      (user guide rather than API reference)
+    work-dir: doc
+    epilog: |
+      ------------------------------------------------------------------------
+      Docs are built in doc/_build/html/index.html
+    run: [make, html]
