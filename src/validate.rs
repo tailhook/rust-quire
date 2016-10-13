@@ -447,11 +447,15 @@ impl<'a> Validator for Enum<'a> {
                         }
                     }
                 }
-                err.add_error(Error::validation_error(&ast.pos(),
-                    format!("One of the tags {:?} expected",
-                        self.options.iter().map(|&(ref k, _)| k)
-                            .collect::<Vec<&String>>())));
-                None
+                if let Some(ref tag) = self.default_tag {
+                    Some(tag.clone())
+                } else {
+                    err.add_error(Error::validation_error(&ast.pos(),
+                        format!("One of the tags {:?} expected",
+                            self.options.iter().map(|&(ref k, _)| k)
+                                .collect::<Vec<&String>>())));
+                    None
+                }
             }
             _ => unimplemented!(),
         };
