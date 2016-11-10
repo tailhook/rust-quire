@@ -19,18 +19,18 @@ pub fn parse_config<T: Decodable, P: AsRef<Path>>(
 {
     let filename = filename.as_ref();
     let err = ErrorCollector::new();
-    let mut file = try!(File::open(filename).map_err(
-        |e| err.into_fatal(Error::OpenError(filename.to_path_buf(), e))));
+    let mut file = File::open(filename).map_err(
+        |e| err.into_fatal(Error::OpenError(filename.to_path_buf(), e)))?;
     let mut body = String::new();
-    try!(file.read_to_string(&mut body).map_err(
-        |e| err.into_fatal(Error::OpenError(filename.to_path_buf(), e))));
+    file.read_to_string(&mut body).map_err(
+        |e| err.into_fatal(Error::OpenError(filename.to_path_buf(), e)))?;
     let filename = Rc::new(format!("{}", filename.display()));
-    let ast = try!(parse(filename, &body,
+    let ast = parse(filename, &body,
         |doc| { ast::process(options, doc, &err) }
-        ).map_err(|e| err.into_fatal(e)));
+        ).map_err(|e| err.into_fatal(e))?;
     let ast = validator.validate(ast, &err);
-    let res = try!(Decodable::decode(&mut YamlDecoder::new(ast, &err))
-        .map_err(|e| err.into_fatal(e)));
+    let res = Decodable::decode(&mut YamlDecoder::new(ast, &err))
+        .map_err(|e| err.into_fatal(e))?;
     return err.into_result(res);
 }
 
@@ -39,12 +39,12 @@ pub fn parse_string<T: Decodable>(filename: &str, data: &str,
     -> Result<T, ErrorList>
 {
     let err = ErrorCollector::new();
-    let ast = try!(parse(Rc::new(filename.to_string()), data,
+    let ast = parse(Rc::new(filename.to_string()), data,
             |doc| { ast::process(options, doc, &err) }
-        ).map_err(|e| err.into_fatal(e)));
+        ).map_err(|e| err.into_fatal(e))?;
     let ast = validator.validate(ast, &err);
-    let res = try!(Decodable::decode(&mut YamlDecoder::new(ast, &err))
-        .map_err(|e| err.into_fatal(e)));
+    let res = Decodable::decode(&mut YamlDecoder::new(ast, &err))
+        .map_err(|e| err.into_fatal(e))?;
     return err.into_result(res);
 }
 

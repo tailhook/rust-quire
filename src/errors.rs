@@ -89,7 +89,7 @@ impl ErrorList {
 impl fmt::Display for ErrorList {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         for err in &self.errors {
-            try!(writeln!(fmt, "{}", err));
+            writeln!(fmt, "{}", err)?;
         }
         Ok(())
     }
@@ -98,7 +98,7 @@ impl fmt::Display for ErrorList {
 impl fmt::Debug for ErrorList {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         for err in &self.errors {
-            try!(writeln!(fmt, "{}", err));
+            writeln!(fmt, "{}", err)?;
         }
         Ok(())
     }

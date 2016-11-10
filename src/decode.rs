@@ -138,50 +138,50 @@ impl Decoder for YamlDecoder {
 
 
     fn read_u64(&mut self)  -> DecodeResult<u64> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
     fn read_u32(&mut self)  -> DecodeResult<u32> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
     fn read_u16(&mut self)  -> DecodeResult<u16> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
     fn read_u8 (&mut self)  -> DecodeResult<u8> {
         if let Byte(_, x) = self.state {
             return Ok(x);
         }
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
     fn read_usize(&mut self) -> DecodeResult<usize> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
 
     fn read_i64(&mut self) -> DecodeResult<i64> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
     fn read_i32(&mut self) -> DecodeResult<i32> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
     fn read_i16(&mut self) -> DecodeResult<i16> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
     fn read_i8 (&mut self) -> DecodeResult<i8 > {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
     fn read_isize(&mut self) -> DecodeResult<isize> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
 
     fn read_bool(&mut self) -> DecodeResult<bool> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
 
     fn read_f64(&mut self) -> DecodeResult<f64> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
 
     fn read_f32(&mut self) -> DecodeResult<f32> {
-        Ok(try!(self.from_str()))
+        Ok(self.from_str()?)
     }
 
 

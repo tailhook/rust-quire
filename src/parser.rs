@@ -511,7 +511,7 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
 fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
     -> Result<Node<'x>, Error>
 {
-    let res = try!(_parse_flow_node(tokiter, aliases));
+    let res = _parse_flow_node(tokiter, aliases)?;
     match &res {
         &Map(_, Some(anchor), _, _)
         => { aliases.insert(anchor, res.clone()); }
@@ -590,7 +590,7 @@ fn maybe_parse_tag<'x>(tokiter: &mut TokenIter<'x>) -> Option<&'x str> {
 fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
     -> Result<Node<'x>, Error>
 {
-    let res = try!(_parse_node(tokiter, aliases));
+    let res = _parse_node(tokiter, aliases)?;
     match &res {
         &Map(_, Some(anchor), _, _)
         => { aliases.insert(anchor, res.clone()); }
@@ -742,7 +742,7 @@ pub fn parse<T, F>(name: Rc<String>, data: &str, process: F)
     -> Result<T, Error>
     where F: FnOnce(Document) -> T
 {
-    let tokens = try!(tokenize(name, data).map_err(Error::tokenizer_error));
+    let tokens = tokenize(name, data).map_err(Error::tokenizer_error)?;
     let doc = match parse_tokens(&tokens) {
         Ok(doc) => doc,
         Err(e) => return Err(e),

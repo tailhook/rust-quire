@@ -157,9 +157,9 @@ impl<'a> Context<'a> {
             L::AfterIndent => return Ok(()),
             _ => {}
         }
-        try!(self.ensure_line_start());
+        self.ensure_line_start()?;
         for _ in 0..self.cur_indent {
-            try!(self.stream.write(b" "));
+            self.stream.write(b" ")?;
         }
         return Ok(());
     }
@@ -168,10 +168,10 @@ impl<'a> Context<'a> {
         anchor: Option<Tag>, space: bool) -> IoResult<()> {
         match tag {
             Some(x) => {
-                try!(self.stream.write(b"!"));
-                try!(self.stream.write(x.as_bytes()));
+                self.stream.write(b"!")?;
+                self.stream.write(x.as_bytes())?;
                 if space {
-                    try!(self.stream.write(b" "));
+                    self.stream.write(b" ")?;
                 } else {
                     self.line = L::Start;
                     return self.stream.write(b"\n").map(|_| ());
@@ -192,96 +192,96 @@ impl<'a> Context<'a> {
         self.state = match (self.state, op) {
             (S::Fin, _) => unreachable!(),
             (S::New, Opcode::Scalar(tag, anchor, style, value)) => {
-                try!(self.emit_tag_anchor(tag, anchor, true));
-                try!(self.emit_scalar(style, value));
-                try!(self.ensure_line_start());
+                self.emit_tag_anchor(tag, anchor, true)?;
+                self.emit_scalar(style, value)?;
+                self.ensure_line_start()?;
                 S::Fin }
             (S::New, Opcode::Null(tag, anchor, style)) => {
-                try!(self.emit_tag_anchor(tag, anchor, false));
-                try!(self.emit_null(false, style));
-                try!(self.ensure_line_start());
+                self.emit_tag_anchor(tag, anchor, false)?;
+                self.emit_null(false, style)?;
+                self.ensure_line_start()?;
                 S::Fin }
             (S::New, Opcode::MapStart(tag, anchor)) => {
-                try!(self.emit_tag_anchor(tag, anchor, false));
+                self.emit_tag_anchor(tag, anchor, false)?;
                 if tag.is_some() || anchor.is_some() {
-                    try!(self.ensure_line_start());
+                    self.ensure_line_start()?;
                 }
                 self.push_indent(S::Fin, 0);
                 S::MapKey }
             (S::MapKey, Opcode::Scalar(tag, anchor, style, value)) => {
-                try!(self.ensure_indented());
+                self.ensure_indented()?;
                 // TODO(tailhook) check for complex key
-                try!(self.emit_tag_anchor(tag, anchor, true));
-                try!(self.emit_scalar(style, value));
+                self.emit_tag_anchor(tag, anchor, true)?;
+                self.emit_scalar(style, value)?;
                 S::MapSimpleKeyValue }
             (S::MapKey, Opcode::Null(tag, anchor, style)) => {
-                try!(self.ensure_indented());
+                self.ensure_indented()?;
                 // TODO(tailhook) check for complex key
-                try!(self.emit_tag_anchor(tag, anchor, false));
-                try!(self.emit_null(false, style));
-                try!(self.ensure_line_start());
+                self.emit_tag_anchor(tag, anchor, false)?;
+                self.emit_null(false, style)?;
+                self.ensure_line_start()?;
                 S::MapKey }
             (S::MapSimpleKeyValue, Opcode::Scalar(tag, anchor, style, value))
             => {
-                try!(self.stream.write(b": "));
-                try!(self.emit_tag_anchor(tag, anchor, true));
-                try!(self.emit_scalar(style, value));
+                self.stream.write(b": ")?;
+                self.emit_tag_anchor(tag, anchor, true)?;
+                self.emit_scalar(style, value)?;
                 S::MapKey }
             (S::MapSimpleKeyValue, Opcode::Null(tag, anchor, style)) => {
-                try!(self.stream.write(b": "));
-                try!(self.emit_tag_anchor(tag, anchor, false));
-                try!(self.emit_null(false, style));
-                try!(self.ensure_line_start());
+                self.stream.write(b": ")?;
+                self.emit_tag_anchor(tag, anchor, false)?;
+                self.emit_null(false, style)?;
+                self.ensure_line_start()?;
                 S::MapKey }
             (S::MapSimpleKeyValue, Opcode::MapStart(tag, anchor)) => {
-                try!(self.stream.write(b":"));
+                self.stream.write(b":")?;
                 if tag.is_some() || anchor.is_some() {
-                    try!(self.stream.write(b" "));
-                    try!(self.emit_tag_anchor(tag, anchor, false));
+                    self.stream.write(b" ")?;
+                    self.emit_tag_anchor(tag, anchor, false)?;
                 } else {
                     self.line = L::AfterScalar;
                 }
                 self.push_indent(S::MapKey, 2);
                 S::MapKey }
             (S::MapSimpleKeyValue, Opcode::SeqStart(tag, anchor)) => {
-                try!(self.stream.write(b":"));
+                self.stream.write(b":")?;
                 self.line = L::AfterScalar;
                 self.push_indent(S::MapKey, 0);
                 S::SeqItem }
             (S::MapKey, Opcode::MapEnd) => {
                 let nstate = self.pop_indent();
                 match nstate {
-                    S::Fin => try!(self.ensure_line_start()),
+                    S::Fin => self.ensure_line_start()?,
                     _ => {}
                 }
                 nstate }
             (S::New, Opcode::SeqStart(tag, anchor)) => {
-                try!(self.emit_tag_anchor(tag, anchor, false));
+                self.emit_tag_anchor(tag, anchor, false)?;
                 if tag.is_some() || anchor.is_some() {
-                    try!(self.ensure_line_start());
+                    self.ensure_line_start()?;
                 }
                 self.push_indent(S::Fin, 0);
                 S::SeqItem }
             (S::SeqItem, Opcode::Scalar(tag, anchor, style, value)) => {
-                try!(self.ensure_indented());
-                try!(self.stream.write(b"- "));
-                try!(self.emit_tag_anchor(tag, anchor, true));
-                try!(self.emit_scalar(style, value));
+                self.ensure_indented()?;
+                self.stream.write(b"- ")?;
+                self.emit_tag_anchor(tag, anchor, true)?;
+                self.emit_scalar(style, value)?;
                 S::SeqItem }
             (S::SeqItem, Opcode::MapStart(tag, anchor)) => {
-                try!(self.emit_tag_anchor(tag, anchor, false));
+                self.emit_tag_anchor(tag, anchor, false)?;
                 if tag.is_some() || anchor.is_some() {
-                    try!(self.ensure_line_start());
+                    self.ensure_line_start()?;
                 }
-                try!(self.ensure_indented());
-                try!(self.stream.write(b"- "));
+                self.ensure_indented()?;
+                self.stream.write(b"- ")?;
                 self.line = L::AfterIndent;
                 self.push_indent(S::SeqItem, 2);
                 S::MapKey }
             (S::SeqItem, Opcode::SeqEnd) => {
                 let nstate = self.pop_indent();
                 match nstate {
-                    S::Fin => try!(self.ensure_line_start()),
+                    S::Fin => self.ensure_line_start()?,
                     _ => {}
                 }
                 nstate }
@@ -293,34 +293,34 @@ impl<'a> Context<'a> {
     pub fn emit_node(&mut self, node: &Node) -> IoResult<()> {
         match node {
             &N::Map(tag, anchor, ref map, _) => {
-                try!(self.emit(Opcode::MapStart(tag.map(|t| &t[1..]),
-                                        anchor)));
+                self.emit(Opcode::MapStart(tag.map(|t| &t[1..]),
+                                        anchor))?;
                 for (k, v) in map.iter() {
-                    try!(self.emit_node(k));
-                    try!(self.emit_node(v));
+                    self.emit_node(k)?;
+                    self.emit_node(v)?;
                 }
-                try!(self.emit(Opcode::MapEnd));
+                self.emit(Opcode::MapEnd)?;
             }
             &N::List(tag, anchor, ref items, _) => {
-                try!(self.emit(Opcode::SeqStart(tag.map(|t| &t[1..]),
-                                        anchor)));
+                self.emit(Opcode::SeqStart(tag.map(|t| &t[1..]),
+                                        anchor))?;
                 for i in items.iter() {
-                    try!(self.emit_node(i));
+                    self.emit_node(i)?;
                 }
-                try!(self.emit(Opcode::SeqEnd));
+                self.emit(Opcode::SeqEnd)?;
             },
             &N::Scalar(ref tag, _anchor, ref value, _) => {
                 // TODO(tailhook) fix anchor
-                try!(self.emit(Opcode::Scalar(tag.map(|t| &t[1..]),
-                    None, ScalarStyle::Auto, value)));
+                self.emit(Opcode::Scalar(tag.map(|t| &t[1..]),
+                    None, ScalarStyle::Auto, value))?;
             }
             &N::ImplicitNull(ref tag, ref _anchor, ref _token) => {
                 // TODO(tailhook) fix anchor
-                try!(self.emit(Opcode::Null(tag.map(|t| &t[1..]),
-                    None, Null::Nothing)));
+                self.emit(Opcode::Null(tag.map(|t| &t[1..]),
+                    None, Null::Nothing))?;
             }
             &N::Alias(name, _, _) => {
-                try!(self.emit(Opcode::Alias(name)));
+                self.emit(Opcode::Alias(name))?;
             }
         }
         return Ok(());
@@ -329,31 +329,31 @@ impl<'a> Context<'a> {
     pub fn emit_ast(&mut self, node: &Ast) -> IoResult<()> {
         match node {
             &A::Map(_, ref tag, ref map) => {
-                try!(self.emit(Opcode::MapStart(tag_as_string(tag), None)));
+                self.emit(Opcode::MapStart(tag_as_string(tag), None))?;
                 for (k, v) in map.iter() {
-                    try!(self.emit(Opcode::Scalar(None, None,
-                        ScalarStyle::Auto, k)));
-                    try!(self.emit_ast(v));
+                    self.emit(Opcode::Scalar(None, None,
+                        ScalarStyle::Auto, k))?;
+                    self.emit_ast(v)?;
                 }
-                try!(self.emit(Opcode::MapEnd));
+                self.emit(Opcode::MapEnd)?;
             }
             &A::List(_, ref tag, ref items) => {
-                try!(self.emit(Opcode::SeqStart(tag_as_string(tag), None)));
+                self.emit(Opcode::SeqStart(tag_as_string(tag), None))?;
                 for i in items.iter() {
-                    try!(self.emit_ast(i));
+                    self.emit_ast(i)?;
                 }
-                try!(self.emit(Opcode::SeqEnd));
+                self.emit(Opcode::SeqEnd)?;
             },
             &A::Scalar(_, ref tag, _, ref value) => {
                 // TODO(tailhook) fix tag and anchor
-                try!(self.emit(Opcode::Scalar(tag_as_string(tag), None,
-                                      ScalarStyle::Auto, value)));
+                self.emit(Opcode::Scalar(tag_as_string(tag), None,
+                                      ScalarStyle::Auto, value))?;
             }
             &A::Null(_, ref tag, ref kind) => {
-                try!(self.emit(Opcode::Null(tag_as_string(tag), None, match *kind {
+                self.emit(Opcode::Null(tag_as_string(tag), None, match *kind {
                     Explicit => Null::Null,
                     Implicit => Null::Nothing,
-                })));
+                }))?;
             }
         }
         return Ok(());
