@@ -301,7 +301,7 @@ impl<'a> Context<'a> {
                 }
                 self.emit(Opcode::MapEnd)?;
             }
-            &N::List(tag, anchor, ref items, _) => {
+            &N::Seq(tag, anchor, ref items, _) => {
                 self.emit(Opcode::SeqStart(tag.map(|t| &t[1..]),
                                         anchor))?;
                 for i in items.iter() {
@@ -337,7 +337,7 @@ impl<'a> Context<'a> {
                 }
                 self.emit(Opcode::MapEnd)?;
             }
-            &A::List(_, ref tag, ref items) => {
+            &A::Seq(_, ref tag, ref items) => {
                 self.emit(Opcode::SeqStart(tag_as_string(tag), None))?;
                 for i in items.iter() {
                     self.emit_ast(i)?;

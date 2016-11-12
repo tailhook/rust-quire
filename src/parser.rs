@@ -233,7 +233,7 @@ pub struct Document<'a> {
 pub enum Node<'a> {
     Map(Option<&'a str>, Option<&'a str>,
         BTreeMap<Node<'a>, Node<'a>>, &'a[Token<'a>]),
-    List(Option<&'a str>, Option<&'a str>, Vec<Node<'a>>, &'a[Token<'a>]),
+    Seq(Option<&'a str>, Option<&'a str>, Vec<Node<'a>>, &'a[Token<'a>]),
     Scalar(Option<&'a str>, Option<&'a str>, String, &'a Token<'a>),
     // Explicit null is a Scalar at this state of parsing
     ImplicitNull(Option<&'a str>, Option<&'a str>, Pos),
@@ -318,7 +318,7 @@ fn parse_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
             }
         }
     }
-    return Ok(List(tag, anchor, children,
+    return Ok(Seq(tag, anchor, children,
         &tokiter.tokens[begin..tokiter.index]));
 }
 
@@ -439,7 +439,7 @@ fn parse_flow_list<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
                 "Expected comma `,` or colon `:`".to_string())),
         }
     }
-    return Ok(List(tag, anchor, children,
+    return Ok(Seq(tag, anchor, children,
         &tokiter.tokens[begin..tokiter.index]));
 }
 
@@ -516,9 +516,9 @@ fn parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
         &Map(_, Some(anchor), _, _)
         => { aliases.insert(anchor, res.clone()); }
         &Map(_, None, _, _) => {}
-        &List(_, Some(anchor), _, _)
+        &Seq(_, Some(anchor), _, _)
         => { aliases.insert(anchor, res.clone()); }
-        &List(_, None, _, _) => {}
+        &Seq(_, None, _, _) => {}
         &Scalar(_, Some(anchor), _, _)
         => { aliases.insert(anchor, res.clone()); }
         &Scalar(_, None, _, _) => {}
@@ -595,9 +595,9 @@ fn parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
         &Map(_, Some(anchor), _, _)
         => { aliases.insert(anchor, res.clone()); }
         &Map(_, None, _, _) => {}
-        &List(_, Some(anchor), _, _)
+        &Seq(_, Some(anchor), _, _)
         => { aliases.insert(anchor, res.clone()); }
-        &List(_, None, _, _) => {}
+        &Seq(_, None, _, _) => {}
         &Scalar(_, Some(anchor), _, _)
         => { aliases.insert(anchor, res.clone()); }
         &Scalar(_, None, _, _) => {}

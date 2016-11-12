@@ -67,7 +67,7 @@ pub enum Ast {
     /// Mapping node
     Map(Pos, Tag, BTreeMap<String, Ast>),
     /// Sequence node
-    List(Pos, Tag, Vec<Ast>),
+    Seq(Pos, Tag, Vec<Ast>),
     /// Scalar node (except null)
     Scalar(Pos, Tag, ScalarKind, String),
     /// Null node
@@ -78,7 +78,7 @@ impl Display for Ast {
     fn fmt(&self, fmt: &mut Formatter) -> Result<(), FormatError> {
         match *self {
             Map(_, _, _) => write!(fmt, "Map"),
-            List(_, _, _) => write!(fmt, "List"),
+            Seq(_, _, _) => write!(fmt, "Seq"),
             Scalar(_, _, _, _) => write!(fmt, "Scalar"),
             Null(_, _, _) => write!(fmt, "Null"),
         }
@@ -89,7 +89,7 @@ impl Ast {
     pub fn pos(&self) -> Pos {
         match *self {
             Map(ref pos, _, _) => pos.clone(),
-            List(ref pos, _, _) => pos.clone(),
+            Seq(ref pos, _, _) => pos.clone(),
             Scalar(ref pos, _, _, _) => pos.clone(),
             Null(ref pos, _, _) => pos.clone(),
         }
@@ -97,7 +97,7 @@ impl Ast {
     pub fn tag<'x>(&'x self) -> &'x Tag {
         match *self {
             Map(_, ref tag, _) => tag,
-            List(_, ref tag, _) => tag,
+            Seq(_, ref tag, _) => tag,
             Scalar(_, ref tag, _, _) => tag,
             Null(_, ref tag, _) => tag,
         }
@@ -105,7 +105,7 @@ impl Ast {
     pub fn with_tag(self, tag: Tag) -> Ast {
         match self {
             Map(pos, _, children) => Map(pos, tag, children),
-            List(pos,  _, children) => List(pos, tag, children),
+            Seq(pos,  _, children) => Seq(pos, tag, children),
             Scalar(pos, _, style, value) => Scalar(pos, tag, style, value),
             Null(pos, _, kind) => Null(pos, tag, kind),
         }
@@ -126,7 +126,7 @@ struct Context<'a, 'b: 'a> {
 fn pos_for_node<'x>(node: &Node<'x>) -> Pos {
     match *node {
         P::Map(_, _, _, ref tokens) => tokens[0].start.clone(),
-        P::List(_, _, _, ref tokens) => tokens[0].start.clone(),
+        P::Seq(_, _, _, ref tokens) => tokens[0].start.clone(),
         P::Scalar(_, _, _, ref token) => token.start.clone(),
         P::ImplicitNull(_, _, ref pos) => pos.clone(),
         P::Alias(_, ref token, _) => token.start.clone(),
@@ -167,13 +167,13 @@ impl<'a, 'b: 'a> Context<'a, 'b> {
 
                 return Map(pos, tag, mapping);
             }
-            P::List(ref origtag, _, _, ref tokens) => {
+            P::Seq(ref origtag, _, _, ref tokens) => {
                 let pos = tokens[0].start.clone();
                 let tag = self.string_to_tag(&pos, origtag);
                 let mut seq = Vec::new();
                 self.merge_sequence(&mut seq, node);
 
-                return List(pos, tag, seq);
+                return Seq(pos, tag, seq);
             }
             P::Scalar(Some("!*Include"), _anch, ref val, ref tok) => {
                 return self.options.include(&tok.start,
@@ -227,7 +227,7 @@ impl<'a, 'b: 'a> Context<'a, 'b> {
                     _ => {}
                 }
             }
-            P::List(_, _, ref lst, _) => {
+            P::Seq(_, _, ref lst, _) => {
                 // TODO(tailhook) check and assert on tags?
                 for item in lst.iter() {
                     self.merge_mapping(target, item);
@@ -265,7 +265,7 @@ impl<'a, 'b: 'a> Context<'a, 'b> {
                     }
                 }
             }
-            List(_, _, lst) => {
+            Seq(_, _, lst) => {
                 // TODO(tailhook) check and assert on tags?
                 for item in lst.into_iter() {
                     self.merge_mapping_ast(target, item);
@@ -283,10 +283,10 @@ impl<'a, 'b: 'a> Context<'a, 'b> {
         node: &'a Node<'a>)
     {
         match *node {
-            P::List(_, _, ref children, _) => {
+            P::Seq(_, _, ref children, _) => {
                 for item in children.iter() {
                     match *item {
-                        P::List(Some("!*Unpack"), _, ref children, _) => {
+                        P::Seq(Some("!*Unpack"), _, ref children, _) => {
                             for child in children.iter() {
                                 self.merge_sequence(target, child);
                             }
@@ -307,7 +307,7 @@ impl<'a, 'b: 'a> Context<'a, 'b> {
                 // We don't make deep unpacking here, because other map
                 // is already unpacked
                 match ast {
-                    List(_, _, vec) => {
+                    Seq(_, _, vec) => {
                         target.extend(vec)
                     }
                     other => {

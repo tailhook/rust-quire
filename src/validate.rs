@@ -614,15 +614,15 @@ impl<'a> Sequence<'a> {
 
 impl<'a> Validator for Sequence<'a> {
     fn default(&self, pos: Pos) -> Option<Ast> {
-        return Some(A::List(pos, T::NonSpecific, Vec::new()));
+        return Some(A::Seq(pos, T::NonSpecific, Vec::new()));
     }
     fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         let (pos, children) = match (ast, self.from_scalar) {
-            (A::List(pos, _, items), _) => {
+            (A::Seq(pos, _, items), _) => {
                 (pos, items)
             }
             (A::Null(pos, _, NullKind::Implicit), _) => {
-                return A::List(pos, T::NonSpecific, Vec::new());
+                return A::Seq(pos, T::NonSpecific, Vec::new());
             }
             (ast@A::Scalar(_, _, _, _), Some(fun)) => {
                 (ast.pos().clone(), fun(ast))
@@ -638,7 +638,7 @@ impl<'a> Validator for Sequence<'a> {
             let value = self.element.validate(val, err);
             res.push(value);
         }
-        return A::List(pos, T::NonSpecific, res);
+        return A::Seq(pos, T::NonSpecific, res);
     }
 }
 

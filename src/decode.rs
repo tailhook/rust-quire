@@ -399,7 +399,7 @@ impl Decoder for YamlDecoder {
         where F: FnOnce(&mut Self, usize) -> Result<T, Error>
     {
         let items = match self.state {
-            Node(A::List(_, _, ref mut children)) => {
+            Node(A::Seq(_, _, ref mut children)) => {
                 let mut ch = Default::default();
                 swap(children, &mut ch);
                 ch

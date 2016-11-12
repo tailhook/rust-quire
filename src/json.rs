@@ -19,7 +19,7 @@ impl ToJson for Ast {
                 }
                 J::Object(ob)
             },
-            A::List(_, _, ref lst) => {
+            A::Seq(_, _, ref lst) => {
                 J::Array(lst.iter().map(|ref val| val.to_json()).collect())
             }
             A::Null(_, _, _) => J::Null,
