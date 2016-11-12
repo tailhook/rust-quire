@@ -97,7 +97,7 @@ fn process_newline<'x>(iter: &mut Peekable<Chars<'x>>, res: &mut String,
     }
 }
 
-fn plain_value<'a>(tok: &Token<'a>) -> String {
+fn plain_value<'a>(tok: &Token<'a>) -> Result<String, Error> {
     let mut res = String::with_capacity(tok.value.len());
     match tok.kind {
         T::PlainString => {
@@ -158,8 +158,8 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
                                     escaped_space);
                             }
                             Some(x) => {
-                                res.push('\\');
-                                res.push(x);
+                                return Err(Error::parse_error(&tok.start,
+                                    format!("bad character escape: {:?}", x)));
                             }
                         }
                         escaped_space = res.len();
@@ -219,7 +219,7 @@ fn plain_value<'a>(tok: &Token<'a>) -> String {
         }
         _ => unreachable!(),
     }
-    return res;
+    return Ok(res);
 }
 
 pub struct Directive<'a>(&'a Token<'a>);
@@ -337,7 +337,7 @@ fn parse_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
             T::DocumentEnd => break,
             T::Unindent => break,
             T::PlainString | T::SingleString | T::DoubleString
-            => Scalar(None, None, plain_value(ktoken), ktoken),
+            => Scalar(None, None, plain_value(ktoken)?, ktoken),
             _ => return Err(Error::parse_error(&ktoken.start,
                 format!("Expected mapping key or unindent, got {:?}",
                         ktoken.kind))),
@@ -457,7 +457,7 @@ fn parse_flow_map<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>,
         let key = match ktoken.kind {
             T::FlowMapEnd => break,
             T::PlainString | T::SingleString | T::DoubleString
-            => Scalar(None, None, plain_value(ktoken), ktoken),
+            => Scalar(None, None, plain_value(ktoken)?, ktoken),
             _ => return Err(Error::parse_error(&ktoken.start,
                 "Expected next mapping key or or closing bracket `}`"
                 .to_string())),
@@ -539,7 +539,7 @@ fn _parse_flow_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
     match tok.kind {
         T::PlainString | T::SingleString | T::DoubleString => {
             tokiter.next();
-            return Ok(Scalar(tag, anchor, plain_value(tok), tok));
+            return Ok(Scalar(tag, anchor, plain_value(tok)?, tok));
         }
         T::FlowSeqStart => {
             return parse_flow_list(tokiter, aliases, tag, anchor);
@@ -639,11 +639,11 @@ fn _parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
                     parse_map(tokiter, aliases, tag, anchor)
                 } else {
                     tokiter.next();
-                    Ok(Scalar(tag, anchor, plain_value(tok), tok))
+                    Ok(Scalar(tag, anchor, plain_value(tok)?, tok))
                 }
             } else {
                 tokiter.next();
-                Ok(Scalar(tag, anchor, plain_value(tok), tok))
+                Ok(Scalar(tag, anchor, plain_value(tok)?, tok))
             }
         }
         T::Eof | T::Unindent => {

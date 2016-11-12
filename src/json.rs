@@ -413,12 +413,13 @@ mod test {
     }
 
     #[test]
-    fn wrong_escape_incrorrect_tofix() {
+    #[should_panic]
+    fn wrong_escape_incrorrect() {
         assert_yaml_eq_json(r#"a: "a\.b""#, r#"{"a": "a\\.b"}"#);
     }
 
     #[test]
-    fn wrong_escape_raw_incorrect_tofix() {
+    fn wrong_escape_raw_incorrect() {
         assert_yaml_eq_json(r#"a: a\.b"#, r#"{"a": "a\\.b"}"#);
     }
 
