@@ -1,5 +1,31 @@
-#![crate_name="quire"]
-#![crate_type="lib"]
+//! Yaml-based configuration parsing and validation library
+//!
+//! # Example
+//!
+//! ```rust,ignore  # for some reason this crashes compiler
+//! extern crate quire;
+//! extern crate rustc_serialize;
+//! use quire::{parse_config, Options};
+//! use quire::validate::{Structure, Scalar};
+//!
+//! #[derive(RustcDecodable)]
+//! struct Config {
+//!     item1: String,
+//!     item2: Option<String>,
+//! }
+//!
+//! fn validator<'static>() -> Structure<'static> {
+//!     Structure::new()
+//!     .member("item1", Scalar::new())
+//!     .member("item2", Scalar::new().optional())
+//! }
+//!
+//! let cfg: Config;
+//! cfg = parse_config("config.yaml", &validator(), &Options::default())
+//!       .expect("valid config");
+//!
+//! ```
+//!
 #![warn(missing_docs)]
 
 
