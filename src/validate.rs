@@ -11,6 +11,9 @@ use std::fmt::{Display};
 use std::path::{PathBuf, Path, Component};
 use std::collections::{BTreeMap, HashSet};
 
+use num_traits::PrimInt;
+use humannum::parse_integer;
+
 use super::errors::{Error, ErrorCollector};
 pub use super::tokenizer::Pos;
 use super::ast::Ast as A;
@@ -18,15 +21,6 @@ use super::ast::Tag as T;
 use super::ast::{Ast, NullKind};
 use super::ast::ScalarKind::{Quoted, Plain};
 
-
-static NUMERIC_SUFFIXES: &'static [(&'static str, i64)] = &[
-    ("k", 1000),
-    ("M", 1000000),
-    ("G", 1000000000),
-    ("ki", 1024),
-    ("Mi", 1048576),
-    ("Gi", 1024*1024*1024),
-    ];
 
 /// The trait every validator implements
 pub trait Validator {
@@ -124,40 +118,16 @@ impl Validator for Scalar {
 ///
 /// Similar to `Scalar` but validates that value is a number and also allows
 /// limit the range of the value.
-pub struct Numeric {
+pub struct Numeric<T:PrimInt=i64> {
     descr: Option<String>,
     optional: bool,
-    default: Option<i64>,
-    min: Option<i64>,
-    max: Option<i64>,
+    default: Option<T>,
+    min: Option<T>,
+    max: Option<T>,
 }
 
-fn from_numeric(mut src: &str) -> Option<i64>
-{
-    let mut mult = 1;
-    for &(suffix, value) in NUMERIC_SUFFIXES.iter() {
-        if suffix.len() < src.len() &&
-            &src[(src.len() - suffix.len())..] == suffix
-        {
-            mult = value;
-            src = &src[..(src.len() - suffix.len())];
-            break;
-        }
-    }
-    let mut val: Option<i64> = FromStr::from_str(src).ok();
-    if val.is_none() && src.len() > 2 {
-        val = match &src[..2] {
-            "0x" => i64::from_str_radix(&src[2..], 16).ok(),
-            "0o" => i64::from_str_radix(&src[2..], 8).ok(),
-            "0b" => i64::from_str_radix(&src[2..], 2).ok(),
-            _    => None,
-        };
-    }
-    return val.map(|x| x*mult);
-}
-
-impl Numeric {
-    pub fn new() -> Numeric {
+impl<T: PrimInt> Numeric<T> {
+    pub fn new() -> Numeric<T> {
         Numeric {
             descr: None,
             optional: false,
@@ -166,19 +136,19 @@ impl Numeric {
             max: None,
         }
     }
-    pub fn optional(mut self) -> Numeric {
+    pub fn optional(mut self) -> Numeric<T> {
         self.optional = true;
         self
     }
-    pub fn default(mut self, value: i64) -> Numeric {
+    pub fn default(mut self, value: T) -> Numeric<T> {
         self.default = Some(value);
         self
     }
-    pub fn min(mut self, val: i64) -> Numeric {
+    pub fn min(mut self, val: T) -> Numeric<T> {
         self.min = Some(val);
         self
     }
-    pub fn max(mut self, val: i64) -> Numeric {
+    pub fn max(mut self, val: T) -> Numeric<T> {
         self.max = Some(val);
         self
     }
@@ -197,11 +167,11 @@ impl Validator for Numeric {
     fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         let (pos, val): (Pos, i64)  = match ast {
             A::Scalar(pos, tag, kind, string)
-            => match from_numeric(&string) {
-                Some(val) => (pos, val),
-                None => {
+            => match parse_integer(&string) {
+                Ok(val) => (pos, val),
+                Err(e) => {
                     err.add_error(Error::validation_error(&pos,
-                        format!("Value must be numeric")));
+                        format!("number error: {}", e)));
                     return A::Scalar(pos, tag, kind, string);
                 }
             },

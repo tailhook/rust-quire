@@ -32,6 +32,8 @@
 extern crate rustc_serialize;
 extern crate regex;
 extern crate humantime;
+extern crate humannum;
+extern crate num_traits;
 #[macro_use] extern crate quick_error;
 
 pub use sky::{parse_config, parse_string};

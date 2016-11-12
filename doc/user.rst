@@ -118,6 +118,9 @@ with:
 * ``0o`` meaning octal representation
 * ``0b`` for bitmasks
 
+Numbers can also be split into group to be easier to read using underscores:
+``1_024``, ``16_777_216``.
+
 .. _units:
 
 Units
@@ -130,7 +133,7 @@ order of magnitude units for every integer and floating point value. E.g::
 
     int1: 1M
     int2: 2k
-    int3: 2ki
+    int3: 2 ki
 
 Results into the following, after parsing::
 
