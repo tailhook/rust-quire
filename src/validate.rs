@@ -9,7 +9,6 @@
 use std::str::FromStr;
 use std::fmt::{Display};
 use std::path::{PathBuf, Path, Component};
-use std::default::Default;
 use std::collections::{BTreeMap, HashSet};
 
 use super::errors::{Error, ErrorCollector};
@@ -47,7 +46,6 @@ pub trait Validator {
 /// But some of the scalars might have better validators, for example
 /// `Numeric` has minimum and maximum value as well as decodes human-friendly
 /// unit values
-#[derive(Default)]
 pub struct Scalar {
     descr: Option<String>,
     optional: bool,
@@ -58,7 +56,13 @@ pub struct Scalar {
 
 impl Scalar {
     pub fn new() -> Scalar {
-        Default::default()
+        Scalar {
+            descr: None,
+            optional: false,
+            default: None,
+            min_length: None,
+            max_length: None,
+        }
     }
     pub fn optional(mut self) -> Scalar {
         self.optional = true;
@@ -120,7 +124,6 @@ impl Validator for Scalar {
 ///
 /// Similar to `Scalar` but validates that value is a number and also allows
 /// limit the range of the value.
-#[derive(Default)]
 pub struct Numeric {
     descr: Option<String>,
     optional: bool,
@@ -155,7 +158,13 @@ fn from_numeric(mut src: &str) -> Option<i64>
 
 impl Numeric {
     pub fn new() -> Numeric {
-        Default::default()
+        Numeric {
+            descr: None,
+            optional: false,
+            default: None,
+            min: None,
+            max: None,
+        }
     }
     pub fn optional(mut self) -> Numeric {
         self.optional = true;
@@ -225,7 +234,6 @@ impl Validator for Numeric {
 /// Directory validator
 ///
 /// Similar to `Scalar` but also allows to force absolute or relative paths
-#[derive(Default)]
 pub struct Directory {
     descr: Option<String>,
     optional: bool,
@@ -235,7 +243,12 @@ pub struct Directory {
 
 impl Directory {
     pub fn new() -> Directory {
-        Default::default()
+        Directory {
+            descr: None,
+            optional: false,
+            default: None,
+            absolute: None,
+        }
     }
     pub fn optional(mut self) -> Directory {
         self.optional = true;
@@ -317,7 +330,6 @@ impl Validator for Directory {
 /// the structure. This feature is useful to upgrade scalar value to
 /// a structure maintaining backwards compatiblity as well as for configuring
 /// common case more easily.
-#[derive(Default)]
 pub struct Structure<'a> {
     descr: Option<String>,
     members: Vec<(String, Box<Validator + 'a>)>,
@@ -327,7 +339,12 @@ pub struct Structure<'a> {
 
 impl<'a> Structure<'a> {
     pub fn new() -> Structure<'a> {
-        Default::default()
+        Structure {
+            descr: None,
+            members: Vec::new(),
+            optional: false,
+            from_scalar: None,
+        }
     }
     pub fn member<S: Display, V: Validator + 'a>(mut self, name: S, value: V)
         -> Structure<'a>
@@ -431,7 +448,6 @@ impl<'a> Validator for Structure<'a> {
 ///   one enum field is supported. Structure enums `enum T { a { x: u8 }` are
 ///   equivalent to an option with that struct as single value
 ///   `struct A { x: u8 }; enum T { a(A) }`
-#[derive(Default)]
 pub struct Enum<'a> {
     descr: Option<String>,
     options: Vec<(String, Box<Validator + 'a>)>,
@@ -442,7 +458,13 @@ pub struct Enum<'a> {
 
 impl<'a> Enum<'a> {
     pub fn new() -> Enum<'a> {
-        Default::default()
+        Enum {
+            descr: None,
+            options: Vec::new(),
+            optional: false,
+            default_tag: None,
+            allow_plain: false,
+        }
     }
     pub fn optional(mut self) -> Enum<'a> {
         self.optional = true;
@@ -532,7 +554,6 @@ impl<'a> Validator for Enum<'a> {
 ///
 /// This type has type for a key and value and also can be converted
 /// from scalar as shortcut.
-#[derive(Default)]
 pub struct Mapping<'a> {
     descr: Option<String>,
     key_element: Box<Validator + 'a>,
@@ -601,7 +622,6 @@ impl<'a> Validator for Mapping<'a> {
 ///
 /// This validator can also parse a scalar and convert it into a list in
 /// application-specific way.
-#[derive(Default)]
 pub struct Sequence<'a> {
     descr: Option<String>,
     element: Box<Validator + 'a>,
@@ -686,16 +706,10 @@ impl Validator for Nothing {
     }
 }
 
-impl<'a> Default for Box<Validator + 'a> {
-    fn default() -> Box<Validator + 'a> {
-        return Box::new(Nothing) as Box<Validator>;
-    }
-}
 
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
-    use std::default::Default;
     use std::path::PathBuf;
     use rustc_serialize::Decodable;
     use std::collections::BTreeMap;
@@ -720,14 +734,9 @@ mod test {
     }
 
     fn parse_str(body: &str) -> TestStruct {
-        let str_val = Structure { members: vec!(
-            ("intkey".to_string(), Box::new(Numeric {
-                default: Some(123),
-                .. Default::default() }) as Box<Validator>),
-            ("strkey".to_string(), Box::new(Scalar {
-                default: Some("default_value".to_string()),
-                .. Default::default() }) as Box<Validator>),
-        ), .. Default::default()};
+        let str_val = Structure::new()
+            .member("intkey", Numeric::new().default(123))
+            .member("strkey", Scalar::new().default("default_value"));
         parse_string("<inline text>", body, &str_val, &Options::default())
         .unwrap()
     }
@@ -778,11 +787,8 @@ mod test {
     }
 
     fn parse_dash_str(body: &str) -> TestDash {
-        let str_val = Structure { members: vec!(
-            ("some_key".to_string(), Box::new(Numeric {
-                default: Some(123),
-                .. Default::default() }) as Box<Validator>),
-        ), .. Default::default()};
+        let str_val = Structure::new()
+            .member("some_key", Numeric::new().default(123));
         parse_string("<inline text>", body, &str_val, &Options::default())
         .unwrap()
     }
@@ -802,11 +808,8 @@ mod test {
     }
 
     fn parse_with_warnings(body: &str) -> (TestDash, Vec<String>) {
-        let str_val = Structure { members: vec!(
-            ("some_key".to_string(), Box::new(Numeric {
-                default: Some(123),
-                .. Default::default() }) as Box<Validator>),
-        ), .. Default::default()};
+        let str_val = Structure::new()
+            .member("some_key", Numeric::new().default(123));
         let err = ErrorCollector::new();
         let ast = parse(
                 Rc::new("<inline text>".to_string()),
@@ -848,12 +851,8 @@ mod test {
     }
 
     fn parse_opt_str(body: &str) -> TestOpt {
-        let str_val = Structure { members: vec!(
-            ("some_key".to_string(), Box::new(Numeric {
-                default: None,
-                optional: true,
-                .. Default::default() }) as Box<Validator>),
-        ), .. Default::default()};
+        let str_val = Structure::new()
+            .member("some_key", Numeric::new().optional());
         parse_string("<inline text>", body, &str_val, &Options::default())
         .unwrap()
     }
@@ -892,13 +891,10 @@ mod test {
             }
         }
 
-        let validator = Mapping {
-            key_element: Box::new(Scalar { .. Default::default()}),
-            value_element: Box::new(Numeric {
-                default: Some(0),
-                .. Default::default()}),
-            .. Default::default()
-        }.parser(parse_default);
+        let validator = Mapping::new(
+            Scalar::new(),
+            Numeric::new().default(0)
+        ).parser(parse_default);
         parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
@@ -954,15 +950,10 @@ mod test {
     fn parse_complex_map<T:Decodable>(body: &str)
         -> T
     {
-        let validator = Mapping {
-            key_element: Box::new(Scalar { .. Default::default()}),
-            value_element: Box::new(Structure { members: vec!(
-                ("some_key".to_string(), Box::new(Numeric {
-                    default: Some(123),
-                    .. Default::default() }) as Box<Validator>),
-            ),.. Default::default()}) as Box<Validator>,
-            .. Default::default()
-        };
+        let validator = Mapping::new(
+            Scalar::new(),
+            Structure::new()
+                .member("some_key", Numeric::new().default(123)));
         parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
@@ -1014,12 +1005,7 @@ mod test {
             }
         }
 
-        let validator = Sequence {
-            element: Box::new(Numeric {
-                default: None,
-                .. Default::default()}),
-            .. Default::default()
-        }.parser(split);
+        let validator = Sequence::new(Numeric::new()).parser(split);
         parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
@@ -1076,35 +1062,18 @@ mod test {
     }
 
     fn enum_validator<'x>() -> Enum<'x> {
-        Enum {
-            allow_plain: true,
-            options: vec!(
-                ("Alpha".to_string(), Box::new(Nothing) as Box<Validator>),
-                ("Beta".to_string(), Box::new(Nothing) as Box<Validator>),
-                ("Gamma".to_string(), Box::new(Numeric {
-                    optional: true,
-                    default: Some(7),
-                    .. Default::default() }) as Box<Validator>),
-                ("Delta".to_string(), Box::new(Structure { members: vec!(
-                    ("intkey".to_string(), Box::new(Numeric {
-                        default: Some(123),
-                        .. Default::default() }) as Box<Validator>),
-                    ("strkey".to_string(), Box::new(Scalar {
-                        default: Some("default_value".to_string()),
-                        .. Default::default()}) as Box<Validator>),
-                    ), .. Default::default()}) as Box<Validator>),
-                ("Epsilon".to_string(), Box::new(Structure {
-                    optional: true,
-                    members: vec!(
-                    ("intkey".to_string(), Box::new(Numeric {
-                        default: Some(457),
-                        .. Default::default() }) as Box<Validator>),
-                    ("strkey".to_string(), Box::new(Scalar {
-                        default: Some("epsilon".to_string()),
-                        .. Default::default() }) as Box<Validator>),
-                    ), .. Default::default()}) as Box<Validator>),
-            ), .. Default::default()
-        }
+        Enum::new()
+        .allow_plain()
+        .option("Alpha", Nothing)
+        .option("Beta", Nothing)
+        .option("Gamma", Numeric::new().default(7).optional())
+        .option("Delta", Structure::new()
+            .member("intkey", Numeric::new().default(123))
+            .member("strkey", Scalar::new().default("default_value")))
+        .option("Epsilon", Structure::new()
+            .optional()
+            .member("intkey", Numeric::new().default(457))
+            .member("strkey", Scalar::new().default("epsilon")))
     }
 
     fn parse_enum(body: &str) -> TestEnum {
@@ -1190,12 +1159,11 @@ mod test {
     }
 
     fn parse_path(body: &str, abs: Option<bool>) -> TestPath {
-        let str_val = Structure { members: vec!(
-            ("path".to_string(), Box::new(Directory {
-                default: Some(PathBuf::from("/test")),
-                absolute: abs,
-                .. Default::default() }) as Box<Validator>),
-        ), .. Default::default()};
+        let mut dir = Directory::new().default("/test");
+        if let Some(abs) = abs {
+            dir = dir.is_absolute(abs);
+        }
+        let str_val = Structure::new().member("path", dir);
         parse_string("<inline text>", body, &str_val, &Options::default())
         .unwrap()
     }
@@ -1276,9 +1244,7 @@ mod test {
     }
 
     fn parse_enum_list(body: &str) -> Vec<TestEnum> {
-        let validator = Sequence {
-            element: Box::new(enum_validator()),
-            .. Default::default() };
+        let validator = Sequence::new(enum_validator());
         parse_string("<inline text>", body, &validator, &Options::default())
         .unwrap()
     }
