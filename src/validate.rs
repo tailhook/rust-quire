@@ -228,7 +228,7 @@ impl Directory {
         self.default = Some(value.as_ref().to_path_buf());
         self
     }
-    pub fn is_absolute(mut self, value: bool) -> Directory {
+    pub fn absolute(mut self, value: bool) -> Directory {
         self.absolute = Some(value);
         self
     }
@@ -1147,7 +1147,7 @@ mod test {
     fn parse_path(body: &str, abs: Option<bool>) -> TestPath {
         let mut dir = Directory::new().default("/test");
         if let Some(abs) = abs {
-            dir = dir.is_absolute(abs);
+            dir = dir.absolute(abs);
         }
         let str_val = Structure::new().member("path", dir);
         parse_string("<inline text>", body, &str_val, &Options::default())
