@@ -13,4 +13,5 @@ authors = ["paul@colomiets.name"]
 rustc-serialize = "0.3"
 argparse = "0.2"
 quick-error = "1.0.0"
-
+regex = "0.1.80"
+humantime = "1.0.0"
