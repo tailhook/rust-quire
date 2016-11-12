@@ -25,7 +25,7 @@ mod duration;
 pub struct De<T: ?Sized>(T);
 
 impl<T> De<T> {
-    fn new(val: T) -> De<T> {
+    pub fn new(val: T) -> De<T> {
         De(val)
     }
 }
@@ -47,6 +47,6 @@ impl<T: ?Sized, U> AsRef<U> for De<T>
 
 impl<T> From<T> for De<T> {
     fn from(value: T) -> De<T> {
-        De(value.into())
+        De(value)
     }
 }
