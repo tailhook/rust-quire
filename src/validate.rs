@@ -423,6 +423,7 @@ pub struct Enum<'a> {
     options: Vec<(String, Box<Validator + 'a>)>,
     optional: bool,
     default_tag: Option<String>,
+    default_value: Option<String>,
     allow_plain: bool,
 }
 
@@ -433,6 +434,7 @@ impl<'a> Enum<'a> {
             options: Vec::new(),
             optional: false,
             default_tag: None,
+            default_value: None,
             allow_plain: false,
         }
     }
@@ -440,11 +442,20 @@ impl<'a> Enum<'a> {
         self.optional = true;
         self
     }
-    /// For variant that doesn't
+    /// For variants that have no content (i.e. have validator of Nothing)
     pub fn allow_plain(mut self) -> Enum<'a> {
         assert!(self.default_tag.is_none(),
             "Default tag and allow_plain are not compatible");
         self.allow_plain = true;
+        self
+    }
+    /// Set plain default value (i.e. option that have validator of Nothing)
+    ///
+    /// There is no way to set default to something complex at the moment
+    pub fn plain_default<S: ToString>(mut self, value: S) -> Enum<'a> {
+        assert!(self.allow_plain,
+            "Plain default requires allow_plain to be enabled");
+        self.default_value = Some(value.to_string());
         self
     }
     pub fn option<S: ToString, V: Validator + 'a>(mut self, name: S, value: V)
@@ -467,6 +478,9 @@ impl<'a> Validator for Enum<'a> {
             return Some(A::Null(pos.clone(),
                 T::LocalTag(self.default_tag.as_ref().unwrap().clone()),
                 NullKind::Implicit));
+        } else if self.default_value.is_some() {
+            return self.default_value.as_ref().map(|val| {
+                A::Scalar(pos.clone(), T::NonSpecific, Quoted, val.clone()) })
         } else if self.optional {
             return Some(A::Null(pos.clone(), T::NonSpecific,
                                 NullKind::Implicit));
@@ -495,6 +509,8 @@ impl<'a> Validator for Enum<'a> {
                 }
                 if let Some(ref tag) = self.default_tag {
                     Some(tag.clone())
+                } else if let Some(ref value) = self.default_value {
+                    Some(value.clone())
                 } else {
                     err.add_error(Error::validation_error(&ast.pos(),
                         format!("One of the tags {:?} expected",
@@ -1288,5 +1304,45 @@ mod test {
     fn test_struct_with_parser_custom() {
         assert_eq!(parse_struct_with_parser("test"),
                    Parsed { value: "test".to_string() });
+    }
+
+    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    enum TestEnumDef {
+        Alpha,
+        Beta,
+    }
+
+    fn enum_def_validator<'x>() -> Enum<'x> {
+        Enum::new()
+        .allow_plain()
+        .plain_default("Beta")
+        .option("Alpha", Nothing)
+        .option("Beta", Nothing)
+    }
+
+    fn parse_enum_def(body: &str) -> TestEnumDef {
+        let validator = enum_def_validator();
+        parse_string("<inline text>", body, &validator, &Options::default())
+        .unwrap()
+    }
+
+    #[test]
+    fn test_enum_def_default() {
+        assert_eq!(parse_enum_def(""), TestEnumDef::Beta);
+    }
+
+    #[test]
+    fn test_enum_def_norm() {
+        assert_eq!(parse_enum_def("Alpha"), TestEnumDef::Alpha);
+    }
+
+    #[test]
+    fn test_enum_def_same_as_def() {
+        assert_eq!(parse_enum_def("Beta"), TestEnumDef::Beta);
+    }
+
+    #[test]
+    fn test_enum_def_tag() {
+        assert_eq!(parse_enum_def("!Alpha"), TestEnumDef::Alpha);
     }
 }
