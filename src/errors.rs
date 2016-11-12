@@ -11,6 +11,10 @@ use super::tokenizer::{self, Pos};
 pub struct ErrorPos(String, usize, usize);
 
 quick_error! {
+    /// Single error when of parsing configuration file
+    ///
+    /// Usually you use `ErrorList` which embeds multiple errors encountered
+    /// during configuration file parsing
     #[derive(Debug)]
     pub enum Error {
         OpenError(filename: PathBuf, err: io::Error) {
@@ -72,6 +76,7 @@ impl Error {
     }
 }
 
+/// List of errors that were encountered during configuration file parsing
 #[must_use]
 pub struct ErrorList {
     errors: Vec<Error>,
@@ -104,23 +109,37 @@ impl fmt::Debug for ErrorList {
     }
 }
 
+
+/// An internal structure to track list of errors
+///
+/// It's exposed only to handler of include file. Use `ErrorCollector`
+/// to submit your errors from include file handler.
 #[derive(Clone)]
 pub struct ErrorCollector(Rc<RefCell<Option<ErrorList>>>);
 
 impl ErrorCollector {
+
+    /// New error collector
     pub fn new() -> ErrorCollector {
         ErrorCollector(Rc::new(RefCell::new(Some(ErrorList {
             errors: Vec::new()
         }))))
     }
+
+    /// Add another error to error collector
     pub fn add_error(&self, err: Error) {
         self.0.borrow_mut().as_mut().unwrap().add_error(err)
     }
+
+    /// Adds fatal (final) error into collection and return error list
     pub fn into_fatal(&self, err: Error) -> ErrorList {
         let mut lst = self.0.borrow_mut().take().unwrap();
         lst.add_error(err);
         return lst;
     }
+
+    /// Converts collector into `Ok(val)` if no errors reported, into `Err`
+    /// otherwise
     pub fn into_result<T>(&self, val: T) -> Result<T, ErrorList> {
         let lst = self.0.borrow_mut().take().unwrap();
         if lst.errors.len() > 0 {
@@ -129,6 +148,8 @@ impl ErrorCollector {
             Ok(val)
         }
     }
+
+    /// Unwraps ErrorList from the collector
     pub fn unwrap(&self) -> ErrorList {
         self.0.borrow_mut().take().unwrap()
     }

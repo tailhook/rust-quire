@@ -13,6 +13,7 @@ use super::validate::Validator;
 use {Options};
 
 
+/// Parse configuration from a file
 pub fn parse_config<T: Decodable, P: AsRef<Path>>(
     filename: P, validator: &Validator, options: &Options)
     -> Result<T, ErrorList>
@@ -34,6 +35,7 @@ pub fn parse_config<T: Decodable, P: AsRef<Path>>(
     return err.into_result(res);
 }
 
+/// Parse configuration from a string
 pub fn parse_string<T: Decodable>(filename: &str, data: &str,
     validator: &Validator, options: &Options)
     -> Result<T, ErrorList>

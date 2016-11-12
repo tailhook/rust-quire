@@ -1,3 +1,5 @@
+//! Abstract syntax tree
+
 use std::fmt::Display;
 use std::fmt::Error as FormatError;
 use std::fmt::{Formatter};
@@ -15,22 +17,38 @@ use self::Tag::*;
 use options::{Options, Include, DoInclude};
 
 
+/// Kind of scalar value
+///
+/// This is usually needed to distinguish numeric value `123` from
+/// string value `"123"` (usually quire doesn't care on decode stage,
+/// but it might be useful for some cases)
 #[derive(Debug)]
 pub enum ScalarKind {
+    /// Scalar value
     Plain,
     Quoted,
 }
 
+/// Kind of null value
 #[derive(Debug)]
 pub enum NullKind {
+    /// Implicit null value, like in `a:`, there is implicit null value of a
     Implicit,
+    /// Explicit null, specified as `null`, or `~` in yaml
     Explicit,
 }
 
+/// Yaml tag
 #[derive(Debug)]
 pub enum Tag {
+    /// Value without any tag, it's derived from the value kind
     NonSpecific,
+    /// Local tag `!tag` (single exclamation mark)
     LocalTag(String),
+    /// Global tag, i.e. either a prefix defined in directives or a full
+    /// url tag
+    ///
+    /// Largely unsupported in the current code
     GlobalTag(String),
 }
 
@@ -43,11 +61,16 @@ impl Tag {
     }
 }
 
+/// Yaml node
 #[derive(Debug)]
 pub enum Ast {
+    /// Mapping node
     Map(Pos, Tag, BTreeMap<String, Ast>),
+    /// Sequence node
     List(Pos, Tag, Vec<Ast>),
+    /// Scalar node (except null)
     Scalar(Pos, Tag, ScalarKind, String),
+    /// Null node
     Null(Pos, Tag, NullKind),
 }
 
@@ -337,6 +360,14 @@ impl<'a, 'b: 'a> Context<'a, 'b> {
 }
 
 
+///  Preprocess AST
+///
+///  This includes:
+///
+///  * anchor substitution
+///  * resolving merge keys `<<` and `!*Unpack`
+///  * resolving includes `!*Include` and similar
+///
 pub fn process(opt: &Options, doc: Document, err: &ErrorCollector) -> Ast {
     let mut ctx = Context {
         options: opt,

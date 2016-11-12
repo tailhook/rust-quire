@@ -1,3 +1,11 @@
+//! Validators for your config
+//!
+//! All of the validators are configures using builder/fluent pattern.
+//!
+//! Also note that while validator can do various different transforms to the
+//! AST, but it works on the AST level, so it must put something that decoder
+//! is able to decode in the result.
+
 use std::str::FromStr;
 use std::fmt::{Display};
 use std::path::{PathBuf, Path, Component};

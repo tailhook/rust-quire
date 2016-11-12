@@ -65,7 +65,7 @@ enum Opcode<'a> {
     Alias(&'a str),
 }
 
-pub struct Context<'a> {
+struct Context<'a> {
     cur_indent: usize,
     stream: &'a mut (Write + 'a),
     stack: Vec<(State, usize)>,
@@ -375,6 +375,7 @@ pub fn emit_parse_tree(tree: &Node, stream: &mut Write)
     return ctx.emit_node(tree);
 }
 
+/// Emit abstract syntax tree we just parsed
 pub fn emit_ast(tree: &Ast, stream: &mut Write)
     -> IoResult<()>
 {
@@ -382,6 +383,7 @@ pub fn emit_ast(tree: &Ast, stream: &mut Write)
     return ctx.emit_ast(tree);
 }
 
+/// Emit encodable object in yaml form
 pub fn emit_object<'x, T: Encodable>(
     val: &T, wr: &'x mut Write) -> Result<(), IoError>
 {

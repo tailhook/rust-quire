@@ -738,6 +738,9 @@ pub fn parse_tokens<'x>(tokens: &'x Vec<Token<'x>>)
         });
 }
 
+/// Raw parser of the yaml to ast
+///
+/// Outside of the library itself it's useful for include handler
 pub fn parse<T, F>(name: Rc<String>, data: &str, process: F)
     -> Result<T, Error>
     where F: FnOnce(Document) -> T

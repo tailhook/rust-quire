@@ -68,6 +68,7 @@ quick_error! {
     }
 }
 
+/// Source code position
 #[derive(Clone, Debug)]
 pub struct Pos {
     pub filename: Rc<String>,
