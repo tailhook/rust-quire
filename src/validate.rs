@@ -29,11 +29,24 @@ static NUMERIC_SUFFIXES: &'static [(&'static str, i64)] = &[
     ("Gi", 1024*1024*1024),
     ];
 
+/// The trait every validator implements
 pub trait Validator {
     fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast;
     fn default(&self, pos: Pos) -> Option<Ast>;
 }
 
+/// Scalar YAML value
+///
+/// This may be different kind of value:
+///
+/// * string
+/// * bool
+/// * path
+/// * number
+///
+/// But some of the scalars might have better validators, for example
+/// `Numeric` has minimum and maximum value as well as decodes human-friendly
+/// unit values
 #[derive(Default)]
 pub struct Scalar {
     descr: Option<String>,
@@ -103,6 +116,10 @@ impl Validator for Scalar {
     }
 }
 
+/// Numeric validator
+///
+/// Similar to `Scalar` but validates that value is a number and also allows
+/// limit the range of the value.
 #[derive(Default)]
 pub struct Numeric {
     descr: Option<String>,
@@ -204,6 +221,10 @@ impl Validator for Numeric {
     }
 }
 
+
+/// Directory validator
+///
+/// Similar to `Scalar` but also allows to force absolute or relative paths
 #[derive(Default)]
 pub struct Directory {
     descr: Option<String>,
@@ -287,6 +308,15 @@ impl Validator for Directory {
     }
 }
 
+/// Structure validator
+///
+/// In yaml terms this validates that value is a map (or a null value, if all
+/// defaults are okay).
+///
+/// Additionally this validator allows to parse some scalar and convert it to
+/// the structure. This feature is useful to upgrade scalar value to
+/// a structure maintaining backwards compatiblity as well as for configuring
+/// common case more easily.
 #[derive(Default)]
 pub struct Structure<'a> {
     descr: Option<String>,
@@ -385,6 +415,22 @@ impl<'a> Validator for Structure<'a> {
     }
 }
 
+/// Enum validator
+///
+/// This validates that the value is enum in the rust meaning of enum.
+///
+/// Enumeration can contain:
+///
+/// * A selection from constants: `enum T {a, b, c}`,
+///   if you enable `allow_plain()`, this allows to select both as scalar
+///   value `a` and as a tag with null value `!a`
+///
+/// * A set of different values with their own data: `enum T { a(x), b(y) }`.
+///   In this case value must be specified with tag `!a "hello"` and may
+///   contain different types inside `!b ["x", "y"]` or `!c {x: y}`. Only
+///   one enum field is supported. Structure enums `enum T { a { x: u8 }` are
+///   equivalent to an option with that struct as single value
+///   `struct A { x: u8 }; enum T { a(A) }`
 #[derive(Default)]
 pub struct Enum<'a> {
     descr: Option<String>,
@@ -482,6 +528,10 @@ impl<'a> Validator for Enum<'a> {
     }
 }
 
+/// Validates yaml mapping
+///
+/// This type has type for a key and value and also can be converted
+/// from scalar as shortcut.
 #[derive(Default)]
 pub struct Mapping<'a> {
     descr: Option<String>,
@@ -545,6 +595,12 @@ impl<'a> Validator for Mapping<'a> {
     }
 }
 
+/// Validates yaml sequence
+///
+/// Every element must be of single type, but it maybe an enum too.
+///
+/// This validator can also parse a scalar and convert it into a list in
+/// application-specific way.
 #[derive(Default)]
 pub struct Sequence<'a> {
     descr: Option<String>,
@@ -596,6 +652,10 @@ impl<'a> Validator for Sequence<'a> {
     }
 }
 
+/// Skips the validation of this value
+///
+/// It's useful to accept any value (of any type) at some place, or to
+/// rely on `Decodable::decode` for doing validation.
 pub struct Anything;
 
 impl Validator for Anything {
@@ -607,6 +667,9 @@ impl Validator for Anything {
     }
 }
 
+/// Only expect null at this place
+///
+/// This is mostly useful for enums, i.e. `!SomeTag null`
 pub struct Nothing;
 
 impl Validator for Nothing {
