@@ -1,12 +1,10 @@
-use std::cell::RefCell;
-
 use ast::Ast;
 use errors::{Error, ErrorCollector};
 use tokenizer::Pos;
 
 /// Function that handles file include
 pub type IncludeHandler<'a> =
-    FnMut(&Pos, &Include, &ErrorCollector, &Options) -> Ast + 'a;
+    Fn(&Pos, &Include, &ErrorCollector, &Options) -> Ast + 'a;
 
 /// The kind of include tag that encountered in config
 pub enum Include<'a> {
@@ -24,7 +22,7 @@ pub enum Include<'a> {
 
 /// Options for parsing configuration file
 pub struct Options<'a> {
-    include_handler: Box<RefCell<IncludeHandler<'a>>>,
+    include_handler: Box<IncludeHandler<'a>>,
 }
 
 pub trait DoInclude {
@@ -33,7 +31,7 @@ pub trait DoInclude {
 
 impl<'a> DoInclude for Options<'a> {
     fn include(&self, pos: &Pos, incl: &Include, err: &ErrorCollector) -> Ast {
-        (&mut *(*self.include_handler).borrow_mut())(pos, incl, err, self)
+        (self.include_handler)(pos, incl, err, self)
     }
 }
 
@@ -51,16 +49,16 @@ impl<'a> Options<'a> {
     /// Default options
     pub fn default() -> Options<'a> {
         Options {
-            include_handler: Box::new(RefCell::new(unsupported_include)),
+            include_handler: Box::new(unsupported_include),
         }
     }
     /// Enables including files using specified handler function for reading
     /// included file
     pub fn allow_include<F>(&mut self, f: F)
         -> &mut Options<'a>
-        where F: FnMut(&Pos, &Include, &ErrorCollector, &Options) -> Ast + 'a
+        where F: Fn(&Pos, &Include, &ErrorCollector, &Options) -> Ast + 'a
     {
-        self.include_handler = Box::new(RefCell::new(f));
+        self.include_handler = Box::new(f);
         self
     }
 }
