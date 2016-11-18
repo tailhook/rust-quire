@@ -2,7 +2,6 @@
 //! custom implementation for deserialization for things that either
 //! have no Decodable implemented or maybe have wrong
 //!
-use std::borrow::Borrow;
 use std::ops::Deref;
 
 mod regex;
