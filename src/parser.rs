@@ -196,7 +196,7 @@ fn plain_value<'a>(tok: &Token<'a>) -> Result<String, Error> {
         T::Literal => {
             let mut lines = tok.value.split('\n');
             let fline = lines.next().unwrap();
-            if fline == "|" {
+            if fline.trim() == "|" {
                 let mut indent = 0;
                 for line in lines {
                     if indent == 0 {

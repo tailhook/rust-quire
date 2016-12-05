@@ -359,6 +359,13 @@ mod test {
     }
 
     #[test]
+    fn test_literal_with_whitespace() {
+        assert_yaml_eq_json(
+            "a: |    \n hello\n world\n",
+            r#"{"a": "hello\nworld\n"}"#);
+    }
+
+    #[test]
     fn test_map_and_scalar() {
         assert_yaml_eq_json(
             "a:\n b:\n  hello\n  world\n c: end",
