@@ -611,6 +611,7 @@ pub struct Sequence<'a> {
     descr: Option<String>,
     element: Box<Validator + 'a>,
     from_scalar: Option<fn (scalar: Ast) -> Vec<Ast>>,
+    min_length: usize,
 }
 
 impl<'a> Sequence<'a> {
@@ -619,7 +620,12 @@ impl<'a> Sequence<'a> {
             descr: None,
             element: Box::new(el),
             from_scalar: None,
+            min_length: 0,
         }
+    }
+    pub fn min_length(mut self, len: usize) -> Sequence<'a> {
+        self.min_length = len;
+        self
     }
     pub fn parser(mut self, f: fn (scalar: Ast) -> Vec<Ast>) -> Sequence<'a> {
         self.from_scalar = Some(f);
@@ -629,7 +635,10 @@ impl<'a> Sequence<'a> {
 
 impl<'a> Validator for Sequence<'a> {
     fn default(&self, pos: Pos) -> Option<Ast> {
-        return Some(A::Seq(pos, T::NonSpecific, Vec::new()));
+        match self.min_length {
+            0 => Some(A::Seq(pos, T::NonSpecific, Vec::new())),
+            _ => None,
+        }
     }
     fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast {
         let (pos, children) = match (ast, self.from_scalar) {
@@ -637,6 +646,11 @@ impl<'a> Validator for Sequence<'a> {
                 (pos, items)
             }
             (A::Null(pos, _, NullKind::Implicit), _) => {
+                if self.min_length > 0 {
+                    err.add_error(Error::validation_error(&pos,
+                        format!("Expected sequence with at least {} element(s)",
+                                self.min_length)));
+                }
                 return A::Seq(pos, T::NonSpecific, Vec::new());
             }
             (ast@A::Scalar(_, _, _, _), Some(fun)) => {
@@ -653,6 +667,11 @@ impl<'a> Validator for Sequence<'a> {
             let value = self.element.validate(val, err);
             res.push(value);
         }
+        if self.min_length > 0 && res.len() < self.min_length {
+            err.add_error(Error::validation_error(&pos,
+                format!("Expected sequence with at least {} element(s)",
+                        self.min_length)));
+        };
         return A::Seq(pos, T::NonSpecific, res);
     }
 }
@@ -706,7 +725,7 @@ mod test {
     use super::super::ast::Tag::{NonSpecific};
     use super::super::ast::ScalarKind::{Plain};
     use super::super::parser::parse;
-    use super::super::sky::parse_string;
+    use super::super::sky::{parse_string, ErrorList};
     use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
     use super::{Enum, Nothing, Directory};
     use super::super::errors::ErrorCollector;
@@ -995,6 +1014,28 @@ mod test {
         .unwrap()
     }
 
+    fn parse_seq_min_length(body: &str, len: usize)
+        -> Result<Vec<usize>, ErrorList>
+    {
+        fn split(ast: A) -> Vec<A> {
+            match ast {
+                A::Scalar(pos, _, style, value) => {
+                    value
+                        .split(" ")
+                        .map(|v| {
+                            A::Scalar(pos.clone(), NonSpecific, Plain, v.to_string())
+                        })
+                        .collect::<Vec<_>>()
+                },
+                _ => unreachable!(),
+            }
+        }
+
+        let validator = Sequence::new(Numeric::new())
+            .min_length(len).parser(split);
+        parse_string("<inline text>", body, &validator, &Options::default())
+    }
+
     #[test]
     fn test_seq_1() {
         let m = vec!(1);
@@ -1028,6 +1069,32 @@ mod test {
         let m = vec!(1, 2, 3);
         let res: Vec<usize> = parse_seq("1 2 3");
         assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_seq_min_length() {
+        let m = vec!(1);
+        let res: Vec<usize> = parse_seq_min_length("- 1", 1).unwrap();
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_seq_min_length_zero() {
+        let m = Vec::new();
+        let res: Vec<usize> = parse_seq_min_length("[]", 0).unwrap();
+        assert_eq!(res, m);
+
+        let res: Vec<usize> = parse_seq_min_length("", 0).unwrap();
+        assert_eq!(res, m);
+    }
+
+    #[test]
+    fn test_seq_min_length_err() {
+        let res = parse_seq_min_length("[]", 1);
+        assert!(res.is_err());
+
+        let res = parse_seq_min_length("- 1", 2);
+        assert!(res.is_err());
     }
 
     #[test]
