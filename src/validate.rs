@@ -683,8 +683,8 @@ impl<'a> Validator for Sequence<'a> {
 pub struct Anything;
 
 impl Validator for Anything {
-    fn default(&self, _: Pos) -> Option<Ast> {
-        return None;
+    fn default(&self, pos: Pos) -> Option<Ast> {
+        return Some(A::Null(pos.clone(), T::NonSpecific, NullKind::Implicit));
     }
     fn validate(&self, ast: Ast, _err: &ErrorCollector) -> Ast {
         return ast;
@@ -727,7 +727,7 @@ mod test {
     use super::super::parser::parse;
     use super::super::sky::{parse_string, ErrorList};
     use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
-    use super::{Enum, Nothing, Directory};
+    use super::{Enum, Nothing, Directory, Anything};
     use super::super::errors::ErrorCollector;
     use self::TestEnum::*;
 
@@ -781,6 +781,31 @@ mod test {
     fn test_unit() {
         assert_eq!(parse_str("intkey: 100M"), TestStruct {
             intkey: 100000000,
+            strkey: "default_value".to_string(),
+        });
+    }
+
+    fn parse_extra(body: &str) -> TestStruct {
+        let str_val = Structure::new()
+            .member("intkey", Numeric::new().default(123))
+            .member("extra", Anything)
+            .member("strkey", Scalar::new().default("default_value"));
+        parse_string("<inline text>", body, &str_val, &Options::default())
+        .unwrap()
+    }
+
+    #[test]
+    fn test_extra_exists() {
+        assert_eq!(parse_extra("extra: 1"), TestStruct {
+            intkey: 123,
+            strkey: "default_value".to_string(),
+        });
+    }
+
+    #[test]
+    fn test_no_extra() {
+        assert_eq!(parse_extra("intkey: 234"), TestStruct {
+            intkey: 234,
             strkey: "default_value".to_string(),
         });
     }
