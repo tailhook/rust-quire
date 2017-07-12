@@ -26,7 +26,9 @@
 //!
 //! ```
 //!
-#![warn(missing_docs)]
+//#![warn(missing_docs)]
+#![allow(dead_code)]
+#![allow(unused_variables)]
 
 
 extern crate serde;
@@ -36,6 +38,7 @@ extern crate humantime;
 extern crate humannum;
 extern crate num_traits;
 #[macro_use] extern crate quick_error;
+#[cfg(test)] #[macro_use] extern crate serde_derive;
 
 pub use sky::{parse_config, parse_string};
 pub use options::{Options, Include};

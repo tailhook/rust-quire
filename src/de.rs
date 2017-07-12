@@ -1,17 +1,21 @@
+use std::marker::PhantomData;
 use std::ops::{Neg, AddAssign, MulAssign};
 
 
 use serde::de::{self, Deserialize, DeserializeSeed, Visitor, SeqAccess,
                 MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 
-use errors::Error;
+use ast::Ast;
+use ast::Ast as A;
+use errors::{Error, ErrorCollector};
 
 type Result<T> = ::std::result::Result<T, Error>;
 
 pub struct Deserializer<'de> {
-    // This string starts with the input data and characters are truncated off
-    // the beginning as data is parsed.
-    input: &'de str,
+    ast: Ast,
+    err: ErrorCollector,
+    path: String,
+    phantom: PhantomData<&'de ()>,
 }
 
 impl<'de> Deserializer<'de> {
@@ -19,8 +23,13 @@ impl<'de> Deserializer<'de> {
     // That way basic use cases are satisfied by something like
     // `serde_json::from_str(...)` while advanced use cases that require a
     // deserializer can make one with `serde_json::Deserializer::from_str(...)`.
-    pub fn from_str(input: &'de str) -> Self {
-        Deserializer { input: input }
+    pub fn new<'x>(ast: Ast, err: &ErrorCollector) -> Deserializer<'x> {
+        Deserializer {
+            ast,
+            err: err.clone(),
+            path: "".to_string(),
+            phantom: PhantomData,
+        }
     }
 }
 
@@ -53,7 +62,25 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        let value = match self.ast {
+            A::Scalar(ref pos, _, _, ref val) => {
+                match &val[..] {
+                    "true" => true,
+                    "false" => false,
+                    _ => {
+                        return Err(Error::decode_error(pos, &self.path,
+                            // TODO(tailhook) print type name somehow
+                            format!("bad boolean {:?}", val)));
+                    }
+                }
+            }
+            ref node => {
+                return Err(Error::decode_error(&node.pos(), &self.path,
+                    // TODO(tailhook) print type name somehow
+                    format!("Can't parse {:?} as boolean", node)));
+            }
+        };
+        visitor.visit_bool(value)
     }
 
     // The `parse_signed` function is generic over the integer type `T` so here
@@ -308,4 +335,225 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         unimplemented!();
     }
+}
+
+#[cfg(test)]
+mod test {
+    use std::rc::Rc;
+    use std::path::PathBuf;
+    use std::collections::BTreeMap;
+
+    use serde::Deserialize;
+
+    use parser::parse;
+    use ast::process;
+    use errors::ErrorCollector;
+    use {Options};
+    use super::Deserializer;
+    use self::TestEnum::*;
+
+    fn decode<'x, T: Deserialize<'x>>(data: &str) -> T {
+        let err = ErrorCollector::new();
+        let ast = parse(
+                Rc::new("<inline text>".to_string()),
+                data,
+                |doc| { process(&Options::default(), doc, &err) }
+            ).map_err(|e| err.into_fatal(e)).unwrap();
+        T::deserialize(&mut Deserializer::new(ast, &err))
+        .map_err(|e| err.into_fatal(e))
+        .unwrap()
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+    struct TestStruct {
+        a: usize,
+        b: String,
+    }
+
+    #[test]
+    fn decode_bool() {
+        assert_eq!(decode::<bool>("true"), true);
+        assert_eq!(decode::<bool>("false"), false);
+    }
+
+    #[test]
+    fn decode_struct() {
+        assert_eq!(decode::<TestStruct>("a: 1\nb: hello"), TestStruct {
+            a: 1,
+            b: "hello".to_string(),
+            });
+    }
+
+    #[test]
+    fn decode_list() {
+        assert_eq!(decode::<Vec<String>>("- a\n- b"),
+                   vec!("a".to_string(), "b".to_string()));
+    }
+
+    #[test]
+    #[should_panic(expected="Expected sequence, got string")]
+    fn decode_list_error() {
+        decode::<Vec<String>>("test");
+    }
+
+    #[test]
+    fn decode_map() {
+        let mut res =  BTreeMap::new();
+        res.insert("a".to_string(), 1);
+        res.insert("b".to_string(), 2);
+        assert_eq!(decode::<BTreeMap<String, isize>>("a: 1\nb: 2"), res);
+    }
+
+
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
+    struct TestOption {
+        path: Option<String>,
+    }
+    /*
+    #[derive(Debug, PartialEq, Eq, Deserialize)]
+    struct TestJson {
+        json: AnyJson,
+    }
+
+
+    This test does not compile for some reason
+    #[test]
+    fn decode_json() {
+        let (ast, _) = parse(Rc::new("<inline text>".to_string()),
+            "json:\n a: 1\n b: test",
+            |doc| { process(Default::default(), doc) }).unwrap();
+        let mut warnings = vec!();
+        let (tx, rx) = channel();
+        let val: TestJson = {
+            let mut dec = YamlDecoder::new(ast, tx);
+            Decodable::decode(&mut dec).unwrap()
+        };
+        warnings.extend(rx.iter());
+        assert_eq!(val, TestJson {
+            json: AnyJson(from_str(r#"{"a": 1, "b": "test"}"#).unwrap()),
+            });
+        assert_eq!(warnings.len(), 0);
+    }
+*/
+
+    #[test]
+    fn decode_option_some() {
+        let val: TestOption = decode("path: test/value");
+        assert!(val.path == Some("test/value".to_string()));
+    }
+
+    #[test]
+    fn decode_option_none() {
+        let val: TestOption = decode("path:");
+        assert!(val.path == None);
+    }
+
+    #[test]
+    fn decode_option_no_key() {
+        let val: TestOption = decode("{}");
+        assert!(val.path == None);
+    }
+
+    #[derive(PartialEq, Eq, Deserialize)]
+    struct TestPath {
+        path: PathBuf,
+    }
+
+    #[test]
+    fn decode_path() {
+        let val: TestPath = decode("path: test/dir");
+        assert!(val.path == PathBuf::from("test/dir"));
+    }
+
+    #[derive(PartialEq, Eq, Deserialize)]
+    struct TestPathMap {
+        paths: BTreeMap<PathBuf, isize>,
+    }
+
+    #[test]
+    fn decode_path_map() {
+        let val: TestPathMap = decode("paths: {test/dir: 1}");
+        let tree: BTreeMap<PathBuf, isize>;
+        tree = vec!((PathBuf::from("test/dir"), 1)).into_iter().collect();
+        assert!(val.paths == tree);
+    }
+
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
+    #[allow(non_camel_case_types)]
+    enum TestEnum {
+        Alpha,
+        Beta,
+        beta_gamma,
+        Gamma(isize),
+        Delta(TestStruct),
+        Sigma(Vec<isize>),
+    }
+
+    #[test]
+    fn test_enum_1() {
+        assert_eq!(decode::<TestEnum>("Alpha"), Alpha);
+    }
+
+    #[test]
+    fn test_enum_2() {
+        assert_eq!(decode::<TestEnum>("Beta"), Beta);
+    }
+
+    #[test]
+    fn test_enum_2_e() {
+        assert_eq!(decode::<TestEnum>("beta-gamma"), beta_gamma);
+    }
+
+    #[test]
+    fn test_enum_3() {
+        assert_eq!(decode::<TestEnum>("!Beta"), Beta);
+    }
+
+    #[test]
+    fn test_enum_4() {
+        assert_eq!(decode::<TestEnum>("!Alpha"), Alpha);
+    }
+
+    #[test]
+    fn test_enum_5() {
+        assert_eq!(decode::<TestEnum>("!Gamma 5"), Gamma(5));
+    }
+
+    #[test]
+    fn test_enum_map() {
+        assert_eq!(decode::<TestEnum>("!Delta\na: 1\nb: a"), Delta(TestStruct {
+            a: 1,
+            b: "a".to_string(),
+            }));
+    }
+
+    #[test]
+    fn test_enum_map_flow() {
+        assert_eq!(decode::<TestEnum>("!Delta {a: 2, b: b}"), Delta(TestStruct {
+            a: 2,
+            b: "b".to_string(),
+            }));
+    }
+
+    #[test]
+    fn test_enum_seq_flow() {
+        assert_eq!(decode::<TestEnum>("!Sigma [1, 2]"), Sigma(vec!(1, 2)));
+    }
+
+    #[test]
+    fn test_enum_seq() {
+        assert_eq!(decode::<TestEnum>("!Sigma\n- 1\n- 2"), Sigma(vec!(1, 2)));
+    }
+
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
+    struct TestStruct2 {
+        items: Vec<TestEnum>,
+    }
+
+    #[test]
+    #[should_panic(expected = "Expected sequence, got string")]
+    fn test_struct_items_tag() {
+        decode::<TestStruct2>("items:\n  'hello'");
+    }
+
 }

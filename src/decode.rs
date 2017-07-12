@@ -546,6 +546,12 @@ mod test {
     use test_util::decode;
     use self::TestEnum::*;
 
+    #[test]
+    fn decode_bool() {
+        assert_eq!(decode::<bool>("true"), true);
+        assert_eq!(decode::<bool>("false"), false);
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestStruct {
         a: usize,
@@ -567,7 +573,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(message="Expected sequence, got string")]
+    #[should_panic(expected="Expected sequence, got string")]
     fn decode_list_error() {
         decode::<Vec<String>>("test");
     }
