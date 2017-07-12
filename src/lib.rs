@@ -29,6 +29,7 @@
 #![warn(missing_docs)]
 
 
+extern crate serde;
 extern crate rustc_serialize;
 extern crate regex;
 extern crate humantime;
@@ -53,6 +54,7 @@ mod json;
 mod emit;
 pub mod ast;
 mod decode;
+mod de;
 pub mod validate;
 mod sky;
 mod special_cases;
