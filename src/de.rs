@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 use std::ops::{Neg, AddAssign, MulAssign};
+use std::str::FromStr;
 
 
 use serde::de::{self, Deserialize, DeserializeSeed, Visitor, SeqAccess,
@@ -69,14 +70,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                     "false" => false,
                     _ => {
                         return Err(Error::decode_error(pos, &self.path,
-                            // TODO(tailhook) print type name somehow
                             format!("bad boolean {:?}", val)));
                     }
                 }
             }
             ref node => {
                 return Err(Error::decode_error(&node.pos(), &self.path,
-                    // TODO(tailhook) print type name somehow
                     format!("Can't parse {:?} as boolean", node)));
             }
         };
@@ -88,63 +87,61 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        visitor.visit_i8(from_str(self, "i8")?)
     }
 
     fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        visitor.visit_i16(from_str(self, "i16")?)
     }
 
     fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        visitor.visit_i32(from_str(self, "i32")?)
     }
 
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        visitor.visit_i64(from_str(self, "i64")?)
     }
 
     fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        visitor.visit_u8(from_str(self, "u8")?)
     }
 
     fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        visitor.visit_u16(from_str(self, "u16")?)
     }
 
     fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        visitor.visit_u32(from_str(self, "u32")?)
     }
 
     fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        visitor.visit_u64(from_str(self, "u64")?)
     }
 
-    // Float parsing is stupidly hard.
-    fn deserialize_f32<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        visitor.visit_f32(from_str(self, "f32")?)
     }
 
-    // Float parsing is stupidly hard.
-    fn deserialize_f64<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        visitor.visit_f64(from_str(self, "f64")?)
     }
 
     // The `Serializer` implementation on the previous page serialized chars as
@@ -337,6 +334,24 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     }
 }
 
+fn from_str<T: FromStr>(dec: &mut Deserializer, typename: &str) -> Result<T> {
+    match dec.ast {
+        A::Scalar(ref pos, _, _, ref val) => {
+            match FromStr::from_str(val) {
+                Ok(val) => Ok(val),
+                _ => {
+                    Err(Error::decode_error(pos, &dec.path,
+                        format!("bad {}: {:?}", typename, val)))
+                }
+            }
+        }
+        ref node => {
+            Err(Error::decode_error(&node.pos(), &dec.path,
+                format!("Can't parse {:?} as {}", node, typename)))
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
@@ -374,6 +389,13 @@ mod test {
     fn decode_bool() {
         assert_eq!(decode::<bool>("true"), true);
         assert_eq!(decode::<bool>("false"), false);
+    }
+
+    #[test]
+    fn decode_i8() {
+        assert_eq!(decode::<i8>("1"), 1);
+        assert_eq!(decode::<i8>("123"), 123);
+        assert_eq!(decode::<i8>("0"), 0);
     }
 
     #[test]

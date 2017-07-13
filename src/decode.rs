@@ -552,6 +552,13 @@ mod test {
         assert_eq!(decode::<bool>("false"), false);
     }
 
+    #[test]
+    fn decode_i8() {
+        assert_eq!(decode::<i8>("1"), 1);
+        assert_eq!(decode::<i8>("123"), 123);
+        assert_eq!(decode::<i8>("0"), 0);
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestStruct {
         a: usize,
