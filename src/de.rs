@@ -144,13 +144,24 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         visitor.visit_f64(from_str(self, "f64")?)
     }
 
-    // The `Serializer` implementation on the previous page serialized chars as
-    // single-character strings so handle that representation here.
-    fn deserialize_char<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        // Parse a string, check that it is one character, call `visit_char`.
-        unimplemented!()
+        let c = match self.ast {
+            A::Scalar(ref pos, _, _, ref val) => {
+                if val.len() != 1 {
+                    Err(Error::decode_error(pos, &self.path,
+                        format!("should be single char: {:?}", val)))
+                } else {
+                    Ok(val.chars().next().unwrap())
+                }
+            }
+            ref node => {
+                Err(Error::decode_error(&node.pos(), &self.path,
+                    format!("Can't parse {:?} as char", node)))
+            }
+        };
+        visitor.visit_char(c?)
     }
 
     // Refer to the "Understanding deserializer lifetimes" page for information
@@ -396,6 +407,13 @@ mod test {
         assert_eq!(decode::<i8>("1"), 1);
         assert_eq!(decode::<i8>("123"), 123);
         assert_eq!(decode::<i8>("0"), 0);
+    }
+
+    #[test]
+    fn decode_char() {
+        assert_eq!(decode::<char>("1"), '1');
+        assert_eq!(decode::<char>("x"), 'x');
+        assert_eq!(decode::<char>("\"y\""), 'y');
     }
 
     #[test]
