@@ -566,6 +566,13 @@ mod test {
         assert_eq!(decode::<char>("\"y\""), 'y');
     }
 
+    #[test]
+    fn decode_string() {
+        assert_eq!(decode::<String>("1"), "1");
+        assert_eq!(decode::<String>("x"), "x");
+        assert_eq!(decode::<String>("\"yz\""), "yz");
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestStruct {
         a: usize,

@@ -164,18 +164,25 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         visitor.visit_char(c?)
     }
 
-    // Refer to the "Understanding deserializer lifetimes" page for information
-    // about the three deserialization flavors of strings in Serde.
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        unimplemented!();
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        let val = match self.ast {
+            A::Scalar(ref pos, _, _, ref val) => {
+                val
+            }
+            ref node => {
+                return Err(Error::decode_error(&node.pos(), &self.path,
+                    format!("Can't parse {:?} as char", node)))
+            }
+        };
+        visitor.visit_str(val)
     }
 
     // The `Serializer` implementation on the previous page serialized byte
@@ -414,6 +421,13 @@ mod test {
         assert_eq!(decode::<char>("1"), '1');
         assert_eq!(decode::<char>("x"), 'x');
         assert_eq!(decode::<char>("\"y\""), 'y');
+    }
+
+    #[test]
+    fn decode_string() {
+        assert_eq!(decode::<String>("1"), "1");
+        assert_eq!(decode::<String>("x"), "x");
+        assert_eq!(decode::<String>("\"yz\""), "yz");
     }
 
     #[test]
