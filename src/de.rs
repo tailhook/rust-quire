@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 use std::ops::{Neg, AddAssign, MulAssign};
 use std::str::FromStr;
+use std::slice;
 
 
 use serde::de::{self, Deserialize, DeserializeSeed, Visitor, SeqAccess,
@@ -12,29 +13,29 @@ use errors::{Error, ErrorCollector};
 
 type Result<T> = ::std::result::Result<T, Error>;
 
-pub struct Deserializer<'de> {
-    ast: Ast,
+pub struct Deserializer<'a> {
+    ast: &'a Ast,
     err: ErrorCollector,
     path: String,
-    phantom: PhantomData<&'de ()>,
 }
+
+struct ListVisitor<'a, 'b: 'a>(slice::Iter<'b, Ast>, &'a mut Deserializer<'b>);
 
 impl<'de> Deserializer<'de> {
     // By convention, `Deserializer` constructors are named like `from_xyz`.
     // That way basic use cases are satisfied by something like
     // `serde_json::from_str(...)` while advanced use cases that require a
     // deserializer can make one with `serde_json::Deserializer::from_str(...)`.
-    pub fn new<'x>(ast: Ast, err: &ErrorCollector) -> Deserializer<'x> {
+    pub fn new<'x>(ast: &'x Ast, err: &ErrorCollector) -> Deserializer<'x> {
         Deserializer {
-            ast,
+            ast: &ast,
             err: err.clone(),
             path: "".to_string(),
-            phantom: PhantomData,
         }
     }
 }
 
-impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
+impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     type Error = Error;
 
     // Look at the input data to decide what Serde data model type to
@@ -63,7 +64,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        let value = match self.ast {
+        let value = match *self.ast {
             A::Scalar(ref pos, _, _, ref val) => {
                 match &val[..] {
                     "true" => true,
@@ -147,7 +148,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     fn deserialize_char<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        let c = match self.ast {
+        let c = match *self.ast {
             A::Scalar(ref pos, _, _, ref val) => {
                 if val.len() != 1 {
                     Err(Error::decode_error(pos, &self.path,
@@ -173,7 +174,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        let val = match self.ast {
+        let val = match *self.ast {
             A::Scalar(ref pos, _, _, ref val) => {
                 val
             }
@@ -202,7 +203,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        match self.ast {
+        match *self.ast {
             A::Null(..) => {
                 return visitor.visit_none()
             }
@@ -249,7 +250,18 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        match *self.ast {
+            A::Seq(_, _, ref seq) => {
+                let ast = self.ast;
+                let result = visitor.visit_seq(ListVisitor(seq.iter(), self));
+                self.ast = ast;
+                return result;
+            }
+            ref node => {
+                return Err(Error::decode_error(&node.pos(), &self.path,
+                    format!("sequence expected got {}", node)))
+            }
+        }
     }
 
     // Tuples look just like sequences in JSON. Some formats may be able to
@@ -280,9 +292,6 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         unimplemented!();
     }
 
-    // Much like `deserialize_seq` but calls the visitors `visit_map` method
-    // with a `MapAccess` implementation, rather than the visitor's `visit_seq`
-    // method with a `SeqAccess` implementation.
     fn deserialize_map<V>(mut self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
@@ -352,7 +361,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
 }
 
 fn from_str<T: FromStr>(dec: &mut Deserializer, typename: &str) -> Result<T> {
-    match dec.ast {
+    match *dec.ast {
         A::Scalar(ref pos, _, _, ref val) => {
             match FromStr::from_str(val) {
                 Ok(val) => Ok(val),
@@ -365,6 +374,24 @@ fn from_str<T: FromStr>(dec: &mut Deserializer, typename: &str) -> Result<T> {
         ref node => {
             Err(Error::decode_error(&node.pos(), &dec.path,
                 format!("Can't parse {:?} as {}", node, typename)))
+        }
+    }
+}
+
+impl<'de, 'a, 'b: 'a> SeqAccess<'de> for ListVisitor<'a, 'b> {
+    type Error = Error;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+        where T: DeserializeSeed<'de>
+    {
+        match self.0.next() {
+            Some(x) => {
+                self.1.ast = x;
+                seed.deserialize(&mut *self.1).map(Some)
+            }
+            None => {
+                return Ok(None);
+            }
         }
     }
 }
@@ -391,7 +418,7 @@ mod test {
                 data,
                 |doc| { process(&Options::default(), doc, &err) }
             ).map_err(|e| err.into_fatal(e)).unwrap();
-        T::deserialize(&mut Deserializer::new(ast, &err))
+        T::deserialize(&mut Deserializer::new(&ast, &err))
         .map_err(|e| err.into_fatal(e))
         .unwrap()
     }
@@ -452,7 +479,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected="Expected sequence, got string")]
+    #[should_panic(expected="sequence expected got Scalar")]
     fn decode_list_error() {
         decode::<Vec<String>>("test");
     }
