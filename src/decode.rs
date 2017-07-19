@@ -573,6 +573,14 @@ mod test {
         assert_eq!(decode::<String>("\"yz\""), "yz");
     }
 
+    #[test]
+    fn decode_option() {
+        assert_eq!(decode::<Option<u8>>("1"), Some(1));
+        assert_eq!(decode::<Option<u8>>(""), None);
+        assert_eq!(decode::<Option<u8>>("null"), None);
+        assert_eq!(decode::<Option<u8>>("~"), None);
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestStruct {
         a: usize,

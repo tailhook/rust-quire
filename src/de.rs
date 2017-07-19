@@ -199,18 +199,17 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         unimplemented!()
     }
 
-    // An absent optional is represented as the JSON `null` and a present
-    // optional is represented as just the contained value.
-    //
-    // As commented in `Serializer` implementation, this is a lossy
-    // representation. For example the values `Some(())` and `None` both
-    // serialize as just `null`. Unfortunately this is typically what people
-    // expect when working with JSON. Other formats are encouraged to behave
-    // more intelligently if possible.
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        match self.ast {
+            A::Null(..) => {
+                return visitor.visit_none()
+            }
+            _ => {
+                return visitor.visit_some(self)
+            }
+        }
     }
 
     // In Serde, unit means an anonymous value containing no data.
@@ -428,6 +427,14 @@ mod test {
         assert_eq!(decode::<String>("1"), "1");
         assert_eq!(decode::<String>("x"), "x");
         assert_eq!(decode::<String>("\"yz\""), "yz");
+    }
+
+    #[test]
+    fn decode_option() {
+        assert_eq!(decode::<Option<u8>>("1"), Some(1));
+        assert_eq!(decode::<Option<u8>>(""), None);
+        assert_eq!(decode::<Option<u8>>("null"), None);
+        assert_eq!(decode::<Option<u8>>("~"), None);
     }
 
     #[test]
