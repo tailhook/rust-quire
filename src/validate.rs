@@ -1273,9 +1273,18 @@ mod test {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_path_abs_abs() {
         assert!(parse_path("path: /root/dir", Some(true)) == TestPath {
             path: PathBuf::from("/root/dir"),
+        });
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_path_abs_abs() {
+        assert!(parse_path(r#"path: c:\\root\dir"#, Some(true)) == TestPath {
+            path: PathBuf::from(r#"c:\\root\dir"#),
         });
     }
 
@@ -1296,10 +1305,20 @@ mod test {
     }
 
     #[test]
+    #[cfg(unix)]
     #[should_panic(expected = "must not be absolute")]
     fn test_path_abs_rel() {
         assert!(parse_path("path: /root/dir", Some(false)) == TestPath {
             path: PathBuf::from("/root/dir"),
+        });
+    }
+
+    #[test]
+    #[cfg(windows)]
+    #[should_panic(expected = "must not be absolute")]
+    fn test_path_abs_rel() {
+        assert!(parse_path(r#"path: c:\\root\dir"#, Some(false)) == TestPath {
+            path: PathBuf::from(r#":\\root\dir"#),
         });
     }
 
