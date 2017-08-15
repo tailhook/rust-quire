@@ -1,7 +1,9 @@
+use std::mem::replace;
 use std::marker::PhantomData;
 use std::ops::{Neg, AddAssign, MulAssign};
 use std::str::FromStr;
 use std::slice;
+use std::iter::Peekable;
 use std::collections::btree_map;
 
 
@@ -22,7 +24,7 @@ pub struct Deserializer<'a> {
 
 
 struct ListVisitor<'a, 'b: 'a>(slice::Iter<'b, Ast>, &'a mut Deserializer<'b>);
-struct MapVisitor<'a, 'b: 'a>(btree_map::Iter<'b, String, Ast>,
+struct MapVisitor<'a, 'b: 'a>(Peekable<btree_map::Iter<'b, String, Ast>>,
     &'a mut Deserializer<'b>);
 
 impl<'de> Deserializer<'de> {
@@ -302,7 +304,8 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
         match *self.ast {
             A::Map(_, _, ref map) => {
                 let ast = self.ast;
-                let result = visitor.visit_map(MapVisitor(map.iter(), self));
+                let result = visitor.visit_map(
+                    MapVisitor(map.iter().peekable(), self));
                 self.ast = ast;
                 return result;
             }
@@ -322,12 +325,18 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_struct<V>(
         self,
         _name: &'static str,
-        _fields: &'static [&'static str],
+        fields: &'static [&'static str],
         visitor: V
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        /*
+        let oldf = replace(&mut self.fields, Some(fields));
+        let result = visitor.visit_struct(self);
+        self.fields = oldf;
+        return result;
+        */
+        self.deserialize_map(visitor)
     }
 
     fn deserialize_enum<V>(
@@ -417,14 +426,24 @@ impl<'de, 'a, 'b: 'a> MapAccess<'de> for MapVisitor<'a, 'b> {
     fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
         where T: DeserializeSeed<'de>
     {
-        unimplemented!();
+        match self.0.peek() {
+            Some(&(key, _)) => {
+                Ok(Some(seed.deserialize(
+                    key.clone().into_deserializer())?))
+            }
+            None => {
+                return Ok(None);
+            }
+        }
     }
 
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
         where
             V: DeserializeSeed<'de>
     {
-        unimplemented!();
+        let (_, value) = self.0.next().unwrap();
+        self.1.ast = value;
+        seed.deserialize(&mut *self.1)
     }
     fn next_entry_seed<K, V>(
         &mut self,
