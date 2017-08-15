@@ -10,8 +10,7 @@ use std::collections::btree_map;
 use serde::de::{self, Deserialize, DeserializeSeed, Visitor, SeqAccess};
 use serde::de::{MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 
-use ast::Ast;
-use ast::Ast as A;
+use ast::{Ast, Ast as A, Tag};
 use errors::{Error, ErrorCollector};
 
 type Result<T> = ::std::result::Result<T, Error>;
@@ -26,6 +25,8 @@ pub struct Deserializer<'a> {
 struct ListVisitor<'a, 'b: 'a>(slice::Iter<'b, Ast>, &'a mut Deserializer<'b>);
 struct MapVisitor<'a, 'b: 'a>(Peekable<btree_map::Iter<'b, String, Ast>>,
     &'a mut Deserializer<'b>);
+struct EnumVisitor<'a, 'b: 'a>(&'a mut Deserializer<'b>);
+struct VariantVisitor<'a, 'b: 'a>(&'a mut Deserializer<'b>);
 
 impl<'de> Deserializer<'de> {
     // By convention, `Deserializer` constructors are named like `from_xyz`.
@@ -330,12 +331,6 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        /*
-        let oldf = replace(&mut self.fields, Some(fields));
-        let result = visitor.visit_struct(self);
-        self.fields = oldf;
-        return result;
-        */
         self.deserialize_map(visitor)
     }
 
@@ -347,7 +342,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        visitor.visit_enum(EnumVisitor(self))
     }
 
     // An identifier in Serde is the type that identifies a field of a struct or
@@ -360,7 +355,20 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        match *self.ast.tag() {
+            Tag::GlobalTag(_) => unimplemented!(),
+            Tag::LocalTag(ref val) => Ok(visitor.visit_str(val)?),
+            Tag::NonSpecific => match *self.ast {
+                A::Scalar(_, _, _, ref val) => {
+                    Ok(visitor.visit_string(val.replace("-", "_"))?)
+                }
+                ref node => {
+                    return Err(Error::decode_error(&node.pos(), &self.path,
+                        format!("identifier (string, or tag) \
+                            expected got {}", node)))
+                }
+            },
+        }
     }
 
     // Like `deserialize_any` but indicates to the `Deserializer` that it makes
@@ -469,6 +477,59 @@ impl<'de, 'a, 'b: 'a> MapAccess<'de> for MapVisitor<'a, 'b> {
     }
 }
 
+impl<'de, 'a, 'b: 'a> EnumAccess<'de> for EnumVisitor<'a, 'b> {
+    type Error = Error;
+    type Variant = VariantVisitor<'a, 'b>;
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
+        where V: DeserializeSeed<'de>
+    {
+        let val = seed.deserialize(&mut *self.0)?;
+        Ok((val, VariantVisitor(&mut *self.0)))
+    }
+}
+
+impl<'de, 'a, 'b: 'a> VariantAccess<'de> for VariantVisitor<'a, 'b> {
+    type Error = Error;
+    fn unit_variant(self) -> Result<()> {
+        match *self.0.ast {
+            A::Null(..) => Ok(()),
+            // TODO(tailhook) check what happens if value doesn't match
+            // any anum tag
+            A::Scalar(_, _, _, _) => Ok(()),
+            ref node => {
+                return Err(Error::decode_error(&node.pos(), &self.0.path,
+                    format!("nothing expected, got {}", node)));
+            }
+        }
+    }
+    fn newtype_variant_seed<T>(self, seed: T)
+        -> Result<T::Value>
+    where
+        T: DeserializeSeed<'de>
+    {
+        seed.deserialize(self.0)
+    }
+    fn tuple_variant<V>(
+        self,
+        len: usize,
+        visitor: V
+    ) -> Result<V::Value>
+    where
+        V: Visitor<'de>
+    {
+        unimplemented!();
+    }
+    fn struct_variant<V>(
+        self,
+        fields: &'static [&'static str],
+        visitor: V
+    ) -> Result<V::Value>
+    where
+        V: Visitor<'de>
+    {
+        unimplemented!();
+    }
+}
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
@@ -726,7 +787,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Expected sequence, got string")]
+    #[should_panic(expected = "sequence expected, got Scalar")]
     fn test_struct_items_tag() {
         decode::<TestStruct2>("items:\n  'hello'");
     }
