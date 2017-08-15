@@ -1,13 +1,12 @@
-use std::mem::replace;
-use std::marker::PhantomData;
-use std::ops::{Neg, AddAssign, MulAssign};
-use std::str::FromStr;
-use std::slice;
-use std::iter::Peekable;
+use std::collections::BTreeMap;
 use std::collections::btree_map;
+use std::iter::Peekable;
+use std::mem::replace;
+use std::slice;
+use std::str::FromStr;
 
 
-use serde::de::{self, Deserialize, DeserializeSeed, Visitor, SeqAccess};
+use serde::de::{self, DeserializeSeed, Visitor, SeqAccess};
 use serde::de::{MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 
 use ast::{Ast, Ast as A, Tag};
@@ -15,8 +14,15 @@ use errors::{Error, ErrorCollector};
 
 type Result<T> = ::std::result::Result<T, Error>;
 
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub enum Mode {
+    Normal,
+    Enum,
+}
+
 pub struct Deserializer<'a> {
     ast: &'a Ast,
+    mode: Mode,
     err: ErrorCollector,
     path: String,
 }
@@ -36,6 +42,7 @@ impl<'de> Deserializer<'de> {
     pub fn new<'x>(ast: &'x Ast, err: &ErrorCollector) -> Deserializer<'x> {
         Deserializer {
             ast: &ast,
+            mode: Mode::Normal,
             err: err.clone(),
             path: "".to_string(),
         }
@@ -51,7 +58,12 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        match *self.ast {
+            A::Map(..) => self.deserialize_map(visitor),
+            A::Seq(..) => self.deserialize_seq(visitor),
+            A::Scalar(..) => self.deserialize_string(visitor),
+            A::Null(..) => self.deserialize_unit(visitor),
+        }
     }
 
     // Uses the `parse_bool` parsing function defined above to read the JSON
@@ -211,7 +223,10 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
         where V: Visitor<'de>
     {
         match *self.ast {
-            A::Null(..) => {
+            A::Null(_, Tag::NonSpecific, _) => {
+                return visitor.visit_none()
+            }
+            A::Null(_, Tag::LocalTag(_), _) if self.mode == Mode::Enum => {
                 return visitor.visit_none()
             }
             _ => {
@@ -264,6 +279,9 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
                 self.ast = ast;
                 return result;
             }
+            A::Null(..) => {
+                return visitor.visit_seq(Vec::<()>::new().into_deserializer());
+            }
             ref node => {
                 return Err(Error::decode_error(&node.pos(), &self.path,
                     format!("sequence expected got {}", node)))
@@ -310,6 +328,10 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
                 self.ast = ast;
                 return result;
             }
+            A::Null(..) => {
+                return visitor.visit_map(
+                    BTreeMap::<(), ()>::new().into_deserializer());
+            }
             ref node => {
                 return Err(Error::decode_error(&node.pos(), &self.path,
                     format!("mapping expected got {}", node)))
@@ -342,7 +364,10 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        visitor.visit_enum(EnumVisitor(self))
+        let mode = replace(&mut self.mode, Mode::Enum);
+        let result = visitor.visit_enum(EnumVisitor(self));
+        self.mode = mode;
+        return result;
     }
 
     // An identifier in Serde is the type that identifies a field of a struct or
@@ -388,7 +413,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        self.deserialize_unit(visitor)
     }
 }
 
@@ -483,7 +508,9 @@ impl<'de, 'a, 'b: 'a> EnumAccess<'de> for EnumVisitor<'a, 'b> {
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
         where V: DeserializeSeed<'de>
     {
+        let mode = replace(&mut self.0.mode, Mode::Enum);
         let val = seed.deserialize(&mut *self.0)?;
+        self.0.mode = mode;
         Ok((val, VariantVisitor(&mut *self.0)))
     }
 }

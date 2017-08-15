@@ -620,7 +620,7 @@ fn _parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
         indent = true;
     }
     let anchor = maybe_parse_anchor(tokiter);
-    let mut tag = maybe_parse_tag(tokiter);
+    let tag = maybe_parse_tag(tokiter);
     tok = tokiter.peek(0);
     if !indent && tok.kind == T::Indent {  // Otherwise indent is after tag
         tokiter.next();

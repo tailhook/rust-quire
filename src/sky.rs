@@ -2,19 +2,19 @@ use std::rc::Rc;
 use std::io::Read;
 use std::fs::File;
 use std::path::Path;
-use rustc_serialize::{Decodable};
+use serde::de::{Deserialize};
 
-use super::ast;
-pub use super::errors::{Error, ErrorList};
+use ast;
+use de::Deserializer;
 use super::errors::ErrorCollector;
 use super::parser::parse;
-use super::decode::YamlDecoder;
 use super::validate::Validator;
 use {Options};
+use errors::{Error, ErrorList};
 
 
 /// Parse configuration from a file
-pub fn parse_config<T: Decodable, P: AsRef<Path>>(
+pub fn parse_config<'x, T: Deserialize<'x>, P: AsRef<Path>>(
     filename: P, validator: &Validator, options: &Options)
     -> Result<T, ErrorList>
 {
@@ -30,13 +30,13 @@ pub fn parse_config<T: Decodable, P: AsRef<Path>>(
         |doc| { ast::process(options, doc, &err) }
         ).map_err(|e| err.into_fatal(e))?;
     let ast = validator.validate(ast, &err);
-    let res = Decodable::decode(&mut YamlDecoder::new(ast, &err))
+    let res = Deserialize::deserialize(&mut Deserializer::new(&ast, &err))
         .map_err(|e| err.into_fatal(e))?;
     return err.into_result(res);
 }
 
 /// Parse configuration from a string
-pub fn parse_string<T: Decodable>(filename: &str, data: &str,
+pub fn parse_string<'x, T: Deserialize<'x>>(filename: &str, data: &str,
     validator: &Validator, options: &Options)
     -> Result<T, ErrorList>
 {
@@ -45,7 +45,7 @@ pub fn parse_string<T: Decodable>(filename: &str, data: &str,
             |doc| { ast::process(options, doc, &err) }
         ).map_err(|e| err.into_fatal(e))?;
     let ast = validator.validate(ast, &err);
-    let res = Decodable::decode(&mut YamlDecoder::new(ast, &err))
+    let res = Deserialize::deserialize(&mut Deserializer::new(&ast, &err))
         .map_err(|e| err.into_fatal(e))?;
     return err.into_result(res);
 }

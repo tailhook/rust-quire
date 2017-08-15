@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use std::collections::BTreeMap;
-use rustc_serialize::json::{ToJson, Json};
+use serde_json::Value;
 use rustc_serialize::json::Json as J;
 
 use super::ast::Ast;

@@ -2,7 +2,8 @@ use std::io::Result as IoResult;
 use std::io::Error as IoError;
 use std::io::Write;
 use std::string::ToString;
-use rustc_serialize::{Encodable, Encoder};
+
+use serde::de::{Deserialize, Deserializer};
 
 use super::parser::Node;
 
@@ -384,7 +385,7 @@ pub fn emit_ast(tree: &Ast, stream: &mut Write)
 }
 
 /// Emit encodable object in yaml form
-pub fn emit_object<'x, T: Encodable>(
+pub fn emit_object<'x, T: Deserialize>(
     val: &T, wr: &'x mut Write) -> Result<(), IoError>
 {
     let mut encoder = Context::new(wr);
@@ -392,7 +393,7 @@ pub fn emit_object<'x, T: Encodable>(
 }
 
 
-impl<'a> Encoder for Context<'a> {
+impl<'a> Deserializer for Context<'a> {
     type Error = IoError;
     fn emit_nil(&mut self) -> Result<(), IoError> {
         return self.emit(Opcode::Null(None, None, Null::Nothing));

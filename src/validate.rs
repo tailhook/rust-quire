@@ -679,7 +679,7 @@ impl<'a> Validator for Sequence<'a> {
 /// Skips the validation of this value
 ///
 /// It's useful to accept any value (of any type) at some place, or to
-/// rely on `Decodable::decode` for doing validation.
+/// rely on `Deserialize::deserialize` for doing validation.
 pub struct Anything;
 
 impl Validator for Anything {
@@ -715,23 +715,23 @@ impl Validator for Nothing {
 mod test {
     use std::rc::Rc;
     use std::path::PathBuf;
-    use rustc_serialize::Decodable;
     use std::collections::BTreeMap;
     use std::collections::HashMap;
+    use serde::Deserialize;
 
     use {Options};
-    use super::super::decode::YamlDecoder;
-    use super::super::ast::{process, Ast as A};
-    use super::super::ast::Tag::{NonSpecific};
-    use super::super::ast::ScalarKind::{Plain};
-    use super::super::parser::parse;
-    use super::super::sky::{parse_string, ErrorList};
-    use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
-    use super::{Enum, Nothing, Directory, Anything};
-    use super::super::errors::ErrorCollector;
+    use de::Deserializer;
+    use ast::{process, Ast as A};
+    use ast::Tag::{NonSpecific};
+    use ast::ScalarKind::{Plain};
+    use parser::parse;
+    use {parse_string, ErrorList};
+    use validate::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
+    use validate::{Enum, Nothing, Directory, Anything};
+    use errors::ErrorCollector;
     use self::TestEnum::*;
 
-    #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
     struct TestStruct {
         intkey: usize,
         strkey: String,
@@ -810,7 +810,7 @@ mod test {
         });
     }
 
-    #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
     struct TestDash {
         some_key: usize,
     }
@@ -846,7 +846,7 @@ mod test {
                 |doc| { process(&Options::default(), doc, &err) }
             ).map_err(|e| err.into_fatal(e)).unwrap();
         let ast = str_val.validate(ast, &err);
-        match Decodable::decode(&mut YamlDecoder::new(ast, &err)) {
+        match Deserialize::deserialize(&mut Deserializer::new(&ast, &err)) {
             Ok(val) => {
                 (val, err.unwrap().errors().map(|x| x.to_string()).collect())
             }
@@ -874,7 +874,7 @@ mod test {
                  .to_string())));
     }
 
-    #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
     struct TestOpt {
         some_key: Option<usize>,
     }
@@ -907,7 +907,7 @@ mod test {
         });
     }
 
-    fn parse_map<T:Decodable>(body: &str) -> T {
+    fn parse_map<'x, T: Deserialize<'x>>(body: &str) -> T {
         fn parse_default(ast: A) -> BTreeMap<String, A> {
             match ast {
                 A::Scalar(pos, _, style, value) => {
@@ -976,9 +976,7 @@ mod test {
         assert_eq!(res, m);
     }
 
-    fn parse_complex_map<T:Decodable>(body: &str)
-        -> T
-    {
+    fn parse_complex_map<'x, T: Deserialize<'x>>(body: &str) -> T {
         let validator = Mapping::new(
             Scalar::new(),
             Structure::new()
@@ -1129,7 +1127,7 @@ mod test {
         assert_eq!(res, m);
     }
 
-    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
     enum TestEnum {
         Alpha,
         Beta,
@@ -1230,7 +1228,7 @@ mod test {
             })));
     }
 
-    #[derive(Clone, PartialEq, Eq, RustcDecodable)]
+    #[derive(Clone, PartialEq, Eq, Deserialize)]
     struct TestPath {
         path: PathBuf,
     }
@@ -1337,7 +1335,7 @@ mod test {
             ));
     }
 
-    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
     struct EnumOpt {
         val: Option<TestEnum>,
     }
@@ -1360,7 +1358,7 @@ mod test {
                    EnumOpt { val: Some(Epsilon(None)) });
     }
 
-    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
     struct Parsed {
         value: String,
     }
@@ -1397,7 +1395,7 @@ mod test {
                    Parsed { value: "test".to_string() });
     }
 
-    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
     enum TestEnumDef {
         Alpha,
         Beta,

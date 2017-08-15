@@ -4,11 +4,11 @@
 //!
 //! ```rust,ignore  # for some reason this crashes compiler
 //! extern crate quire;
-//! extern crate rustc_serialize;
+//! #[macor_use] extern crate serde_derive;
 //! use quire::{parse_config, Options};
 //! use quire::validate::{Structure, Scalar};
 //!
-//! #[derive(RustcDecodable)]
+//! #[derive(Deserialize)]
 //! struct Config {
 //!     item1: String,
 //!     item2: Option<String>,
@@ -32,7 +32,6 @@
 
 
 extern crate serde;
-extern crate rustc_serialize;
 extern crate regex;
 extern crate humantime;
 extern crate humannum;
@@ -45,21 +44,18 @@ pub use options::{Options, Include};
 pub use errors::{Error, ErrorList, ErrorCollector};
 pub use tokenizer::{Pos};
 pub use parser::{parse as raw_parse};
-pub use emit::{emit_ast, emit_object};
-pub use special_cases::De;
+//pub use emit::{emit_ast, emit_object};
 
 mod chars;
 mod errors;
 mod tokenizer;
 mod options;
 mod parser;
-mod json;
-mod emit;
+//mod emit;
 pub mod ast;
-mod decode;
 mod de;
 pub mod validate;
 mod sky;
-mod special_cases;
+#[cfg(feature="json")] mod json;
 #[cfg(test)] mod test_errors;
 #[cfg(test)] mod test_util;
