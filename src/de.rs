@@ -2,10 +2,11 @@ use std::marker::PhantomData;
 use std::ops::{Neg, AddAssign, MulAssign};
 use std::str::FromStr;
 use std::slice;
+use std::collections::btree_map;
 
 
-use serde::de::{self, Deserialize, DeserializeSeed, Visitor, SeqAccess,
-                MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
+use serde::de::{self, Deserialize, DeserializeSeed, Visitor, SeqAccess};
+use serde::de::{MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 
 use ast::Ast;
 use ast::Ast as A;
@@ -19,7 +20,10 @@ pub struct Deserializer<'a> {
     path: String,
 }
 
+
 struct ListVisitor<'a, 'b: 'a>(slice::Iter<'b, Ast>, &'a mut Deserializer<'b>);
+struct MapVisitor<'a, 'b: 'a>(btree_map::Iter<'b, String, Ast>,
+    &'a mut Deserializer<'b>);
 
 impl<'de> Deserializer<'de> {
     // By convention, `Deserializer` constructors are named like `from_xyz`.
@@ -295,7 +299,18 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_map<V>(mut self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        match *self.ast {
+            A::Map(_, _, ref map) => {
+                let ast = self.ast;
+                let result = visitor.visit_map(MapVisitor(map.iter(), self));
+                self.ast = ast;
+                return result;
+            }
+            ref node => {
+                return Err(Error::decode_error(&node.pos(), &self.path,
+                    format!("mapping expected got {}", node)))
+            }
+        }
     }
 
     // Structs look just like maps in JSON.
@@ -388,6 +403,45 @@ impl<'de, 'a, 'b: 'a> SeqAccess<'de> for ListVisitor<'a, 'b> {
             Some(x) => {
                 self.1.ast = x;
                 seed.deserialize(&mut *self.1).map(Some)
+            }
+            None => {
+                return Ok(None);
+            }
+        }
+    }
+}
+
+impl<'de, 'a, 'b: 'a> MapAccess<'de> for MapVisitor<'a, 'b> {
+    type Error = Error;
+
+    fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+        where T: DeserializeSeed<'de>
+    {
+        unimplemented!();
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+        where
+            V: DeserializeSeed<'de>
+    {
+        unimplemented!();
+    }
+    fn next_entry_seed<K, V>(
+        &mut self,
+        kseed: K,
+        vseed: V,
+    ) -> Result<Option<(K::Value, V::Value)>>
+    where
+        K: DeserializeSeed<'de>,
+        V: DeserializeSeed<'de>,
+    {
+        match self.0.next() {
+            Some((key, value)) => {
+                let key = kseed.deserialize(
+                    key.clone().into_deserializer())?;
+                self.1.ast = value;
+                let value = vseed.deserialize(&mut *self.1)?;
+                Ok(Some((key, value)))
             }
             None => {
                 return Ok(None);
