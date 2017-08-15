@@ -217,7 +217,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        visitor.visit_unit()
     }
 
     // Unit struct means a named value containing no data.
@@ -228,7 +228,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        visitor.visit_unit()
     }
 
     // As is done here, serializers are encouraged to treat newtype structs as
@@ -462,6 +462,20 @@ mod test {
         assert_eq!(decode::<Option<u8>>(""), None);
         assert_eq!(decode::<Option<u8>>("null"), None);
         assert_eq!(decode::<Option<u8>>("~"), None);
+    }
+
+    #[test]
+    fn decode_nothing() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Nothing;
+
+        assert_eq!(decode::<Nothing>(""), Nothing);
+        assert_eq!(decode::<Nothing>("null"), Nothing);
+        assert_eq!(decode::<Nothing>("~"), Nothing);
+
+        assert_eq!(decode::<()>(""), ());
+        assert_eq!(decode::<()>("null"), ());
+        assert_eq!(decode::<()>("~"), ());
     }
 
     #[test]

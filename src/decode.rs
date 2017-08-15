@@ -581,6 +581,20 @@ mod test {
         assert_eq!(decode::<Option<u8>>("~"), None);
     }
 
+    #[test]
+    fn decode_nothing() {
+        #[derive(RustcDecodable, Debug, PartialEq)]
+        struct Nothing;
+
+        assert_eq!(decode::<Nothing>(""), Nothing);
+        assert_eq!(decode::<Nothing>("null"), Nothing);
+        assert_eq!(decode::<Nothing>("~"), Nothing);
+
+        assert_eq!(decode::<()>(""), ());
+        assert_eq!(decode::<()>("null"), ());
+        assert_eq!(decode::<()>("~"), ());
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestStruct {
         a: usize,
