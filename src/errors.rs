@@ -42,10 +42,18 @@ quick_error! {
                     filename=pos.0, line=pos.1, offset=pos.2,
                     path=path, text=msg)
         }
+        Custom(message: String) {
+            display("{}", message)
+            description(message)
+        }
     }
 }
 
-unsafe impl Send for Error {}
+impl ::serde::de::Error for Error {
+    fn custom<T: ::std::fmt::Display>(msg: T) -> Self {
+        return Error::Custom(format!("{}", msg));
+    }
+}
 
 impl Error {
     pub fn parse_error(pos: &Pos, message: String) -> Error {

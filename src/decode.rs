@@ -546,6 +546,55 @@ mod test {
     use test_util::decode;
     use self::TestEnum::*;
 
+    #[test]
+    fn decode_bool() {
+        assert_eq!(decode::<bool>("true"), true);
+        assert_eq!(decode::<bool>("false"), false);
+    }
+
+    #[test]
+    fn decode_i8() {
+        assert_eq!(decode::<i8>("1"), 1);
+        assert_eq!(decode::<i8>("123"), 123);
+        assert_eq!(decode::<i8>("0"), 0);
+    }
+
+    #[test]
+    fn decode_char() {
+        assert_eq!(decode::<char>("1"), '1');
+        assert_eq!(decode::<char>("x"), 'x');
+        assert_eq!(decode::<char>("\"y\""), 'y');
+    }
+
+    #[test]
+    fn decode_string() {
+        assert_eq!(decode::<String>("1"), "1");
+        assert_eq!(decode::<String>("x"), "x");
+        assert_eq!(decode::<String>("\"yz\""), "yz");
+    }
+
+    #[test]
+    fn decode_option() {
+        assert_eq!(decode::<Option<u8>>("1"), Some(1));
+        assert_eq!(decode::<Option<u8>>(""), None);
+        assert_eq!(decode::<Option<u8>>("null"), None);
+        assert_eq!(decode::<Option<u8>>("~"), None);
+    }
+
+    #[test]
+    fn decode_nothing() {
+        #[derive(RustcDecodable, Debug, PartialEq)]
+        struct Nothing;
+
+        assert_eq!(decode::<Nothing>(""), Nothing);
+        assert_eq!(decode::<Nothing>("null"), Nothing);
+        assert_eq!(decode::<Nothing>("~"), Nothing);
+
+        assert_eq!(decode::<()>(""), ());
+        assert_eq!(decode::<()>("null"), ());
+        assert_eq!(decode::<()>("~"), ());
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
     struct TestStruct {
         a: usize,
@@ -567,7 +616,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(message="Expected sequence, got string")]
+    #[should_panic(expected="Expected sequence, got string")]
     fn decode_list_error() {
         decode::<Vec<String>>("test");
     }
