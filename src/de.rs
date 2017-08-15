@@ -787,7 +787,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "sequence expected, got Scalar")]
+    #[should_panic(expected = "sequence expected got Scalar")]
     fn test_struct_items_tag() {
         decode::<TestStruct2>("items:\n  'hello'");
     }
