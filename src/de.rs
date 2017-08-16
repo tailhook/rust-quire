@@ -86,8 +86,8 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
         let value = match *self.ast {
             A::Scalar(ref pos, _, _, ref val) => {
                 match &val[..] {
-                    "true" => true,
-                    "false" => false,
+                    "true"|"yes"|"on"|"y"|"1" => true,
+                    "false"|"no"|"off"|"n"|"0" => false,
                     _ => {
                         return Err(Error::decode_error(pos, &self.path,
                             format!("bad boolean {:?}", val)));
@@ -594,7 +594,15 @@ mod test {
     #[test]
     fn decode_bool() {
         assert_eq!(decode::<bool>("true"), true);
+        assert_eq!(decode::<bool>("yes"), true);
+        assert_eq!(decode::<bool>("y"), true);
+        assert_eq!(decode::<bool>("on"), true);
+        assert_eq!(decode::<bool>("1"), true);
         assert_eq!(decode::<bool>("false"), false);
+        assert_eq!(decode::<bool>("no"), false);
+        assert_eq!(decode::<bool>("n"), false);
+        assert_eq!(decode::<bool>("off"), false);
+        assert_eq!(decode::<bool>("0"), false);
     }
 
     #[test]
