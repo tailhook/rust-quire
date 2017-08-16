@@ -40,7 +40,8 @@ fn decode_struct(data: &str) -> Result<Struct1, String> {
 #[test]
 fn test_path() {
     assert_eq!(decode_struct("list:\n- {}"),
-        Err("missing field `value`\n".to_string()));
+        Err("<inline text>:2:3: Decode error at .list[0]: \
+             missing field `value`\n".to_string()));
 }
 
 #[test]

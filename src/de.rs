@@ -1,6 +1,7 @@
+use std::fmt::Write;
 use std::collections::BTreeMap;
 use std::collections::btree_map;
-use std::iter::Peekable;
+use std::iter::{Peekable, Enumerate};
 use std::mem::replace;
 use std::slice;
 use std::str::FromStr;
@@ -28,9 +29,9 @@ pub struct Deserializer<'a> {
 }
 
 
-struct ListVisitor<'a, 'b: 'a>(slice::Iter<'b, Ast>, &'a mut Deserializer<'b>);
+struct ListVisitor<'a, 'b: 'a>(Enumerate<slice::Iter<'b, Ast>>, &'a mut Deserializer<'b>);
 struct MapVisitor<'a, 'b: 'a>(Peekable<btree_map::Iter<'b, String, Ast>>,
-    &'a mut Deserializer<'b>);
+    usize, &'a mut Deserializer<'b>);
 struct EnumVisitor<'a, 'b: 'a>(&'a mut Deserializer<'b>);
 struct VariantVisitor<'a, 'b: 'a>(&'a mut Deserializer<'b>);
 
@@ -45,6 +46,15 @@ impl<'de> Deserializer<'de> {
             mode: Mode::Normal,
             err: err.clone(),
             path: "".to_string(),
+        }
+    }
+
+    fn map_err<T>(&self, result: Result<T>) -> Result<T> {
+        match result {
+            Err(Error::Custom(e)) => {
+                Err(Error::decode_error(&self.ast.pos(), &self.path, e))
+            }
+            result => result,
         }
     }
 }
@@ -275,7 +285,9 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
         match *self.ast {
             A::Seq(_, _, ref seq) => {
                 let ast = self.ast;
-                let result = visitor.visit_seq(ListVisitor(seq.iter(), self));
+                let result = visitor.visit_seq(
+                    ListVisitor(seq.iter().enumerate(), self));
+                let result = self.map_err(result);
                 self.ast = ast;
                 return result;
             }
@@ -324,7 +336,8 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
             A::Map(_, _, ref map) => {
                 let ast = self.ast;
                 let result = visitor.visit_map(
-                    MapVisitor(map.iter().peekable(), self));
+                    MapVisitor(map.iter().peekable(), self.path.len(), self));
+                let result = self.map_err(result);
                 self.ast = ast;
                 return result;
             }
@@ -442,9 +455,13 @@ impl<'de, 'a, 'b: 'a> SeqAccess<'de> for ListVisitor<'a, 'b> {
         where T: DeserializeSeed<'de>
     {
         match self.0.next() {
-            Some(x) => {
+            Some((idx, x)) => {
                 self.1.ast = x;
-                seed.deserialize(&mut *self.1).map(Some)
+                let plen = self.1.path.len();
+                write!(&mut self.1.path, "[{}]", idx).unwrap();
+                let result = seed.deserialize(&mut *self.1).map(Some);
+                self.1.path.truncate(plen);
+                return result;
             }
             None => {
                 return Ok(None);
@@ -461,8 +478,9 @@ impl<'de, 'a, 'b: 'a> MapAccess<'de> for MapVisitor<'a, 'b> {
     {
         match self.0.peek() {
             Some(&(key, _)) => {
-                Ok(Some(seed.deserialize(
-                    key.clone().into_deserializer())?))
+                write!(&mut self.2.path, ".{}", key).unwrap();
+                let result = seed.deserialize(key.clone().into_deserializer());
+                Ok(Some(self.2.map_err(result)?))
             }
             None => {
                 return Ok(None);
@@ -475,30 +493,11 @@ impl<'de, 'a, 'b: 'a> MapAccess<'de> for MapVisitor<'a, 'b> {
             V: DeserializeSeed<'de>
     {
         let (_, value) = self.0.next().unwrap();
-        self.1.ast = value;
-        seed.deserialize(&mut *self.1)
-    }
-    fn next_entry_seed<K, V>(
-        &mut self,
-        kseed: K,
-        vseed: V,
-    ) -> Result<Option<(K::Value, V::Value)>>
-    where
-        K: DeserializeSeed<'de>,
-        V: DeserializeSeed<'de>,
-    {
-        match self.0.next() {
-            Some((key, value)) => {
-                let key = kseed.deserialize(
-                    key.clone().into_deserializer())?;
-                self.1.ast = value;
-                let value = vseed.deserialize(&mut *self.1)?;
-                Ok(Some((key, value)))
-            }
-            None => {
-                return Ok(None);
-            }
-        }
+        self.2.ast = value;
+        let result = seed.deserialize(&mut *self.2);
+        let result = self.2.map_err(result);
+        self.2.path.truncate(self.1);
+        return result;
     }
 }
 
