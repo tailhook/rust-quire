@@ -2,7 +2,7 @@ use std::io;
 use std::fmt;
 use std::rc::Rc;
 use std::slice::Iter;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::cell::RefCell;
 
 use super::tokenizer::{self, Pos};
@@ -56,28 +56,31 @@ impl ::serde::de::Error for Error {
 }
 
 impl Error {
-    pub(crate) fn parse_error(pos: &Pos, message: String) -> Error {
+    pub fn open_error(path: &Path, err: io::Error) -> Error {
+        ErrorEnum::OpenError(path.to_path_buf(), err).into()
+    }
+    pub fn parse_error(pos: &Pos, message: String) -> Error {
         ErrorEnum::ParseError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             message).into()
     }
-    pub(crate) fn tokenizer_error((pos, err): (Pos, tokenizer::Error)) -> Error {
+    pub fn tokenizer_error((pos, err): (Pos, tokenizer::Error)) -> Error {
         ErrorEnum::TokenizerError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             err).into()
     }
-    pub(crate) fn validation_error(pos: &Pos, message: String) -> Error {
+    pub fn validation_error(pos: &Pos, message: String) -> Error {
         ErrorEnum::ValidationError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             message).into()
     }
-    pub(crate) fn decode_error(pos: &Pos, path: &String, message: String) -> Error {
+    pub fn decode_error(pos: &Pos, path: &String, message: String) -> Error {
         ErrorEnum::DecodeError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             path.clone(),
             message).into()
     }
-    pub(crate) fn preprocess_error(pos: &Pos, message: String) -> Error {
+    pub fn preprocess_error(pos: &Pos, message: String) -> Error {
         ErrorEnum::PreprocessError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             message).into()
