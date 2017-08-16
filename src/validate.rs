@@ -1075,14 +1075,14 @@ mod test {
 
     #[test]
     fn test_seq_empty() {
-        let m = Vec::new();
+        let m = Vec::<usize>::new();
         let res: Vec<usize> = parse_seq("[]");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_seq_null() {
-        let m = Vec::new();
+        let m = Vec::<usize>::new();
         let res: Vec<usize> = parse_seq("");
         assert_eq!(res, m);
     }
@@ -1103,7 +1103,7 @@ mod test {
 
     #[test]
     fn test_seq_min_length_zero() {
-        let m = Vec::new();
+        let m = Vec::<usize>::new();
         let res: Vec<usize> = parse_seq_min_length("[]", 0).unwrap();
         assert_eq!(res, m);
 

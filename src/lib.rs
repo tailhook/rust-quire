@@ -31,13 +31,15 @@
 #![allow(unused_variables)]
 
 
-extern crate serde;
-extern crate humantime;
 extern crate humannum;
+extern crate humantime;
 extern crate num_traits;
-#[macro_use] extern crate quick_error;
-#[cfg(test)] #[macro_use] extern crate serde_derive;
+extern crate serde;
 #[cfg(feature="regex_expressions")] extern crate regex as re;
+#[cfg(test)] #[macro_use] extern crate serde_derive;
+#[cfg(test)] extern crate serde_json;
+#[cfg(test)] extern crate serde_transcode;
+#[macro_use] extern crate quick_error;
 
 pub use sky::{parse_config, parse_string};
 pub use options::{Options, Include};
@@ -61,3 +63,4 @@ pub mod duration;
 #[cfg(feature="json")] mod json;
 #[cfg(test)] mod test_errors;
 #[cfg(test)] mod test_util;
+#[cfg(test)] mod test_transcode;
