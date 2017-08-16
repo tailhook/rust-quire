@@ -5,4 +5,5 @@ rust:
 - nightly
 script:
 - cargo build --verbose
+- cargo test --no-default-features
 - cargo test --verbose
