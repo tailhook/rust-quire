@@ -16,7 +16,7 @@ quick_error! {
     /// Usually you use `ErrorList` which embeds multiple errors encountered
     /// during configuration file parsing
     #[derive(Debug)]
-    pub enum Error {
+    pub enum Error wraps pub ErrorEnum {
         OpenError(filename: PathBuf, err: io::Error) {
             display("{}: Error reading file: {}", filename.display(), err)
         }
@@ -51,36 +51,36 @@ quick_error! {
 
 impl ::serde::de::Error for Error {
     fn custom<T: ::std::fmt::Display>(msg: T) -> Self {
-        return Error::Custom(format!("{}", msg));
+        ErrorEnum::Custom(format!("{}", msg)).into()
     }
 }
 
 impl Error {
-    pub fn parse_error(pos: &Pos, message: String) -> Error {
-        return Error::ParseError(
+    pub(crate) fn parse_error(pos: &Pos, message: String) -> Error {
+        ErrorEnum::ParseError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
-            message);
+            message).into()
     }
-    pub fn tokenizer_error((pos, err): (Pos, tokenizer::Error)) -> Error {
-        return Error::TokenizerError(
+    pub(crate) fn tokenizer_error((pos, err): (Pos, tokenizer::Error)) -> Error {
+        ErrorEnum::TokenizerError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
-            err);
+            err).into()
     }
-    pub fn validation_error(pos: &Pos, message: String) -> Error {
-        return Error::ValidationError(
+    pub(crate) fn validation_error(pos: &Pos, message: String) -> Error {
+        ErrorEnum::ValidationError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
-            message);
+            message).into()
     }
-    pub fn decode_error(pos: &Pos, path: &String, message: String) -> Error {
-        return Error::DecodeError(
+    pub(crate) fn decode_error(pos: &Pos, path: &String, message: String) -> Error {
+        ErrorEnum::DecodeError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             path.clone(),
-            message);
+            message).into()
     }
-    pub fn preprocess_error(pos: &Pos, message: String) -> Error {
-        return Error::PreprocessError(
+    pub(crate) fn preprocess_error(pos: &Pos, message: String) -> Error {
+        ErrorEnum::PreprocessError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
-            message);
+            message).into()
     }
 }
 
@@ -160,5 +160,16 @@ impl ErrorCollector {
     /// Unwraps ErrorList from the collector
     pub fn unwrap(&self) -> ErrorList {
         self.0.borrow_mut().take().unwrap()
+    }
+}
+
+pub fn add_info<T>(pos: &Pos, path: &String, result: Result<T, Error>)
+    -> Result<T, Error>
+{
+    match result {
+        Err(Error(ErrorEnum::Custom(e))) => {
+            Err(Error::decode_error(pos, path, e))
+        }
+        result => result,
     }
 }

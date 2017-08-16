@@ -11,7 +11,7 @@ use serde::de::{self, DeserializeSeed, Visitor, SeqAccess};
 use serde::de::{MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 
 use ast::{Ast, Ast as A, Tag};
-use errors::{Error, ErrorCollector};
+use errors::{Error, add_info, ErrorCollector};
 
 type Result<T> = ::std::result::Result<T, Error>;
 
@@ -50,12 +50,7 @@ impl<'de> Deserializer<'de> {
     }
 
     fn map_err<T>(&self, result: Result<T>) -> Result<T> {
-        match result {
-            Err(Error::Custom(e)) => {
-                Err(Error::decode_error(&self.ast.pos(), &self.path, e))
-            }
-            result => result,
-        }
+        add_info(&self.ast.pos(), &self.path, result)
     }
 }
 
@@ -395,10 +390,10 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     {
         match *self.ast.tag() {
             Tag::GlobalTag(_) => unimplemented!(),
-            Tag::LocalTag(ref val) => Ok(visitor.visit_str(val)?),
+            Tag::LocalTag(ref val) => Ok(visitor.visit_str::<Error>(val)?),
             Tag::NonSpecific => match *self.ast {
                 A::Scalar(_, _, _, ref val) => {
-                    Ok(visitor.visit_string(val.replace("-", "_"))?)
+                    Ok(visitor.visit_string::<Error>(val.replace("-", "_"))?)
                 }
                 ref node => {
                     return Err(Error::decode_error(&node.pos(), &self.path,

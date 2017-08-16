@@ -10,7 +10,7 @@ use super::errors::ErrorCollector;
 use super::parser::parse;
 use super::validate::Validator;
 use {Options};
-use errors::{Error, ErrorList};
+use errors::{ErrorEnum, ErrorList};
 
 
 /// Parse configuration from a file
@@ -21,10 +21,12 @@ pub fn parse_config<'x, T: Deserialize<'x>, P: AsRef<Path>>(
     let filename = filename.as_ref();
     let err = ErrorCollector::new();
     let mut file = File::open(filename).map_err(
-        |e| err.into_fatal(Error::OpenError(filename.to_path_buf(), e)))?;
+        |e| err.into_fatal(ErrorEnum::OpenError(
+            filename.to_path_buf(), e).into()))?;
     let mut body = String::new();
     file.read_to_string(&mut body).map_err(
-        |e| err.into_fatal(Error::OpenError(filename.to_path_buf(), e)))?;
+        |e| err.into_fatal(ErrorEnum::OpenError(
+            filename.to_path_buf(), e).into()))?;
     let filename = Rc::new(format!("{}", filename.display()));
     let ast = parse(filename, &body,
         |doc| { ast::process(options, doc, &err) }
