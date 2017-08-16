@@ -187,12 +187,6 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
-    }
-
-    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
-        where V: Visitor<'de>
-    {
         let val = match *self.ast {
             A::Scalar(ref pos, _, _, ref val) => {
                 val
@@ -203,6 +197,12 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
             }
         };
         visitor.visit_str(val)
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'de>
+    {
+        self.deserialize_str(visitor)
     }
 
     // The `Serializer` implementation on the previous page serialized byte
@@ -562,6 +562,7 @@ mod test {
     use std::rc::Rc;
     use std::path::PathBuf;
     use std::collections::BTreeMap;
+    use std::time::Duration;
 
     use serde::Deserialize;
 
@@ -594,6 +595,17 @@ mod test {
     fn decode_bool() {
         assert_eq!(decode::<bool>("true"), true);
         assert_eq!(decode::<bool>("false"), false);
+    }
+
+    #[test]
+    fn decode_duration() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Dur {
+            #[serde(with="::duration")]
+            dur: Duration,
+        }
+        assert_eq!(decode::<Dur>("dur: 1m 15s"),
+            Dur { dur: Duration::new(75, 0) });
     }
 
     #[test]
