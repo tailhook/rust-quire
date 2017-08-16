@@ -32,12 +32,12 @@
 
 
 extern crate serde;
-extern crate regex;
 extern crate humantime;
 extern crate humannum;
 extern crate num_traits;
 #[macro_use] extern crate quick_error;
 #[cfg(test)] #[macro_use] extern crate serde_derive;
+#[cfg(feature="regex_expressions")] extern crate regex as re;
 
 pub use sky::{parse_config, parse_string};
 pub use options::{Options, Include};
@@ -52,10 +52,12 @@ mod tokenizer;
 mod options;
 mod parser;
 //mod emit;
-pub mod ast;
 mod de;
-pub mod validate;
 mod sky;
+pub mod ast;
+pub mod validate;
+pub mod duration;
+#[cfg(feature="regex_expressions")] pub mod regex;
 #[cfg(feature="json")] mod json;
 #[cfg(test)] mod test_errors;
 #[cfg(test)] mod test_util;
