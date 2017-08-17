@@ -183,7 +183,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
             }
             ref node => {
                 Err(Error::decode_error(&node.pos(), &self.path,
-                    format!("Can't parse {:?} as char", node)))
+                    format!("expected a single character, got {}", node)))
             }
         };
         visitor.visit_char(c?)
@@ -198,7 +198,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
             }
             ref node => {
                 return Err(Error::decode_error(&node.pos(), &self.path,
-                    format!("Can't parse {:?} as char", node)))
+                    format!("expected string, got {}", node)))
             }
         };
         visitor.visit_str(val)
@@ -291,7 +291,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
             }
             ref node => {
                 return Err(Error::decode_error(&node.pos(), &self.path,
-                    format!("sequence expected got {}", node)))
+                    format!("sequence expected, got {}", node)))
             }
         }
     }
@@ -342,7 +342,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
             }
             ref node => {
                 return Err(Error::decode_error(&node.pos(), &self.path,
-                    format!("mapping expected got {}", node)))
+                    format!("mapping expected, got {}", node)))
             }
         }
     }
@@ -398,7 +398,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
                 ref node => {
                     return Err(Error::decode_error(&node.pos(), &self.path,
                         format!("identifier (string, or tag) \
-                            expected got {}", node)))
+                            expected, got {}", node)))
                 }
             },
         }
@@ -660,7 +660,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected="sequence expected got Scalar")]
+    #[should_panic(expected="sequence expected, got Scalar")]
     fn decode_list_error() {
         decode::<Vec<String>>("test");
     }
@@ -820,7 +820,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "sequence expected got Scalar")]
+    #[should_panic(expected = "sequence expected, got Scalar")]
     fn test_struct_items_tag() {
         decode::<TestStruct2>("items:\n  'hello'");
     }
