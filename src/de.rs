@@ -268,7 +268,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        visitor.visit_newtype_struct(self)
     }
 
     // Deserialization of compound types like sequences and maps happens by
@@ -823,6 +823,14 @@ mod test {
     #[should_panic(expected = "sequence expected, got Scalar")]
     fn test_struct_items_tag() {
         decode::<TestStruct2>("items:\n  'hello'");
+    }
+
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
+    struct NewType(u8);
+
+    #[test]
+    fn test_newtype() {
+        assert_eq!(decode::<NewType>("12"), NewType(12));
     }
 
 }
