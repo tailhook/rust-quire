@@ -1,9 +1,34 @@
+sudo: false
+dist: trusty
 language: rust
-rust:
-- stable
-- beta
-- nightly
-script:
-- cargo build --verbose
-- cargo test --no-default-features
-- cargo test --verbose
+
+cache:
+- cargo
+
+before_cache:
+- rm -r $TRAVIS_BUILD_DIR/target/debug
+
+jobs:
+  include:
+  - os: linux
+    rust: stable
+  - os: linux
+    rust: beta
+  - os: linux
+    rust: nightly
+
+  # deploy
+  - stage: publish
+    os: linux
+    rust: stable
+    env:
+    # CARGO_TOKEN
+    - secure: "IPm2lHXAtXUY8pJtUMRV+jgLSCPKRJQyP3ax5aUhyaGlR83w4krEOcIpqQgu5a4rgw3SZUjDhxQMsRbzRZIehU+C3u2LTDpn0yycPnGmFRKVqnoS5dHdFMQ6IKLDZQK99MFZ/vMThipImnS9WFm2D1X/8XS31Mpn81Y7o54rIHk="
+    install: true
+    script: true
+
+    deploy:
+    - provider: script
+      script: 'cargo publish --verbose --token=$CARGO_TOKEN'
+      on:
+        tags: true
