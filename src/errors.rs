@@ -97,13 +97,13 @@ impl Error {
             message).into()
     }
 
-    pub fn custom_error<T: StdError + 'static>(err: T)
+    pub fn custom<T: StdError + 'static>(err: T)
         -> Error
     {
         ErrorEnum::CustomError(None, Box::new(err)).into()
     }
 
-    pub fn custom_error_at<T: StdError + 'static>(pos: &Pos, err: T)
+    pub fn custom_at<T: StdError + 'static>(pos: &Pos, err: T)
         -> Error
     {
         ErrorEnum::CustomError(

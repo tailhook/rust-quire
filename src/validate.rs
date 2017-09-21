@@ -1490,7 +1490,7 @@ mod test {
             match ast {
                 A::Scalar(pos, tag, kind, version) => {
                     if !version.starts_with("v") {
-                        err.add_error(Error::custom_error_at(
+                        err.add_error(Error::custom_at(
                             &pos,
                             VersionError("Version must start with 'v'")))
                     }
