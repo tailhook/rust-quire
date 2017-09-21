@@ -1,18 +1,18 @@
-==========
 Rust Quire
 ==========
 
-:Status: Beta
+*Status: Beta*
 
 
-The ``rust-quire`` is a Rust_ port for quire_ configuration parsing library.
-It also contains YAML_ parser (however, it tuned for configuration parsing
-rather than generic YAML parser, e.g. it assumes YAML always fits memory).
+The ``rust-quire`` is a [Rust][1] port for [quire][2] configuration parsing
+library.  It also contains [YAML][3] parser (however, it tuned for
+configuration parsing rather than generic YAML parser, e.g. it assumes YAML
+always fits memory).
 
 
-.. _quire: http://github.com/tailhook/quire
-.. _YAML: http://yaml.org
-.. _Rust: http://rust-lang.org
+[1]: http://github.com/tailhook/quire
+[2]: http://yaml.org
+[3]: http://rust-lang.org
 
 
 License
