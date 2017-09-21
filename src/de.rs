@@ -7,7 +7,7 @@ use std::slice;
 use std::str::FromStr;
 
 
-use serde::de::{self, DeserializeSeed, Visitor, SeqAccess, Error as DeError};
+use serde::de::{self, DeserializeSeed, Visitor, SeqAccess};
 use serde::de::{MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 
 use ast::{Ast, Ast as A, Tag};
@@ -70,7 +70,8 @@ impl<'a> de::Deserializer<'a> for KeyDeserializer {
             "true" => true,
             "false" => false,
             _ => {
-                return Err(Error::custom(format!("bad boolean {:?}", self.0)));
+                let e: Error = de::Error::custom(format!("bad boolean {:?}", self.0));
+                return Err(e);
             }
         };
         visitor.visit_bool(value)
@@ -140,10 +141,12 @@ impl<'a> de::Deserializer<'a> for KeyDeserializer {
         where V: Visitor<'a>
     {
         let mut chars = self.0.chars();
-        let val = chars.next()
-            .ok_or_else(|| Error::custom("single character expected"))?;
+        let val = (chars.next()
+            .ok_or_else(|| {
+                de::Error::custom("single character expected")
+            }) as Result<_>)?;
         if chars.next().is_some() {
-            return Err(Error::custom("single character expected"))
+            return Err(de::Error::custom("single character expected"))
         }
         visitor.visit_char(val)
     }
@@ -216,7 +219,7 @@ impl<'a> de::Deserializer<'a> for KeyDeserializer {
     fn deserialize_seq<V>(self, _visitor: V) -> Result<V::Value>
         where V: Visitor<'a>
     {
-        Err(Error::custom("sequence can't be mapping key in quire"))
+        Err(de::Error::custom("sequence can't be mapping key in quire"))
     }
 
     fn deserialize_tuple<V>(
@@ -226,7 +229,7 @@ impl<'a> de::Deserializer<'a> for KeyDeserializer {
     ) -> Result<V::Value>
         where V: Visitor<'a>
     {
-        Err(Error::custom("tuple can't be mapping key in quire"))
+        Err(de::Error::custom("tuple can't be mapping key in quire"))
     }
 
     // Tuple structs look just like sequences in JSON.
@@ -238,13 +241,13 @@ impl<'a> de::Deserializer<'a> for KeyDeserializer {
     ) -> Result<V::Value>
         where V: Visitor<'a>
     {
-        Err(Error::custom("tuple struct can't be mapping key in quire"))
+        Err(de::Error::custom("tuple struct can't be mapping key in quire"))
     }
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'a>
     {
-        Err(Error::custom("mapping can't be mapping key in quire"))
+        Err(de::Error::custom("mapping can't be mapping key in quire"))
     }
     fn deserialize_struct<V>(
         self,
@@ -254,7 +257,7 @@ impl<'a> de::Deserializer<'a> for KeyDeserializer {
     ) -> Result<V::Value>
         where V: Visitor<'a>
     {
-        Err(Error::custom("struct can't be mapping key in quire"))
+        Err(de::Error::custom("struct can't be mapping key in quire"))
     }
 
     fn deserialize_enum<V>(
@@ -266,7 +269,7 @@ impl<'a> de::Deserializer<'a> for KeyDeserializer {
         where V: Visitor<'a>
     {
         // TODO(tailhook) some support might work
-        Err(Error::custom("enum can't be mapping key in quire"))
+        Err(de::Error::custom("enum can't be mapping key in quire"))
     }
 
     fn deserialize_identifier<V>(

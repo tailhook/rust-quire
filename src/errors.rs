@@ -1,6 +1,7 @@
 use std::io;
 use std::fmt;
 use std::rc::Rc;
+use std::error::Error as StdError;
 use std::slice::Iter;
 use std::path::{Path, PathBuf};
 use std::cell::RefCell;
@@ -42,16 +43,26 @@ quick_error! {
                     filename=pos.0, line=pos.1, offset=pos.2,
                     path=path, text=msg)
         }
-        Custom(message: String) {
-            display("{}", message)
-            description(message)
+        SerdeError(msg: String) {
+            display("{}", msg)
+        }
+        CustomError(pos: Option<ErrorPos>, err: Box<StdError>) {
+            display(x) -> ("{loc}{err}",
+                loc=if let &Some(ref p) = pos {
+                    format!("{filename}:{line}:{offset}: ",
+                        filename=p.0, line=p.1, offset=p.2)
+                } else {
+                    "".to_string()
+                },
+                err=err)
+            cause(&**err)
         }
     }
 }
 
 impl ::serde::de::Error for Error {
-    fn custom<T: ::std::fmt::Display>(msg: T) -> Self {
-        ErrorEnum::Custom(format!("{}", msg)).into()
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        ErrorEnum::SerdeError(format!("{}", msg)).into()
     }
 }
 
@@ -84,6 +95,30 @@ impl Error {
         ErrorEnum::PreprocessError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             message).into()
+    }
+
+    pub fn custom<T: StdError + 'static>(err: T)
+        -> Error
+    {
+        ErrorEnum::CustomError(None, Box::new(err)).into()
+    }
+
+    pub fn custom_at<T: StdError + 'static>(pos: &Pos, err: T)
+        -> Error
+    {
+        ErrorEnum::CustomError(
+            Some(ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset)),
+            Box::new(err)).into()
+    }
+
+    pub fn downcast_ref<T: StdError + 'static>(&self) -> Option<&T> {
+        match self.0 {
+            ErrorEnum::OpenError(_, ref e) => {
+                (e as &StdError).downcast_ref::<T>()
+            },
+            ErrorEnum::CustomError(_, ref e) => e.downcast_ref::<T>(),
+            _ => None,
+        }
     }
 }
 
@@ -170,8 +205,8 @@ pub fn add_info<T>(pos: &Pos, path: &String, result: Result<T, Error>)
     -> Result<T, Error>
 {
     match result {
-        Err(Error(ErrorEnum::Custom(e))) => {
-            Err(Error::decode_error(pos, path, e))
+        Err(Error(ErrorEnum::SerdeError(e))) => {
+            Err(Error::decode_error(pos, path, format!("{}", e)))
         }
         result => result,
     }

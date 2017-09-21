@@ -713,10 +713,13 @@ impl Validator for Nothing {
 
 #[cfg(test)]
 mod test {
+    use std::fmt;
     use std::rc::Rc;
     use std::path::PathBuf;
     use std::collections::BTreeMap;
     use std::collections::HashMap;
+    use std::error::Error as StdError;
+
     use serde::Deserialize;
 
     use {Options};
@@ -728,8 +731,9 @@ mod test {
     use {parse_string, ErrorList};
     use validate::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
     use validate::{Enum, Nothing, Directory, Anything};
-    use errors::ErrorCollector;
+    use errors::{Error, ErrorCollector};
     use self::TestEnum::*;
+    use super::Pos;
 
     #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
     struct TestStruct {
@@ -1452,5 +1456,72 @@ mod test {
     #[test]
     fn test_enum_def_tag() {
         assert_eq!(parse_enum_def("!Alpha"), TestEnumDef::Alpha);
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+    struct Version;
+
+    #[derive(Debug)]
+    struct VersionError(&'static str);
+
+    impl StdError for VersionError {
+        fn description(&self) -> &str { "Version Error" }
+        fn cause(&self) -> Option<&StdError> { None }
+    }
+
+    impl fmt::Display for VersionError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "{}: {}", self.description(), self.0)
+        }
+    }
+
+    impl Version {
+        fn new() -> Version {
+            Version {}
+        }
+    }
+
+    impl Validator for Version {
+        fn default(&self, pos: Pos) -> Option<A> {
+            None
+        }
+
+        fn validate(&self, ast: A, err: &ErrorCollector) -> A {
+            match ast {
+                A::Scalar(pos, tag, kind, version) => {
+                    if !version.starts_with("v") {
+                        err.add_error(Error::custom_at(
+                            &pos,
+                            VersionError("Version must start with 'v'")))
+                    }
+                    A::Scalar(pos, tag, kind, version)
+                },
+                ast => {
+                    err.add_error(Error::validation_error(
+                        &ast.pos(), format!("Version must be a scalar value")));
+                    ast
+                },
+            }
+        }
+    }
+
+    fn parse_version(body: &str) -> Result<Version, ErrorList> {
+        let validator = Version::new();
+        parse_string("<inline text>", body, &validator, &Options::default())
+    }
+
+    #[test]
+    fn test_custom_error() {
+        let err = parse_version("0.0.1").unwrap_err();
+        let error = err.errors().nth(0).unwrap();
+        assert_eq!(
+            format!("{}", error),
+            "<inline text>:1:1: Version Error: Version must start with 'v'");
+        match error.downcast_ref::<VersionError>() {
+            Some(&VersionError(msg)) => {
+                assert_eq!(msg, "Version must start with 'v'")
+            },
+            e => panic!("Custom error must be VersionError but was: {:?}", e),
+        }
     }
 }
