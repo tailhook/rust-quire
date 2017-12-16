@@ -13,11 +13,18 @@ pub enum Include<'a> {
     // TODO(tailhook)
     // /// Looks like `!*Include some/file.yaml:some_key`
     // SubKey { filename: &'a str, key: &'a str },
-    // /// Looks like `!*IncludeSeq some/*.yaml`
-    // Sequence { directory: &'a str, prefix: &'a str, suffix: &'a str },
-    // /// Looks like `!*IncludeMap some/*.yaml`.
-    // /// Everything matched by star is used as a key
-    // Mapping { directory: &'a str, prefix: &'a str, suffix: &'a str },
+    /// Looks like `!*IncludeSeq some/*.yaml`
+    ///
+    /// It's expected that included files are sorted (both `glob` and
+    /// `capturing_glob` support that).
+    Sequence { pattern: &'a str },
+    /// Looks like `!*IncludeMap some/(*).yaml`.
+    ///
+    /// Everything in parenthesis should be used as a key
+    /// Use `capturing_glob` crate to parse and match files
+    Mapping { pattern: &'a str },
+    #[doc(hidden)]
+    __Nonexhaustive,
 }
 
 /// Options for parsing configuration file

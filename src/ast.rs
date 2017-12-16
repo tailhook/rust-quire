@@ -179,6 +179,14 @@ impl<'a, 'b: 'a> Context<'a, 'b> {
                 return self.options.include(&tok.start,
                     &Include::File { filename: val }, self.err);
             }
+            P::Scalar(Some("!*IncludeSeq"), _anch, ref val, ref tok) => {
+                return self.options.include(&tok.start,
+                    &Include::Sequence { pattern: val }, self.err);
+            }
+            P::Scalar(Some("!*IncludeMap"), _anch, ref val, ref tok) => {
+                return self.options.include(&tok.start,
+                    &Include::Mapping { pattern: val }, self.err);
+            }
             P::Scalar(ref tag, _, ref val, ref tok) => {
                 let pos = tok.start.clone();
                 let tag = self.string_to_tag(&pos, tag);

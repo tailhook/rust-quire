@@ -5,7 +5,7 @@ use serde_json::ser::Serializer;
 use serde_json::de::{from_str, from_slice};
 use serde_transcode::transcode;
 
-use ast::Ast;
+use ast::{Ast, Tag};
 use ast::process;
 use de::Deserializer;
 use errors::ErrorCollector;
@@ -415,6 +415,33 @@ fn assert_yaml_eq_json_incl(a: &'static str, inc_data: &'static str,
                 ).map_err(|e| err.add_error(e))
                  .unwrap_or_else(|_| Ast::void(pos))
             }
+            Include::Sequence { pattern } => {
+                let inc1 = parse("inc1.yaml".to_string().into(), inc_data,
+                        |doc| { process(&opt, doc, err) },
+                    ).map_err(|e| err.add_error(e))
+                     .unwrap_or_else(|_| Ast::void(pos));
+                let inc2 = parse("inc2.yaml".to_string().into(), inc_data,
+                        |doc| { process(&opt, doc, err) },
+                    ).map_err(|e| err.add_error(e))
+                     .unwrap_or_else(|_| Ast::void(pos));
+                 Ast::Seq(pos.clone(), Tag::NonSpecific,
+                          vec![inc1, inc2])
+            }
+            Include::Mapping { pattern } => {
+                let inc1 = parse("inc1.yaml".to_string().into(), inc_data,
+                        |doc| { process(&opt, doc, err) },
+                    ).map_err(|e| err.add_error(e))
+                     .unwrap_or_else(|_| Ast::void(pos));
+                let inc2 = parse("inc2.yaml".to_string().into(), inc_data,
+                        |doc| { process(&opt, doc, err) },
+                    ).map_err(|e| err.add_error(e))
+                     .unwrap_or_else(|_| Ast::void(pos));
+                Ast::Map(pos.clone(), Tag::NonSpecific, vec![
+                    ("inc1".into(), inc1),
+                    ("inc2".into(), inc2),
+                ].into_iter().collect())
+            }
+            _ => unimplemented!(),
         }
     });
     let err = ErrorCollector::new();
@@ -453,6 +480,22 @@ fn test_incl_merge() {
         "x: 7\n<<: !*Include 'y.yaml'",
         "y: 1",
         r#"{"x": "7", "y": "1"}"#);
+}
+
+#[test]
+fn test_incl_list() {
+    assert_yaml_eq_json_incl(
+        "x: !*IncludeSeq '*.yaml'",
+        "y: 1",
+        r#"{"x": [{"y": "1"}, {"y": "1"}]}"#);
+}
+
+#[test]
+fn test_incl_map() {
+    assert_yaml_eq_json_incl(
+        "x: !*IncludeMap '(*).yaml'",
+        "y: 1",
+        r#"{"x": {"inc1": {"y": "1"}, "inc2": {"y": "1"}}}"#);
 }
 
 #[test]
