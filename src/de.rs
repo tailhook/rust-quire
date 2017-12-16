@@ -511,7 +511,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     // Deserialization of compound types like sequences and maps happens by
     // passing the visitor an "Access" object that gives it the ability to
     // iterate through the data contained in the sequence.
-    fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value>
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
         match *self.ast {
@@ -561,7 +561,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
         unimplemented!();
     }
 
-    fn deserialize_map<V>(mut self, visitor: V) -> Result<V::Value>
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
         match *self.ast {
