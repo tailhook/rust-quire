@@ -619,8 +619,11 @@ fn _parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
         tokiter.next();
         indent = true;
     }
-    let anchor = maybe_parse_anchor(tokiter);
+    let mut anchor = maybe_parse_anchor(tokiter);
     let tag = maybe_parse_tag(tokiter);
+    if anchor.is_none() {
+        anchor = maybe_parse_anchor(tokiter);
+    }
     tok = tokiter.peek(0);
     if !indent && tok.kind == T::Indent {  // Otherwise indent is after tag
         tokiter.next();

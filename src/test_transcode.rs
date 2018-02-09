@@ -402,6 +402,16 @@ fn yaml_tag_null_in_map() {
         r#"{"x": {"a": null, "b": "x"}}"#);
 }
 
+#[test]
+fn yaml_anchor_tag() {
+    assert_yaml_eq_json("x: &x !Tag y", r#"{"x": "y"}"#);
+}
+
+#[test]
+fn yaml_tag_anchor() {
+    assert_yaml_eq_json("x: !Tag &x y", r#"{"x": "y"}"#);
+}
+
 fn assert_yaml_eq_json_incl(a: &'static str, inc_data: &'static str,
                             b: &'static str)
 {
