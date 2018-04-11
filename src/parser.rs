@@ -144,13 +144,22 @@ fn plain_value<'a>(tok: &Token<'a>) -> Result<String, Error> {
                             Some('L') => res.push('\u{2028}'),
                             Some('P') => res.push('\u{2029}'),
                             Some('x') => {
-                                unimplemented!();
+                                // TODO(tailhook) support hex escapes
+                                return Err(Error::parse_error(&tok.start,
+                                    "hex escapes aren't supported yet"
+                                    .into()));
                             },
                             Some('u') => {
-                                unimplemented!();
+                                // TODO(tailhook) support unicode escapes
+                                return Err(Error::parse_error(&tok.start,
+                                    "unicode escapes aren't supported yet"
+                                    .into()));
                             },
                             Some('U') => {
-                                unimplemented!();
+                                // TODO(tailhook) support unicode escapes
+                                return Err(Error::parse_error(&tok.start,
+                                    "extended unicode escapes \
+                                        aren't supported yet".into()));
                             },
                             Some('\n') => {
                                 escaped_space = res.len();
@@ -211,11 +220,15 @@ fn plain_value<'a>(tok: &Token<'a>) -> Result<String, Error> {
                     res.push('\n');
                 }
             } else {
-                unimplemented!();
+                // TODO(tailhook) better support of block literals
+                return Err(Error::parse_error(&tok.start,
+                    "only bare block literals are supported yet".into()));
             }
         }
         T::Folded => {
-            unimplemented!();
+            // TODO(tailhook) support block literals
+            return Err(Error::parse_error(&tok.start,
+                "folded literals aren't supported yet".into()));
         }
         _ => unreachable!(),
     }
