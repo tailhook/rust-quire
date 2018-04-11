@@ -344,6 +344,11 @@ fn yaml_literal_with_empty_line_in_a_list() {
 }
 
 #[test]
+fn yaml_literal_with_empty_line_and_bad_newlines_in_a_list() {
+    assert_yaml_eq_json("- |\r\n  val\r\n\r\n  line2", r#"["val\n\nline2\n"]"#);
+}
+
+#[test]
 fn yaml_words_with_space() {
     assert_yaml_eq_json("   a\nb", r#""a b""#);
 }
