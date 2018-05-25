@@ -33,6 +33,7 @@ extern crate humannum;
 extern crate num_traits;
 extern crate serde;
 #[cfg(test)] #[macro_use] extern crate serde_derive;
+#[cfg(test)] extern crate serde_humantime;
 #[cfg(test)] extern crate serde_json;
 #[cfg(test)] extern crate serde_transcode;
 #[macro_use] extern crate quick_error;

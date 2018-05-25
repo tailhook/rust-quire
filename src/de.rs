@@ -827,7 +827,7 @@ mod test {
     fn decode_duration() {
         #[derive(Deserialize, PartialEq, Debug)]
         struct Dur {
-            #[serde(with="::duration")]
+            #[serde(with="::serde_humantime")]
             dur: Duration,
         }
         assert_eq!(decode::<Dur>("dur: 1m 15s"),
