@@ -836,7 +836,7 @@ mod test {
                 |doc| { process(&Options::default(), doc, &err) }
             ).map_err(|e| err.into_fatal(e)).unwrap();
         let ast = str_val.validate(ast, &err);
-        match Deserialize::deserialize(&mut Deserializer::new(&ast, &err)) {
+        match Deserialize::deserialize(&mut Deserializer::new(&ast)) {
             Ok(val) => {
                 (val, err.unwrap().errors().map(|x| x.to_string()).collect())
             }

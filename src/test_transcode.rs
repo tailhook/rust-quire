@@ -19,7 +19,7 @@ fn assert_yaml_eq_json(a: &'static str, b: &'static str) {
         |doc| { process(&Options::default(), doc, &err) },
         ).map_err(|e| err.into_fatal(e)).unwrap();
     err.into_result(()).unwrap();
-    let mut de = Deserializer::new(&ast, &err);
+    let mut de = Deserializer::new(&ast);
     let mut buf = Vec::with_capacity(100);
     transcode(&mut de, &mut Serializer::new(&mut buf)).unwrap();
     let aj: Value = from_slice(&buf).unwrap();
@@ -464,7 +464,7 @@ fn assert_yaml_eq_json_incl(a: &'static str, inc_data: &'static str,
         |doc| { process(&opt, doc, &err) },
         ).map_err(|e| err.into_fatal(e)).unwrap();
     err.into_result(()).unwrap();
-    let mut de = Deserializer::new(&ast, &err);
+    let mut de = Deserializer::new(&ast);
     let mut buf = Vec::with_capacity(100);
     transcode(&mut de, &mut Serializer::new(&mut buf)).unwrap();
     let aj: Value = from_slice(&buf).unwrap();

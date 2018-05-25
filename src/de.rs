@@ -11,7 +11,7 @@ use serde::de::{self, DeserializeSeed, Visitor, SeqAccess};
 use serde::de::{MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 
 use ast::{Ast, Ast as A, Tag};
-use errors::{Error, add_info, ErrorCollector};
+use errors::{Error, add_info};
 
 type Result<T> = ::std::result::Result<T, Error>;
 
@@ -24,7 +24,6 @@ pub enum Mode {
 pub struct Deserializer<'a> {
     ast: &'a Ast,
     mode: Mode,
-    err: ErrorCollector,
     path: String,
 }
 
@@ -37,15 +36,10 @@ struct VariantVisitor<'a, 'b: 'a>(&'a mut Deserializer<'b>);
 struct KeyDeserializer(String);
 
 impl<'de> Deserializer<'de> {
-    // By convention, `Deserializer` constructors are named like `from_xyz`.
-    // That way basic use cases are satisfied by something like
-    // `serde_json::from_str(...)` while advanced use cases that require a
-    // deserializer can make one with `serde_json::Deserializer::from_str(...)`.
-    pub fn new<'x>(ast: &'x Ast, err: &ErrorCollector) -> Deserializer<'x> {
+    pub fn new<'x>(ast: &'x Ast) -> Deserializer<'x> {
         Deserializer {
             ast: &ast,
             mode: Mode::Normal,
-            err: err.clone(),
             path: "".to_string(),
         }
     }
@@ -811,7 +805,7 @@ mod test {
                 data,
                 |doc| { process(&Options::default(), doc, &err) }
             ).map_err(|e| err.into_fatal(e)).unwrap();
-        T::deserialize(&mut Deserializer::new(&ast, &err))
+        T::deserialize(&mut Deserializer::new(&ast))
         .map_err(|e| err.into_fatal(e))
         .unwrap()
     }

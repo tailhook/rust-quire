@@ -26,7 +26,7 @@ fn decode<'x, T: Deserialize<'x>>(data: &str) -> Result<T, String> {
             data,
             |doc| { process(&Options::default(), doc, &err) }
         ).map_err(|e| err.into_fatal(e).to_string())?;
-    T::deserialize(&mut Deserializer::new(&ast, &err))
+    T::deserialize(&mut Deserializer::new(&ast))
     .map_err(|e| err.into_fatal(e))
     .and_then(|v| err.into_result(v))
     .map_err(|e| e.to_string())

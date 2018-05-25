@@ -32,7 +32,7 @@ pub fn parse_config<'x, T: Deserialize<'x>, P: AsRef<Path>>(
         |doc| { ast::process(options, doc, &err) }
         ).map_err(|e| err.into_fatal(e))?;
     let ast = validator.validate(ast, &err);
-    let res = Deserialize::deserialize(&mut Deserializer::new(&ast, &err))
+    let res = Deserialize::deserialize(&mut Deserializer::new(&ast))
         .map_err(|e| err.into_fatal(e))?;
     return err.into_result(res);
 }
@@ -47,7 +47,7 @@ pub fn parse_string<'x, T: Deserialize<'x>>(filename: &str, data: &str,
             |doc| { ast::process(options, doc, &err) }
         ).map_err(|e| err.into_fatal(e))?;
     let ast = validator.validate(ast, &err);
-    let res = Deserialize::deserialize(&mut Deserializer::new(&ast, &err))
+    let res = Deserialize::deserialize(&mut Deserializer::new(&ast))
         .map_err(|e| err.into_fatal(e))?;
     return err.into_result(res);
 }

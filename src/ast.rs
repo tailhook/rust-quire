@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use super::tokenizer::Pos;
 use super::errors::{Error, ErrorCollector};
 use super::parser::Node as P;
-use super::parser::{Directive, Node, Document};
+use super::parser::{Node, Document};
 use super::tokenizer::TokenType as T;
 use self::Ast::*;
 use self::NullKind::*;
@@ -118,7 +118,6 @@ impl Ast {
 
 struct Context<'a, 'b: 'a> {
     options: &'a Options<'b>,
-    directives: Vec<Directive<'a>>,
     err: &'a ErrorCollector,
 }
 
@@ -379,7 +378,6 @@ impl<'a, 'b: 'a> Context<'a, 'b> {
 pub fn process(opt: &Options, doc: Document, err: &ErrorCollector) -> Ast {
     let mut ctx = Context {
         options: opt,
-        directives: doc.directives,
         err: err,
     };
     return ctx.process(&doc.root);

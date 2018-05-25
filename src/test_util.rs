@@ -16,7 +16,7 @@ pub fn decode<'x, T: Deserialize<'x>>(data: &str) -> T {
             data,
             |doc| { process(&Options::default(), doc, &err) }
         ).map_err(|e| err.into_fatal(e)).unwrap();
-    Deserialize::deserialize(&mut Deserializer::new(&ast, &err))
+    Deserialize::deserialize(&mut Deserializer::new(&ast))
     .map_err(|e| err.into_fatal(e))
     .unwrap()
 }
