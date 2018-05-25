@@ -16,11 +16,6 @@ humantime = "1.0.0"
 num-traits = "0.1.36"
 humannum = "0.1.0"
 serde = "1.0.10"
-regex = {version="0.2.2", optional=true}
-
-[features]
-regex_expressions = ["regex"]
-default = ["regex_expressions"]
 
 [dev-dependencies]
 serde_derive = "1.0.10"
