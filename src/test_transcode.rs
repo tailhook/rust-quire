@@ -430,7 +430,7 @@ fn assert_yaml_eq_json_incl(a: &'static str, inc_data: &'static str,
                 ).map_err(|e| err.add_error(e))
                  .unwrap_or_else(|_| Ast::void(pos))
             }
-            Include::Sequence { pattern } => {
+            Include::Sequence { .. } => {
                 let inc1 = parse("inc1.yaml".to_string().into(), inc_data,
                         |doc| { process(&opt, doc, err) },
                     ).map_err(|e| err.add_error(e))
@@ -442,7 +442,7 @@ fn assert_yaml_eq_json_incl(a: &'static str, inc_data: &'static str,
                  Ast::Seq(pos.clone(), Tag::NonSpecific,
                           vec![inc1, inc2])
             }
-            Include::Mapping { pattern } => {
+            Include::Mapping { .. } => {
                 let inc1 = parse("inc1.yaml".to_string().into(), inc_data,
                         |doc| { process(&opt, doc, err) },
                     ).map_err(|e| err.add_error(e))

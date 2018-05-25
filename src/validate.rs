@@ -1010,7 +1010,7 @@ mod test {
     fn parse_seq(body: &str) -> Vec<usize> {
         fn split(ast: A) -> Vec<A> {
             match ast {
-                A::Scalar(pos, _, style, value) => {
+                A::Scalar(pos, _, _style, value) => {
                     value
                         .split(" ")
                         .map(|v| {
@@ -1032,7 +1032,7 @@ mod test {
     {
         fn split(ast: A) -> Vec<A> {
             match ast {
-                A::Scalar(pos, _, style, value) => {
+                A::Scalar(pos, _, _style, value) => {
                     value
                         .split(" ")
                         .map(|v| {
@@ -1468,7 +1468,7 @@ mod test {
     }
 
     impl Validator for Version {
-        fn default(&self, pos: Pos) -> Option<A> {
+        fn default(&self, _: Pos) -> Option<A> {
             None
         }
 
