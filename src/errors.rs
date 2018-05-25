@@ -11,6 +11,10 @@ use super::tokenizer::{self, Pos};
 #[derive(Clone, Debug)]
 pub struct ErrorPos(String, usize, usize);
 
+pub trait AssertSendSync: Send + Sync {}
+impl AssertSendSync for Error {}
+impl AssertSendSync for ErrorList {}
+
 quick_error! {
     /// Single error when of parsing configuration file
     ///
@@ -46,7 +50,7 @@ quick_error! {
         SerdeError(msg: String) {
             display("{}", msg)
         }
-        CustomError(pos: Option<ErrorPos>, err: Box<StdError>) {
+        CustomError(pos: Option<ErrorPos>, err: Box<StdError+Send+Sync>) {
             display(x) -> ("{loc}{err}",
                 loc=if let &Some(ref p) = pos {
                     format!("{filename}:{line}:{offset}: ",
@@ -97,13 +101,13 @@ impl Error {
             message).into()
     }
 
-    pub fn custom<T: StdError + 'static>(err: T)
+    pub fn custom<T: StdError + Send + Sync + 'static>(err: T)
         -> Error
     {
         ErrorEnum::CustomError(None, Box::new(err)).into()
     }
 
-    pub fn custom_at<T: StdError + 'static>(pos: &Pos, err: T)
+    pub fn custom_at<T: StdError + Send + Sync + 'static>(pos: &Pos, err: T)
         -> Error
     {
         ErrorEnum::CustomError(
