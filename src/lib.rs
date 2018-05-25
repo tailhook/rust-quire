@@ -29,7 +29,6 @@
 
 
 extern crate humannum;
-extern crate humantime;
 extern crate num_traits;
 extern crate serde;
 #[cfg(test)] #[macro_use] extern crate serde_derive;
@@ -54,6 +53,5 @@ mod de;
 mod sky;
 pub mod ast;
 pub mod validate;
-pub mod duration;
 #[cfg(test)] mod test_errors;
 #[cfg(test)] mod test_transcode;
