@@ -1,3 +1,5 @@
+use std::fmt;
+
 use ast::Ast;
 use errors::{Error, ErrorCollector};
 use tokenizer::Pos;
@@ -7,6 +9,7 @@ pub type IncludeHandler<'a> =
     Fn(&Pos, &Include, &ErrorCollector, &Options) -> Ast + 'a;
 
 /// The kind of include tag that encountered in config
+#[derive(Debug)]
 pub enum Include<'a> {
     /// Looks like `!Include some/file.yaml`
     File { filename: &'a str },
@@ -67,5 +70,12 @@ impl<'a> Options<'a> {
     {
         self.include_handler = Box::new(f);
         self
+    }
+}
+
+impl<'a> fmt::Debug for Options<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Options")
+        .finish()
     }
 }

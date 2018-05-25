@@ -6,7 +6,7 @@
 //! AST, but it works on the AST level, so it must put something that decoder
 //! is able to decode in the result.
 
-use std::fmt::{Display};
+use std::fmt::{Display, Debug};
 use std::path::{PathBuf, Path, Component};
 use std::collections::{BTreeMap, HashSet};
 
@@ -22,7 +22,7 @@ use super::ast::ScalarKind::{Quoted, Plain};
 
 
 /// The trait every validator implements
-pub trait Validator {
+pub trait Validator: Debug {
     fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast;
     fn default(&self, pos: Pos) -> Option<Ast>;
 }
@@ -39,6 +39,7 @@ pub trait Validator {
 /// But some of the scalars might have better validators, for example
 /// `Numeric` has minimum and maximum value as well as decodes human-friendly
 /// unit values
+#[derive(Debug)]
 pub struct Scalar {
     optional: bool,
     default: Option<String>,
@@ -115,6 +116,7 @@ impl Validator for Scalar {
 ///
 /// Similar to `Scalar` but validates that value is a number and also allows
 /// limit the range of the value.
+#[derive(Debug)]
 pub struct Numeric<T:PrimInt=i64> {
     optional: bool,
     default: Option<T>,
@@ -199,6 +201,7 @@ impl Validator for Numeric {
 /// Directory validator
 ///
 /// Similar to `Scalar` but also allows to force absolute or relative paths
+#[derive(Debug)]
 pub struct Directory {
     optional: bool,
     default: Option<PathBuf>,
@@ -293,6 +296,7 @@ impl Validator for Directory {
 /// the structure. This feature is useful to upgrade scalar value to
 /// a structure maintaining backwards compatiblity as well as for configuring
 /// common case more easily.
+#[derive(Debug)]
 pub struct Structure<'a> {
     members: Vec<(String, Box<Validator + 'a>)>,
     optional: bool,
@@ -409,6 +413,7 @@ impl<'a> Validator for Structure<'a> {
 ///   one enum field is supported. Structure enums `enum T { a { x: u8 }` are
 ///   equivalent to an option with that struct as single value
 ///   `struct A { x: u8 }; enum T { a(A) }`
+#[derive(Debug)]
 pub struct Enum<'a> {
     options: Vec<(String, Box<Validator + 'a>)>,
     optional: bool,
@@ -529,6 +534,7 @@ impl<'a> Validator for Enum<'a> {
 ///
 /// This type has type for a key and value and also can be converted
 /// from scalar as shortcut.
+#[derive(Debug)]
 pub struct Mapping<'a> {
     key_element: Box<Validator + 'a>,
     value_element: Box<Validator + 'a>,
@@ -595,6 +601,7 @@ impl<'a> Validator for Mapping<'a> {
 ///
 /// This validator can also parse a scalar and convert it into a list in
 /// application-specific way.
+#[derive(Debug)]
 pub struct Sequence<'a> {
     element: Box<Validator + 'a>,
     from_scalar: Option<fn (scalar: Ast) -> Vec<Ast>>,
@@ -666,6 +673,7 @@ impl<'a> Validator for Sequence<'a> {
 ///
 /// It's useful to accept any value (of any type) at some place, or to
 /// rely on `Deserialize::deserialize` for doing validation.
+#[derive(Debug)]
 pub struct Anything;
 
 impl Validator for Anything {
@@ -680,6 +688,7 @@ impl Validator for Anything {
 /// Only expect null at this place
 ///
 /// This is mostly useful for enums, i.e. `!SomeTag null`
+#[derive(Debug)]
 pub struct Nothing;
 
 impl Validator for Nothing {

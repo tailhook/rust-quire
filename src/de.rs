@@ -21,6 +21,7 @@ pub enum Mode {
     Enum,
 }
 
+#[derive(Debug)]
 pub struct Deserializer<'a> {
     ast: &'a Ast,
     mode: Mode,

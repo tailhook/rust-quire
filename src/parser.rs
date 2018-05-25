@@ -235,8 +235,10 @@ fn plain_value<'a>(tok: &Token<'a>) -> Result<String, Error> {
     return Ok(res);
 }
 
+#[derive(Debug)]
 pub struct Directive<'a>(&'a Token<'a>);
 
+#[derive(Debug)]
 pub struct Document<'a> {
     pub directives: Vec<Directive<'a>>,
     pub root: Node<'a>,

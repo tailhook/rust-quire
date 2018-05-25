@@ -160,7 +160,7 @@ impl fmt::Debug for ErrorList {
 ///
 /// It's exposed only to handler of include file. Use `ErrorCollector`
 /// to submit your errors from include file handler.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ErrorCollector(Rc<RefCell<Option<ErrorList>>>);
 
 impl ErrorCollector {

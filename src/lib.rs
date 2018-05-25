@@ -26,6 +26,7 @@
 //!
 //! ```
 //!
+#![warn(missing_debug_implementations)]
 
 
 extern crate humannum;
