@@ -190,7 +190,7 @@ impl<'a> de::Deserializer<'a> for KeyDeserializer {
         }
     }
 
-    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value>
+    fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value>
         where V: Visitor<'a>
     {
         unimplemented!();
@@ -199,7 +199,7 @@ impl<'a> de::Deserializer<'a> for KeyDeserializer {
     fn deserialize_unit_struct<V>(
         self,
         _name: &'static str,
-        visitor: V
+        _visitor: V
     ) -> Result<V::Value>
         where V: Visitor<'a>
     {
@@ -244,7 +244,7 @@ impl<'a> de::Deserializer<'a> for KeyDeserializer {
         Err(de::Error::custom("tuple struct can't be mapping key in quire"))
     }
 
-    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
+    fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value>
         where V: Visitor<'a>
     {
         Err(de::Error::custom("mapping can't be mapping key in quire"))
@@ -430,7 +430,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
         where V: Visitor<'de>
     {
         let val = match *self.ast {
-            A::Scalar(ref pos, _, _, ref val) => {
+            A::Scalar(_, _, _, ref val) => {
                 val
             }
             ref node => {
@@ -542,7 +542,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_tuple<V>(
         self,
         _len: usize,
-        visitor: V
+        _visitor: V
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
@@ -554,7 +554,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
         self,
         _name: &'static str,
         _len: usize,
-        visitor: V
+        _visitor: V
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
@@ -593,7 +593,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_struct<V>(
         self,
         _name: &'static str,
-        fields: &'static [&'static str],
+        _fields: &'static [&'static str],
         visitor: V
     ) -> Result<V::Value>
         where V: Visitor<'de>
@@ -769,8 +769,8 @@ impl<'de, 'a, 'b: 'a> VariantAccess<'de> for VariantVisitor<'a, 'b> {
     }
     fn tuple_variant<V>(
         self,
-        len: usize,
-        visitor: V
+        _len: usize,
+        _visitor: V
     ) -> Result<V::Value>
     where
         V: Visitor<'de>
@@ -779,8 +779,8 @@ impl<'de, 'a, 'b: 'a> VariantAccess<'de> for VariantVisitor<'a, 'b> {
     }
     fn struct_variant<V>(
         self,
-        fields: &'static [&'static str],
-        visitor: V
+        _fields: &'static [&'static str],
+        _visitor: V
     ) -> Result<V::Value>
     where
         V: Visitor<'de>

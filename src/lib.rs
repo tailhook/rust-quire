@@ -26,9 +26,6 @@
 //!
 //! ```
 //!
-//#![warn(missing_docs)]
-#![allow(dead_code)]
-#![allow(unused_variables)]
 
 
 extern crate humannum;

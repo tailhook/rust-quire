@@ -40,7 +40,6 @@ pub trait Validator {
 /// `Numeric` has minimum and maximum value as well as decodes human-friendly
 /// unit values
 pub struct Scalar {
-    descr: Option<String>,
     optional: bool,
     default: Option<String>,
     min_length: Option<usize>,
@@ -50,7 +49,6 @@ pub struct Scalar {
 impl Scalar {
     pub fn new() -> Scalar {
         Scalar {
-            descr: None,
             optional: false,
             default: None,
             min_length: None,
@@ -118,7 +116,6 @@ impl Validator for Scalar {
 /// Similar to `Scalar` but validates that value is a number and also allows
 /// limit the range of the value.
 pub struct Numeric<T:PrimInt=i64> {
-    descr: Option<String>,
     optional: bool,
     default: Option<T>,
     min: Option<T>,
@@ -128,7 +125,6 @@ pub struct Numeric<T:PrimInt=i64> {
 impl<T: PrimInt> Numeric<T> {
     pub fn new() -> Numeric<T> {
         Numeric {
-            descr: None,
             optional: false,
             default: None,
             min: None,
@@ -204,7 +200,6 @@ impl Validator for Numeric {
 ///
 /// Similar to `Scalar` but also allows to force absolute or relative paths
 pub struct Directory {
-    descr: Option<String>,
     optional: bool,
     default: Option<PathBuf>,
     absolute: Option<bool>,
@@ -213,7 +208,6 @@ pub struct Directory {
 impl Directory {
     pub fn new() -> Directory {
         Directory {
-            descr: None,
             optional: false,
             default: None,
             absolute: None,
@@ -300,7 +294,6 @@ impl Validator for Directory {
 /// a structure maintaining backwards compatiblity as well as for configuring
 /// common case more easily.
 pub struct Structure<'a> {
-    descr: Option<String>,
     members: Vec<(String, Box<Validator + 'a>)>,
     optional: bool,
     from_scalar: Option<fn (scalar: Ast) -> BTreeMap<String, Ast>>,
@@ -309,7 +302,6 @@ pub struct Structure<'a> {
 impl<'a> Structure<'a> {
     pub fn new() -> Structure<'a> {
         Structure {
-            descr: None,
             members: Vec::new(),
             optional: false,
             from_scalar: None,
@@ -418,7 +410,6 @@ impl<'a> Validator for Structure<'a> {
 ///   equivalent to an option with that struct as single value
 ///   `struct A { x: u8 }; enum T { a(A) }`
 pub struct Enum<'a> {
-    descr: Option<String>,
     options: Vec<(String, Box<Validator + 'a>)>,
     optional: bool,
     default_tag: Option<String>,
@@ -429,7 +420,6 @@ pub struct Enum<'a> {
 impl<'a> Enum<'a> {
     pub fn new() -> Enum<'a> {
         Enum {
-            descr: None,
             options: Vec::new(),
             optional: false,
             default_tag: None,
@@ -540,7 +530,6 @@ impl<'a> Validator for Enum<'a> {
 /// This type has type for a key and value and also can be converted
 /// from scalar as shortcut.
 pub struct Mapping<'a> {
-    descr: Option<String>,
     key_element: Box<Validator + 'a>,
     value_element: Box<Validator + 'a>,
     from_scalar: Option<fn (scalar: Ast) -> BTreeMap<String, Ast>>,
@@ -551,7 +540,6 @@ impl<'a> Mapping<'a> {
         -> Mapping<'a>
     {
         Mapping {
-            descr: None,
             key_element: Box::new(key),
             value_element: Box::new(val),
             from_scalar: None,
@@ -608,7 +596,6 @@ impl<'a> Validator for Mapping<'a> {
 /// This validator can also parse a scalar and convert it into a list in
 /// application-specific way.
 pub struct Sequence<'a> {
-    descr: Option<String>,
     element: Box<Validator + 'a>,
     from_scalar: Option<fn (scalar: Ast) -> Vec<Ast>>,
     min_length: usize,
@@ -617,7 +604,6 @@ pub struct Sequence<'a> {
 impl<'a> Sequence<'a> {
     pub fn new<V: Validator + 'a>(el: V) -> Sequence<'a> {
         Sequence {
-            descr: None,
             element: Box::new(el),
             from_scalar: None,
             min_length: 0,
