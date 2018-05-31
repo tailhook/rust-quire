@@ -190,7 +190,7 @@ node that contains tag. For example:
 .. code-block:: yaml
 
     # config.yaml
-    items: !Include items.yaml
+    items: !*Include items.yaml
 
 .. code-block:: yaml
 
