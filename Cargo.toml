@@ -12,7 +12,7 @@ authors = ["paul@colomiets.name"]
 
 [dependencies]
 quick-error = "1.2.0"
-num-traits = "0.1.36"
+num-traits = "0.2.5"
 humannum = "0.1.0"
 serde = "1.0.10"
 
