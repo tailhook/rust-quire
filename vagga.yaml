@@ -2,21 +2,23 @@ containers:
 
   doc:
     setup:
-    - !Alpine v3.6
+    - !Alpine v3.8
+    - !Repo edge/main
+    - !Repo edge/community
     - !Install [make, py3-sphinx]
 
   build:
     setup:
-    - !Ubuntu xenial
+    - !Ubuntu bionic
     - !Install [make, ca-certificates, build-essential, vim]
 
     - !TarInstall
-      url: "https://static.rust-lang.org/dist/rust-1.22.1-x86_64-unknown-linux-gnu.tar.gz"
+      url: "https://static.rust-lang.org/dist/rust-1.27.2-x86_64-unknown-linux-gnu.tar.gz"
       script: "./install.sh --prefix=/usr \
                --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
     - &bulk !Tar
-      url: "https://github.com/tailhook/bulk/releases/download/v0.4.9/bulk-v0.4.9.tar.gz"
-      sha256: 23471a9986274bb4b7098c03e2eb7e1204171869b72c45385fcee1c64db2d111
+      url: "https://github.com/tailhook/bulk/releases/download/v0.4.12/bulk-v0.4.12.tar.gz"
+      sha256: 7deeb4895b3909afea46194ef01bafdeb30ff89fc4a7b6497172ba117734040e
       path: /
     - !EnsureDir /cargo
     environ:
@@ -45,7 +47,7 @@ commands:
     work-dir: doc
     epilog: |
       ------------------------------------------------------------------------
-      Docs are built in doc/_build/html/index.html
+        xdg-open doc/_build/html/index.html
     run: [make, html, SPHINXBUILD=sphinx-build-3]
 
   _bulk: !Command
