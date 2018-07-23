@@ -677,6 +677,16 @@ fn _parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
             parse_flow_map(tokiter, aliases, tag, anchor)
         }
         T::Alias => {
+            if let Some(tag) = tag {
+                return Err(Error::parse_error(&tok.start,
+                    format!("Alias can't be preceded by tag (remove `{}`)",
+                        tag)));
+            }
+            if let Some(anchor) = anchor {
+                return Err(Error::parse_error(&tok.start,
+                    format!("Alias can't be preceded by anchor (remove `&{}`)",
+                        anchor)));
+            }
             tokiter.next();
             match aliases.get(&tok.value[1..]) {
                 Some(x) => Ok(x.clone()),

@@ -370,6 +370,18 @@ fn test_alias() {
 }
 
 #[test]
+#[should_panic(expected="Alias can't be preceded by tag (remove `!test`)")]
+fn test_tag_alias() {
+    assert_yaml_eq_json("- &a hello\n- !test *a", r#"["hello", "hello"]"#);
+}
+
+#[test]
+#[should_panic(expected="Alias can't be preceded by anchor (remove `&x`)")]
+fn test_anchor_alias() {
+    assert_yaml_eq_json("- &a hello\n- &x *a", r#"["hello", "hello"]"#);
+}
+
+#[test]
 fn test_unpack() {
     assert_yaml_eq_json("- !*Unpack [[hello]]\n", r#"["hello"]"#);
 }
