@@ -9,6 +9,7 @@ library.  It also contains [YAML][3] parser (however, it tuned for
 configuration parsing rather than generic YAML parser, e.g. it assumes YAML
 always fits memory).
 
+See `doc/` for additional information.
 
 [1]: http://github.com/tailhook/quire
 [2]: http://yaml.org
