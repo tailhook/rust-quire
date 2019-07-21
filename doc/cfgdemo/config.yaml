@@ -1,0 +1,8 @@
+#
+---
+item1:  foo
+# comment
+item2:  bar
+_item3:  underscore used to comment out a keyword
+...
+# l l

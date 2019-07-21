@@ -1,0 +1,10 @@
+[package]
+name = "cfgdemo"
+version = "0.1.0"
+authors = ["Geert Stappers <stappers@stappers.it>"]
+edition = "2018"
+
+[dependencies]
+quire = "0.4.1"
+serde = "1.0.97"
+serde_derive = "1.0.97"
