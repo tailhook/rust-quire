@@ -20,6 +20,7 @@ Contents:
     :maxdepth: 2
 
     user
+    programmer
 
 .. _Yaml: http://yaml.org
 
