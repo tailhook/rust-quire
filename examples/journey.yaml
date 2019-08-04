@@ -1,0 +1,22 @@
+
+# journey.yaml
+#   "configuration" for item_lists
+
+---
+name: Voyage Voyage
+year: 2020
+_team:
+  - Alice
+  - Bob
+  - Claire
+  - David
+_vehicles:
+  - Jeep
+  - Landrover
+_locations:
+  - Home
+  - Sweet
+  - Home
+
+...
+# l l
