@@ -1,0 +1,10 @@
+
+Run
+  cargo build --examples
+anywhere to get examples been compiled.
+
+For
+  cargo run --example simple
+be in the top directory of the project.
+That is for having the correct start point
+to get path to config.yaml right.
