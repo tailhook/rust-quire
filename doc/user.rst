@@ -190,7 +190,7 @@ node that contains tag. For example:
 .. code-block:: yaml
 
     # config.yaml
-    items: !Include items.yaml
+    items: !*Include items.yaml
 
 .. code-block:: yaml
 
@@ -207,6 +207,89 @@ Is equivalent of:
    - apple
    - cherry
    - banana
+
+
+.. _include-seq:
+
+Include Sequences of Files
+--------------------------
+
+The ``!*IncludeSeq`` tag includes files matched by glob as a sequence:
+
+.. code-block:: yaml
+
+   items: !*IncludeSeq "fruits/*.yaml"
+
+Can be parsed as:
+
+.. code-block:: yaml
+
+   items:
+   - apple
+   - banana
+   - cherry
+
+This depends on the exact application, but usually files returned by `glob`
+are sorted in alphabetical order. All the power of globs is supported, so you
+can do:
+
+.. code-block:: yaml
+
+   items: !*IncludeSeq "files/**/*.yaml"
+
+Another trick is merge multiple files, each with it's own set of keys into
+a single one (see map-merge_ below):
+
+.. code-block:: yaml
+
+   # file1.yaml
+   key1: 1
+   key2: 2
+   # file2.yaml
+   key3: 3
+   key4: 4
+   # main.yaml
+   <<: !*IncludeSeq "configs/*.yaml"
+
+This results into the following config:
+
+.. code-block:: yaml
+
+   key1: 1
+   key2: 2
+   key3: 3
+   key4: 4
+
+Note: merging is not recursive, i.e. top level keys are considered as a whole,
+even if they are dicts.
+
+
+.. _include-map:
+
+Include Mapping from Files
+--------------------------
+
+The ``!*IncludeMap`` tag works similarly to ``!*IncludeSeq`` but requires to
+mark part of a name used as a key. For example:
+
+.. code-block:: yaml
+
+   items: !*IncludeMap "fruits/(*).yaml"
+
+Might result into the folowing:
+
+.. code-block:: yaml
+
+   items:
+     apple: { color: orange }
+     banana: { color: yellow }
+     cherry: { color: red }
+
+You can parenthesize any part as well as a whole path:
+
+.. code-block:: yaml
+
+   files: !*IncludeMap "(**/*.yaml)"
 
 
 .. _map-merge:

@@ -1,45 +1,47 @@
 use std::rc::Rc;
-use rustc_serialize::Decodable;
 
+use ast::process;
+use de::Deserializer;
+use errors::ErrorCollector;
+use parser::parse;
+use serde::Deserialize;
 use {Options};
-use super::decode::YamlDecoder;
-use super::ast::process;
-use super::parser::parse;
-use super::errors::ErrorCollector;
 
 
-#[derive(RustcDecodable, PartialEq, Eq, Debug)]
+#[derive(Deserialize, PartialEq, Eq, Debug)]
 struct Struct1 {
     list: Vec<Struct2>,
 }
 
-#[derive(RustcDecodable, PartialEq, Eq, Debug)]
+#[derive(Deserialize, PartialEq, Eq, Debug)]
 struct Struct2 {
     value: String,
 }
 
 
-fn decode_struct(data: &str) -> Result<Struct1, String> {
+fn decode<'x, T: Deserialize<'x>>(data: &str) -> Result<T, String> {
     let err = ErrorCollector::new();
-    parse(
+    let ast = parse(
             Rc::new("<inline text>".to_string()),
             data,
             |doc| { process(&Options::default(), doc, &err) }
-    ).map_err(|e| err.into_fatal(e))
-    .and_then(|ast| {
-        Decodable::decode(&mut YamlDecoder::new(ast, &err))
-        .map_err(|e| err.into_fatal(e))
-        .and_then(|v| err.into_result(v))
-    })
-    .map_err(|e| format!("{}", e))
+        ).map_err(|e| err.into_fatal(e).to_string())?;
+    T::deserialize(&mut Deserializer::new(&ast))
+    .map_err(|e| err.into_fatal(e))
+    .and_then(|v| err.into_result(v))
+    .map_err(|e| e.to_string())
+}
+
+fn decode_struct(data: &str) -> Result<Struct1, String> {
+    decode(data)
 }
 
 
 #[test]
 fn test_path() {
     assert_eq!(decode_struct("list:\n- {}"),
-        Err("<inline text>:2:3: Decode error at .list[0].value: \
-            Expected scalar, got Null\n".to_string()));
+        Err("<inline text>:2:3: Decode error at .list[0]: \
+             missing field `value`\n".to_string()));
 }
 
 #[test]

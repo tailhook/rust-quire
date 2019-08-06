@@ -1,0 +1,23 @@
+
+# journey.yaml
+#   "configuration" for item_lists
+
+---
+name: Voyage Voyage
+year: 2020
+team:
+  - Alice
+  - Bob
+  - Claire
+  - David
+vehicles:
+  - Jeep
+  - Landrover
+  # Beware: TODO  Marker_002  Validate against known vehicles
+locations:
+  - Home
+  - Sweet
+  - Home
+
+...
+# l l

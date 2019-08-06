@@ -144,13 +144,22 @@ fn plain_value<'a>(tok: &Token<'a>) -> Result<String, Error> {
                             Some('L') => res.push('\u{2028}'),
                             Some('P') => res.push('\u{2029}'),
                             Some('x') => {
-                                unimplemented!();
+                                // TODO(tailhook) support hex escapes
+                                return Err(Error::parse_error(&tok.start,
+                                    "hex escapes aren't supported yet"
+                                    .into()));
                             },
                             Some('u') => {
-                                unimplemented!();
+                                // TODO(tailhook) support unicode escapes
+                                return Err(Error::parse_error(&tok.start,
+                                    "unicode escapes aren't supported yet"
+                                    .into()));
                             },
                             Some('U') => {
-                                unimplemented!();
+                                // TODO(tailhook) support unicode escapes
+                                return Err(Error::parse_error(&tok.start,
+                                    "extended unicode escapes \
+                                        aren't supported yet".into()));
                             },
                             Some('\n') => {
                                 escaped_space = res.len();
@@ -194,7 +203,7 @@ fn plain_value<'a>(tok: &Token<'a>) -> Result<String, Error> {
             }
         }
         T::Literal => {
-            let mut lines = tok.value.split('\n');
+            let mut lines = tok.value.lines();
             let fline = lines.next().unwrap();
             if fline.trim() == "|" {
                 let mut indent = 0;
@@ -211,19 +220,25 @@ fn plain_value<'a>(tok: &Token<'a>) -> Result<String, Error> {
                     res.push('\n');
                 }
             } else {
-                unimplemented!();
+                // TODO(tailhook) better support of block literals
+                return Err(Error::parse_error(&tok.start,
+                    "only bare block literals are supported yet".into()));
             }
         }
         T::Folded => {
-            unimplemented!();
+            // TODO(tailhook) support block literals
+            return Err(Error::parse_error(&tok.start,
+                "folded literals aren't supported yet".into()));
         }
         _ => unreachable!(),
     }
     return Ok(res);
 }
 
+#[derive(Debug)]
 pub struct Directive<'a>(&'a Token<'a>);
 
+#[derive(Debug)]
 pub struct Document<'a> {
     pub directives: Vec<Directive<'a>>,
     pub root: Node<'a>,
@@ -619,8 +634,11 @@ fn _parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
         tokiter.next();
         indent = true;
     }
-    let anchor = maybe_parse_anchor(tokiter);
-    let mut tag = maybe_parse_tag(tokiter);
+    let mut anchor = maybe_parse_anchor(tokiter);
+    let tag = maybe_parse_tag(tokiter);
+    if anchor.is_none() {
+        anchor = maybe_parse_anchor(tokiter);
+    }
     tok = tokiter.peek(0);
     if !indent && tok.kind == T::Indent {  // Otherwise indent is after tag
         tokiter.next();
@@ -659,6 +677,16 @@ fn _parse_node<'x>(tokiter: &mut TokenIter<'x>, aliases: &mut Aliases<'x>)
             parse_flow_map(tokiter, aliases, tag, anchor)
         }
         T::Alias => {
+            if let Some(tag) = tag {
+                return Err(Error::parse_error(&tok.start,
+                    format!("Alias can't be preceded by tag (remove `{}`)",
+                        tag)));
+            }
+            if let Some(anchor) = anchor {
+                return Err(Error::parse_error(&tok.start,
+                    format!("Alias can't be preceded by anchor (remove `&{}`)",
+                        anchor)));
+            }
             tokiter.next();
             match aliases.get(&tok.value[1..]) {
                 Some(x) => Ok(x.clone()),
