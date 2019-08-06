@@ -1,3 +1,5 @@
+use std::fmt;
+
 use ast::Ast;
 use errors::{Error, ErrorCollector};
 use tokenizer::Pos;
@@ -7,17 +9,25 @@ pub type IncludeHandler<'a> =
     Fn(&Pos, &Include, &ErrorCollector, &Options) -> Ast + 'a;
 
 /// The kind of include tag that encountered in config
+#[derive(Debug)]
 pub enum Include<'a> {
     /// Looks like `!Include some/file.yaml`
     File { filename: &'a str },
     // TODO(tailhook)
     // /// Looks like `!*Include some/file.yaml:some_key`
     // SubKey { filename: &'a str, key: &'a str },
-    // /// Looks like `!*IncludeSeq some/*.yaml`
-    // Sequence { directory: &'a str, prefix: &'a str, suffix: &'a str },
-    // /// Looks like `!*IncludeMap some/*.yaml`.
-    // /// Everything matched by star is used as a key
-    // Mapping { directory: &'a str, prefix: &'a str, suffix: &'a str },
+    /// Looks like `!*IncludeSeq some/*.yaml`
+    ///
+    /// It's expected that included files are sorted (both `glob` and
+    /// `capturing_glob` support that).
+    Sequence { pattern: &'a str },
+    /// Looks like `!*IncludeMap some/(*).yaml`.
+    ///
+    /// Everything in parenthesis should be used as a key
+    /// Use `capturing_glob` crate to parse and match files
+    Mapping { pattern: &'a str },
+    #[doc(hidden)]
+    __Nonexhaustive,
 }
 
 /// Options for parsing configuration file
@@ -60,5 +70,12 @@ impl<'a> Options<'a> {
     {
         self.include_handler = Box::new(f);
         self
+    }
+}
+
+impl<'a> fmt::Debug for Options<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Options")
+        .finish()
     }
 }

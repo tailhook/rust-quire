@@ -6,7 +6,7 @@
 //! AST, but it works on the AST level, so it must put something that decoder
 //! is able to decode in the result.
 
-use std::fmt::{Display};
+use std::fmt::{Display, Debug};
 use std::path::{PathBuf, Path, Component};
 use std::collections::{BTreeMap, HashSet};
 
@@ -22,7 +22,7 @@ use super::ast::ScalarKind::{Quoted, Plain};
 
 
 /// The trait every validator implements
-pub trait Validator {
+pub trait Validator: Debug {
     fn validate(&self, ast: Ast, err: &ErrorCollector) -> Ast;
     fn default(&self, pos: Pos) -> Option<Ast>;
 }
@@ -39,8 +39,8 @@ pub trait Validator {
 /// But some of the scalars might have better validators, for example
 /// `Numeric` has minimum and maximum value as well as decodes human-friendly
 /// unit values
+#[derive(Debug)]
 pub struct Scalar {
-    descr: Option<String>,
     optional: bool,
     default: Option<String>,
     min_length: Option<usize>,
@@ -50,7 +50,6 @@ pub struct Scalar {
 impl Scalar {
     pub fn new() -> Scalar {
         Scalar {
-            descr: None,
             optional: false,
             default: None,
             min_length: None,
@@ -117,8 +116,8 @@ impl Validator for Scalar {
 ///
 /// Similar to `Scalar` but validates that value is a number and also allows
 /// limit the range of the value.
+#[derive(Debug)]
 pub struct Numeric<T:PrimInt=i64> {
-    descr: Option<String>,
     optional: bool,
     default: Option<T>,
     min: Option<T>,
@@ -128,7 +127,6 @@ pub struct Numeric<T:PrimInt=i64> {
 impl<T: PrimInt> Numeric<T> {
     pub fn new() -> Numeric<T> {
         Numeric {
-            descr: None,
             optional: false,
             default: None,
             min: None,
@@ -203,8 +201,8 @@ impl Validator for Numeric {
 /// Directory validator
 ///
 /// Similar to `Scalar` but also allows to force absolute or relative paths
+#[derive(Debug)]
 pub struct Directory {
-    descr: Option<String>,
     optional: bool,
     default: Option<PathBuf>,
     absolute: Option<bool>,
@@ -213,7 +211,6 @@ pub struct Directory {
 impl Directory {
     pub fn new() -> Directory {
         Directory {
-            descr: None,
             optional: false,
             default: None,
             absolute: None,
@@ -299,8 +296,8 @@ impl Validator for Directory {
 /// the structure. This feature is useful to upgrade scalar value to
 /// a structure maintaining backwards compatiblity as well as for configuring
 /// common case more easily.
+#[derive(Debug)]
 pub struct Structure<'a> {
-    descr: Option<String>,
     members: Vec<(String, Box<Validator + 'a>)>,
     optional: bool,
     from_scalar: Option<fn (scalar: Ast) -> BTreeMap<String, Ast>>,
@@ -309,7 +306,6 @@ pub struct Structure<'a> {
 impl<'a> Structure<'a> {
     pub fn new() -> Structure<'a> {
         Structure {
-            descr: None,
             members: Vec::new(),
             optional: false,
             from_scalar: None,
@@ -417,8 +413,8 @@ impl<'a> Validator for Structure<'a> {
 ///   one enum field is supported. Structure enums `enum T { a { x: u8 }` are
 ///   equivalent to an option with that struct as single value
 ///   `struct A { x: u8 }; enum T { a(A) }`
+#[derive(Debug)]
 pub struct Enum<'a> {
-    descr: Option<String>,
     options: Vec<(String, Box<Validator + 'a>)>,
     optional: bool,
     default_tag: Option<String>,
@@ -429,7 +425,6 @@ pub struct Enum<'a> {
 impl<'a> Enum<'a> {
     pub fn new() -> Enum<'a> {
         Enum {
-            descr: None,
             options: Vec::new(),
             optional: false,
             default_tag: None,
@@ -539,8 +534,8 @@ impl<'a> Validator for Enum<'a> {
 ///
 /// This type has type for a key and value and also can be converted
 /// from scalar as shortcut.
+#[derive(Debug)]
 pub struct Mapping<'a> {
-    descr: Option<String>,
     key_element: Box<Validator + 'a>,
     value_element: Box<Validator + 'a>,
     from_scalar: Option<fn (scalar: Ast) -> BTreeMap<String, Ast>>,
@@ -551,7 +546,6 @@ impl<'a> Mapping<'a> {
         -> Mapping<'a>
     {
         Mapping {
-            descr: None,
             key_element: Box::new(key),
             value_element: Box::new(val),
             from_scalar: None,
@@ -607,8 +601,8 @@ impl<'a> Validator for Mapping<'a> {
 ///
 /// This validator can also parse a scalar and convert it into a list in
 /// application-specific way.
+#[derive(Debug)]
 pub struct Sequence<'a> {
-    descr: Option<String>,
     element: Box<Validator + 'a>,
     from_scalar: Option<fn (scalar: Ast) -> Vec<Ast>>,
     min_length: usize,
@@ -617,7 +611,6 @@ pub struct Sequence<'a> {
 impl<'a> Sequence<'a> {
     pub fn new<V: Validator + 'a>(el: V) -> Sequence<'a> {
         Sequence {
-            descr: None,
             element: Box::new(el),
             from_scalar: None,
             min_length: 0,
@@ -679,7 +672,8 @@ impl<'a> Validator for Sequence<'a> {
 /// Skips the validation of this value
 ///
 /// It's useful to accept any value (of any type) at some place, or to
-/// rely on `Decodable::decode` for doing validation.
+/// rely on `Deserialize::deserialize` for doing validation.
+#[derive(Debug)]
 pub struct Anything;
 
 impl Validator for Anything {
@@ -694,6 +688,7 @@ impl Validator for Anything {
 /// Only expect null at this place
 ///
 /// This is mostly useful for enums, i.e. `!SomeTag null`
+#[derive(Debug)]
 pub struct Nothing;
 
 impl Validator for Nothing {
@@ -713,25 +708,29 @@ impl Validator for Nothing {
 
 #[cfg(test)]
 mod test {
+    use std::fmt;
     use std::rc::Rc;
     use std::path::PathBuf;
-    use rustc_serialize::Decodable;
     use std::collections::BTreeMap;
     use std::collections::HashMap;
+    use std::error::Error as StdError;
+
+    use serde::Deserialize;
 
     use {Options};
-    use super::super::decode::YamlDecoder;
-    use super::super::ast::{process, Ast as A};
-    use super::super::ast::Tag::{NonSpecific};
-    use super::super::ast::ScalarKind::{Plain};
-    use super::super::parser::parse;
-    use super::super::sky::{parse_string, ErrorList};
-    use super::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
-    use super::{Enum, Nothing, Directory, Anything};
-    use super::super::errors::ErrorCollector;
+    use de::Deserializer;
+    use ast::{process, Ast as A};
+    use ast::Tag::{NonSpecific};
+    use ast::ScalarKind::{Plain};
+    use parser::parse;
+    use {parse_string, ErrorList};
+    use validate::{Validator, Structure, Scalar, Numeric, Mapping, Sequence};
+    use validate::{Enum, Nothing, Directory, Anything};
+    use errors::{Error, ErrorCollector};
     use self::TestEnum::*;
+    use super::Pos;
 
-    #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
     struct TestStruct {
         intkey: usize,
         strkey: String,
@@ -810,7 +809,7 @@ mod test {
         });
     }
 
-    #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
     struct TestDash {
         some_key: usize,
     }
@@ -846,7 +845,7 @@ mod test {
                 |doc| { process(&Options::default(), doc, &err) }
             ).map_err(|e| err.into_fatal(e)).unwrap();
         let ast = str_val.validate(ast, &err);
-        match Decodable::decode(&mut YamlDecoder::new(ast, &err)) {
+        match Deserialize::deserialize(&mut Deserializer::new(&ast)) {
             Ok(val) => {
                 (val, err.unwrap().errors().map(|x| x.to_string()).collect())
             }
@@ -874,7 +873,7 @@ mod test {
                  .to_string())));
     }
 
-    #[derive(Clone, Debug, PartialEq, Eq, RustcDecodable)]
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
     struct TestOpt {
         some_key: Option<usize>,
     }
@@ -907,7 +906,7 @@ mod test {
         });
     }
 
-    fn parse_map<T:Decodable>(body: &str) -> T {
+    fn parse_map<'x, T: Deserialize<'x>>(body: &str) -> T {
         fn parse_default(ast: A) -> BTreeMap<String, A> {
             match ast {
                 A::Scalar(pos, _, style, value) => {
@@ -976,9 +975,7 @@ mod test {
         assert_eq!(res, m);
     }
 
-    fn parse_complex_map<T:Decodable>(body: &str)
-        -> T
-    {
+    fn parse_complex_map<'x, T: Deserialize<'x>>(body: &str) -> T {
         let validator = Mapping::new(
             Scalar::new(),
             Structure::new()
@@ -1022,7 +1019,7 @@ mod test {
     fn parse_seq(body: &str) -> Vec<usize> {
         fn split(ast: A) -> Vec<A> {
             match ast {
-                A::Scalar(pos, _, style, value) => {
+                A::Scalar(pos, _, _style, value) => {
                     value
                         .split(" ")
                         .map(|v| {
@@ -1044,7 +1041,7 @@ mod test {
     {
         fn split(ast: A) -> Vec<A> {
             match ast {
-                A::Scalar(pos, _, style, value) => {
+                A::Scalar(pos, _, _style, value) => {
                     value
                         .split(" ")
                         .map(|v| {
@@ -1077,14 +1074,14 @@ mod test {
 
     #[test]
     fn test_seq_empty() {
-        let m = Vec::new();
+        let m = Vec::<usize>::new();
         let res: Vec<usize> = parse_seq("[]");
         assert_eq!(res, m);
     }
 
     #[test]
     fn test_seq_null() {
-        let m = Vec::new();
+        let m = Vec::<usize>::new();
         let res: Vec<usize> = parse_seq("");
         assert_eq!(res, m);
     }
@@ -1105,7 +1102,7 @@ mod test {
 
     #[test]
     fn test_seq_min_length_zero() {
-        let m = Vec::new();
+        let m = Vec::<usize>::new();
         let res: Vec<usize> = parse_seq_min_length("[]", 0).unwrap();
         assert_eq!(res, m);
 
@@ -1129,7 +1126,7 @@ mod test {
         assert_eq!(res, m);
     }
 
-    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
     enum TestEnum {
         Alpha,
         Beta,
@@ -1230,7 +1227,7 @@ mod test {
             })));
     }
 
-    #[derive(Clone, PartialEq, Eq, RustcDecodable)]
+    #[derive(Clone, PartialEq, Eq, Deserialize)]
     struct TestPath {
         path: PathBuf,
     }
@@ -1275,9 +1272,18 @@ mod test {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_path_abs_abs() {
         assert!(parse_path("path: /root/dir", Some(true)) == TestPath {
             path: PathBuf::from("/root/dir"),
+        });
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_path_abs_abs() {
+        assert!(parse_path(r#"path: c:\\root\dir"#, Some(true)) == TestPath {
+            path: PathBuf::from(r#"c:\\root\dir"#),
         });
     }
 
@@ -1298,10 +1304,20 @@ mod test {
     }
 
     #[test]
+    #[cfg(unix)]
     #[should_panic(expected = "must not be absolute")]
     fn test_path_abs_rel() {
         assert!(parse_path("path: /root/dir", Some(false)) == TestPath {
             path: PathBuf::from("/root/dir"),
+        });
+    }
+
+    #[test]
+    #[cfg(windows)]
+    #[should_panic(expected = "must not be absolute")]
+    fn test_path_abs_rel() {
+        assert!(parse_path(r#"path: c:\\root\dir"#, Some(false)) == TestPath {
+            path: PathBuf::from(r#":\\root\dir"#),
         });
     }
 
@@ -1337,7 +1353,7 @@ mod test {
             ));
     }
 
-    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
     struct EnumOpt {
         val: Option<TestEnum>,
     }
@@ -1360,7 +1376,7 @@ mod test {
                    EnumOpt { val: Some(Epsilon(None)) });
     }
 
-    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
     struct Parsed {
         value: String,
     }
@@ -1397,7 +1413,7 @@ mod test {
                    Parsed { value: "test".to_string() });
     }
 
-    #[derive(PartialEq, Eq, RustcDecodable, Debug)]
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
     enum TestEnumDef {
         Alpha,
         Beta,
@@ -1435,5 +1451,72 @@ mod test {
     #[test]
     fn test_enum_def_tag() {
         assert_eq!(parse_enum_def("!Alpha"), TestEnumDef::Alpha);
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+    struct Version;
+
+    #[derive(Debug)]
+    struct VersionError(&'static str);
+
+    impl StdError for VersionError {
+        fn description(&self) -> &str { "Version Error" }
+        fn cause(&self) -> Option<&StdError> { None }
+    }
+
+    impl fmt::Display for VersionError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "{}: {}", self.description(), self.0)
+        }
+    }
+
+    impl Version {
+        fn new() -> Version {
+            Version {}
+        }
+    }
+
+    impl Validator for Version {
+        fn default(&self, _: Pos) -> Option<A> {
+            None
+        }
+
+        fn validate(&self, ast: A, err: &ErrorCollector) -> A {
+            match ast {
+                A::Scalar(pos, tag, kind, version) => {
+                    if !version.starts_with("v") {
+                        err.add_error(Error::custom_at(
+                            &pos,
+                            VersionError("Version must start with 'v'")))
+                    }
+                    A::Scalar(pos, tag, kind, version)
+                },
+                ast => {
+                    err.add_error(Error::validation_error(
+                        &ast.pos(), format!("Version must be a scalar value")));
+                    ast
+                },
+            }
+        }
+    }
+
+    fn parse_version(body: &str) -> Result<Version, ErrorList> {
+        let validator = Version::new();
+        parse_string("<inline text>", body, &validator, &Options::default())
+    }
+
+    #[test]
+    fn test_custom_error() {
+        let err = parse_version("0.0.1").unwrap_err();
+        let error = err.errors().nth(0).unwrap();
+        assert_eq!(
+            format!("{}", error),
+            "<inline text>:1:1: Version Error: Version must start with 'v'");
+        match error.downcast_ref::<VersionError>() {
+            Some(&VersionError(msg)) => {
+                assert_eq!(msg, "Version must start with 'v'")
+            },
+            e => panic!("Custom error must be VersionError but was: {:?}", e),
+        }
     }
 }

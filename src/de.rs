@@ -1,37 +1,288 @@
-use std::marker::PhantomData;
-use std::ops::{Neg, AddAssign, MulAssign};
-use std::str::FromStr;
+use std::fmt::Write;
+use std::collections::BTreeMap;
+use std::collections::btree_map;
+use std::iter::{Peekable, Enumerate};
+use std::mem::replace;
 use std::slice;
+use std::str::FromStr;
 
 
-use serde::de::{self, Deserialize, DeserializeSeed, Visitor, SeqAccess,
-                MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
+use serde::de::{self, DeserializeSeed, Visitor, SeqAccess};
+use serde::de::{MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 
-use ast::Ast;
-use ast::Ast as A;
-use errors::{Error, ErrorCollector};
+use ast::{Ast, Ast as A, Tag};
+use errors::{Error, add_info};
 
 type Result<T> = ::std::result::Result<T, Error>;
 
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub enum Mode {
+    Normal,
+    Enum,
+}
+
+#[derive(Debug)]
 pub struct Deserializer<'a> {
     ast: &'a Ast,
-    err: ErrorCollector,
+    mode: Mode,
     path: String,
 }
 
-struct ListVisitor<'a, 'b: 'a>(slice::Iter<'b, Ast>, &'a mut Deserializer<'b>);
+
+struct ListVisitor<'a, 'b: 'a>(Enumerate<slice::Iter<'b, Ast>>, &'a mut Deserializer<'b>);
+struct MapVisitor<'a, 'b: 'a>(Peekable<btree_map::Iter<'b, String, Ast>>,
+    usize, &'a mut Deserializer<'b>);
+struct EnumVisitor<'a, 'b: 'a>(&'a mut Deserializer<'b>);
+struct VariantVisitor<'a, 'b: 'a>(&'a mut Deserializer<'b>);
+struct KeyDeserializer(String);
 
 impl<'de> Deserializer<'de> {
-    // By convention, `Deserializer` constructors are named like `from_xyz`.
-    // That way basic use cases are satisfied by something like
-    // `serde_json::from_str(...)` while advanced use cases that require a
-    // deserializer can make one with `serde_json::Deserializer::from_str(...)`.
-    pub fn new<'x>(ast: &'x Ast, err: &ErrorCollector) -> Deserializer<'x> {
+    pub fn new<'x>(ast: &'x Ast) -> Deserializer<'x> {
         Deserializer {
             ast: &ast,
-            err: err.clone(),
+            mode: Mode::Normal,
             path: "".to_string(),
         }
+    }
+
+    fn map_err<T>(&self, result: Result<T>) -> Result<T> {
+        add_info(&self.ast.pos(), &self.path, result)
+    }
+}
+
+impl<'a> de::Deserializer<'a> for KeyDeserializer {
+    type Error = Error;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_string(self.0)
+    }
+    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        let value = match &self.0[..] {
+            "true" => true,
+            "false" => false,
+            _ => {
+                let e: Error = de::Error::custom(format!("bad boolean {:?}", self.0));
+                return Err(e);
+            }
+        };
+        visitor.visit_bool(value)
+    }
+
+    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_i8(FromStr::from_str(&self.0).map_err(Error::custom)?)
+    }
+
+    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_i16(FromStr::from_str(&self.0).map_err(Error::custom)?)
+    }
+
+    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_i32(FromStr::from_str(&self.0).map_err(Error::custom)?)
+    }
+
+    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_i64(FromStr::from_str(&self.0).map_err(Error::custom)?)
+    }
+
+    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_u8(FromStr::from_str(&self.0).map_err(Error::custom)?)
+    }
+
+    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_u16(FromStr::from_str(&self.0).map_err(Error::custom)?)
+    }
+
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_u32(FromStr::from_str(&self.0).map_err(Error::custom)?)
+    }
+
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_u64(FromStr::from_str(&self.0).map_err(Error::custom)?)
+    }
+
+    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_f32(FromStr::from_str(&self.0).map_err(Error::custom)?)
+    }
+
+    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_f64(FromStr::from_str(&self.0).map_err(Error::custom)?)
+    }
+
+    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        let mut chars = self.0.chars();
+        let val = (chars.next()
+            .ok_or_else(|| {
+                de::Error::custom("single character expected")
+            }) as Result<_>)?;
+        if chars.next().is_some() {
+            return Err(de::Error::custom("single character expected"))
+        }
+        visitor.visit_char(val)
+    }
+
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_str(&self.0)
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_string(self.0)
+    }
+
+    // The `Serializer` implementation on the previous page serialized byte
+    // arrays as JSON arrays of bytes. Handle that representation here.
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_bytes(self.0.as_bytes())
+    }
+
+    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_bytes(self.0.as_bytes())
+    }
+
+    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        match &self.0[..] {
+            "" | "~" | "null" => {
+                return visitor.visit_none();
+            }
+            _ => {
+                return visitor.visit_some(self)
+            }
+        }
+    }
+
+    fn deserialize_unit<V>(self, _visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        unimplemented!();
+    }
+
+    fn deserialize_unit_struct<V>(
+        self,
+        _name: &'static str,
+        _visitor: V
+    ) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        unimplemented!();
+    }
+
+    fn deserialize_newtype_struct<V>(
+        self,
+        _name: &'static str,
+        visitor: V
+    ) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_newtype_struct(self)
+    }
+
+    fn deserialize_seq<V>(self, _visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        Err(de::Error::custom("sequence can't be mapping key in quire"))
+    }
+
+    fn deserialize_tuple<V>(
+        self,
+        _len: usize,
+        _visitor: V
+    ) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        Err(de::Error::custom("tuple can't be mapping key in quire"))
+    }
+
+    // Tuple structs look just like sequences in JSON.
+    fn deserialize_tuple_struct<V>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        _visitor: V
+    ) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        Err(de::Error::custom("tuple struct can't be mapping key in quire"))
+    }
+
+    fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        Err(de::Error::custom("mapping can't be mapping key in quire"))
+    }
+    fn deserialize_struct<V>(
+        self,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        _visitor: V
+    ) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        Err(de::Error::custom("struct can't be mapping key in quire"))
+    }
+
+    fn deserialize_enum<V>(
+        self,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        _visitor: V
+    ) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        // TODO(tailhook) some support might work
+        Err(de::Error::custom("enum can't be mapping key in quire"))
+    }
+
+    fn deserialize_identifier<V>(
+        self,
+        visitor: V
+    ) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        visitor.visit_string(self.0)
+    }
+
+    fn deserialize_ignored_any<V>(
+        self,
+        visitor: V
+    ) -> Result<V::Value>
+        where V: Visitor<'a>
+    {
+        self.deserialize_unit(visitor)
     }
 }
 
@@ -44,7 +295,12 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        match *self.ast {
+            A::Map(..) => self.deserialize_map(visitor),
+            A::Seq(..) => self.deserialize_seq(visitor),
+            A::Scalar(..) => self.deserialize_string(visitor),
+            A::Null(..) => self.deserialize_unit(visitor),
+        }
     }
 
     // Uses the `parse_bool` parsing function defined above to read the JSON
@@ -159,7 +415,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
             }
             ref node => {
                 Err(Error::decode_error(&node.pos(), &self.path,
-                    format!("Can't parse {:?} as char", node)))
+                    format!("expected a single character, got {}", node)))
             }
         };
         visitor.visit_char(c?)
@@ -168,22 +424,22 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        let val = match *self.ast {
+            A::Scalar(_, _, _, ref val) => {
+                val
+            }
+            ref node => {
+                return Err(Error::decode_error(&node.pos(), &self.path,
+                    format!("expected string, got {}", node)))
+            }
+        };
+        visitor.visit_str(val)
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        let val = match *self.ast {
-            A::Scalar(ref pos, _, _, ref val) => {
-                val
-            }
-            ref node => {
-                return Err(Error::decode_error(&node.pos(), &self.path,
-                    format!("Can't parse {:?} as char", node)))
-            }
-        };
-        visitor.visit_str(val)
+        self.deserialize_str(visitor)
     }
 
     // The `Serializer` implementation on the previous page serialized byte
@@ -204,7 +460,10 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
         where V: Visitor<'de>
     {
         match *self.ast {
-            A::Null(..) => {
+            A::Null(_, Tag::NonSpecific, _) => {
+                return visitor.visit_none()
+            }
+            A::Null(_, Tag::LocalTag(_), _) if self.mode == Mode::Enum => {
                 return visitor.visit_none()
             }
             _ => {
@@ -217,7 +476,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        visitor.visit_unit()
     }
 
     // Unit struct means a named value containing no data.
@@ -228,7 +487,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        visitor.visit_unit()
     }
 
     // As is done here, serializers are encouraged to treat newtype structs as
@@ -241,25 +500,30 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!()
+        visitor.visit_newtype_struct(self)
     }
 
     // Deserialization of compound types like sequences and maps happens by
     // passing the visitor an "Access" object that gives it the ability to
     // iterate through the data contained in the sequence.
-    fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value>
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
         match *self.ast {
             A::Seq(_, _, ref seq) => {
                 let ast = self.ast;
-                let result = visitor.visit_seq(ListVisitor(seq.iter(), self));
+                let result = visitor.visit_seq(
+                    ListVisitor(seq.iter().enumerate(), self));
+                let result = self.map_err(result);
                 self.ast = ast;
                 return result;
             }
+            A::Null(..) => {
+                return visitor.visit_seq(Vec::<()>::new().into_deserializer());
+            }
             ref node => {
                 return Err(Error::decode_error(&node.pos(), &self.path,
-                    format!("sequence expected got {}", node)))
+                    format!("sequence expected, got {}", node)))
             }
         }
     }
@@ -273,7 +537,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     fn deserialize_tuple<V>(
         self,
         _len: usize,
-        visitor: V
+        _visitor: V
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
@@ -285,17 +549,34 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
         self,
         _name: &'static str,
         _len: usize,
-        visitor: V
+        _visitor: V
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
         unimplemented!();
     }
 
-    fn deserialize_map<V>(mut self, visitor: V) -> Result<V::Value>
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        match *self.ast {
+            A::Map(_, _, ref map) => {
+                let ast = self.ast;
+                let result = visitor.visit_map(
+                    MapVisitor(map.iter().peekable(), self.path.len(), self));
+                let result = self.map_err(result);
+                self.ast = ast;
+                return result;
+            }
+            A::Null(..) => {
+                return visitor.visit_map(
+                    BTreeMap::<(), ()>::new().into_deserializer());
+            }
+            ref node => {
+                return Err(Error::decode_error(&node.pos(), &self.path,
+                    format!("mapping expected, got {}", node)))
+            }
+        }
     }
 
     // Structs look just like maps in JSON.
@@ -312,7 +593,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        self.deserialize_map(visitor)
     }
 
     fn deserialize_enum<V>(
@@ -323,7 +604,10 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        let mode = replace(&mut self.mode, Mode::Enum);
+        let result = visitor.visit_enum(EnumVisitor(self));
+        self.mode = mode;
+        return result;
     }
 
     // An identifier in Serde is the type that identifies a field of a struct or
@@ -336,7 +620,20 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        match *self.ast.tag() {
+            Tag::GlobalTag(_) => unimplemented!(),
+            Tag::LocalTag(ref val) => Ok(visitor.visit_str::<Error>(val)?),
+            Tag::NonSpecific => match *self.ast {
+                A::Scalar(_, _, _, ref val) => {
+                    Ok(visitor.visit_string::<Error>(val.replace("-", "_"))?)
+                }
+                ref node => {
+                    return Err(Error::decode_error(&node.pos(), &self.path,
+                        format!("identifier (string, or tag) \
+                            expected, got {}", node)))
+                }
+            },
+        }
     }
 
     // Like `deserialize_any` but indicates to the `Deserializer` that it makes
@@ -356,7 +653,7 @@ impl<'de: 'a, 'a, 'b> de::Deserializer<'de> for &'a mut Deserializer<'b> {
     ) -> Result<V::Value>
         where V: Visitor<'de>
     {
-        unimplemented!();
+        self.deserialize_unit(visitor)
     }
 }
 
@@ -385,9 +682,13 @@ impl<'de, 'a, 'b: 'a> SeqAccess<'de> for ListVisitor<'a, 'b> {
         where T: DeserializeSeed<'de>
     {
         match self.0.next() {
-            Some(x) => {
+            Some((idx, x)) => {
                 self.1.ast = x;
-                seed.deserialize(&mut *self.1).map(Some)
+                let plen = self.1.path.len();
+                write!(&mut self.1.path, "[{}]", idx).unwrap();
+                let result = seed.deserialize(&mut *self.1).map(Some);
+                self.1.path.truncate(plen);
+                return result;
             }
             None => {
                 return Ok(None);
@@ -396,11 +697,98 @@ impl<'de, 'a, 'b: 'a> SeqAccess<'de> for ListVisitor<'a, 'b> {
     }
 }
 
+impl<'de, 'a, 'b: 'a> MapAccess<'de> for MapVisitor<'a, 'b> {
+    type Error = Error;
+
+    fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+        where T: DeserializeSeed<'de>
+    {
+        match self.0.peek() {
+            Some(&(key, _)) => {
+                write!(&mut self.2.path, ".{}", key).unwrap();
+                let result = seed.deserialize(KeyDeserializer(key.clone()));
+                Ok(Some(self.2.map_err(result)?))
+            }
+            None => {
+                return Ok(None);
+            }
+        }
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+        where
+            V: DeserializeSeed<'de>
+    {
+        let (_, value) = self.0.next().unwrap();
+        self.2.ast = value;
+        let result = seed.deserialize(&mut *self.2);
+        let result = self.2.map_err(result);
+        self.2.path.truncate(self.1);
+        return result;
+    }
+}
+
+impl<'de, 'a, 'b: 'a> EnumAccess<'de> for EnumVisitor<'a, 'b> {
+    type Error = Error;
+    type Variant = VariantVisitor<'a, 'b>;
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
+        where V: DeserializeSeed<'de>
+    {
+        let mode = replace(&mut self.0.mode, Mode::Enum);
+        let val = seed.deserialize(&mut *self.0)?;
+        self.0.mode = mode;
+        Ok((val, VariantVisitor(&mut *self.0)))
+    }
+}
+
+impl<'de, 'a, 'b: 'a> VariantAccess<'de> for VariantVisitor<'a, 'b> {
+    type Error = Error;
+    fn unit_variant(self) -> Result<()> {
+        match *self.0.ast {
+            A::Null(..) => Ok(()),
+            // TODO(tailhook) check what happens if value doesn't match
+            // any anum tag
+            A::Scalar(_, _, _, _) => Ok(()),
+            ref node => {
+                return Err(Error::decode_error(&node.pos(), &self.0.path,
+                    format!("nothing expected, got {}", node)));
+            }
+        }
+    }
+    fn newtype_variant_seed<T>(self, seed: T)
+        -> Result<T::Value>
+    where
+        T: DeserializeSeed<'de>
+    {
+        seed.deserialize(self.0)
+    }
+    fn tuple_variant<V>(
+        self,
+        _len: usize,
+        _visitor: V
+    ) -> Result<V::Value>
+    where
+        V: Visitor<'de>
+    {
+        unimplemented!();
+    }
+    fn struct_variant<V>(
+        self,
+        _fields: &'static [&'static str],
+        _visitor: V
+    ) -> Result<V::Value>
+    where
+        V: Visitor<'de>
+    {
+        unimplemented!();
+    }
+}
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
     use std::path::PathBuf;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, HashMap};
+    use std::time::Duration;
 
     use serde::Deserialize;
 
@@ -418,7 +806,7 @@ mod test {
                 data,
                 |doc| { process(&Options::default(), doc, &err) }
             ).map_err(|e| err.into_fatal(e)).unwrap();
-        T::deserialize(&mut Deserializer::new(&ast, &err))
+        T::deserialize(&mut Deserializer::new(&ast))
         .map_err(|e| err.into_fatal(e))
         .unwrap()
     }
@@ -433,6 +821,17 @@ mod test {
     fn decode_bool() {
         assert_eq!(decode::<bool>("true"), true);
         assert_eq!(decode::<bool>("false"), false);
+    }
+
+    #[test]
+    fn decode_duration() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct Dur {
+            #[serde(with="::serde_humantime")]
+            dur: Duration,
+        }
+        assert_eq!(decode::<Dur>("dur: 1m 15s"),
+            Dur { dur: Duration::new(75, 0) });
     }
 
     #[test]
@@ -465,6 +864,20 @@ mod test {
     }
 
     #[test]
+    fn decode_nothing() {
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Nothing;
+
+        assert_eq!(decode::<Nothing>(""), Nothing);
+        assert_eq!(decode::<Nothing>("null"), Nothing);
+        assert_eq!(decode::<Nothing>("~"), Nothing);
+
+        assert_eq!(decode::<()>(""), ());
+        assert_eq!(decode::<()>("null"), ());
+        assert_eq!(decode::<()>("~"), ());
+    }
+
+    #[test]
     fn decode_struct() {
         assert_eq!(decode::<TestStruct>("a: 1\nb: hello"), TestStruct {
             a: 1,
@@ -479,7 +892,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected="sequence expected got Scalar")]
+    #[should_panic(expected="sequence expected, got Scalar")]
     fn decode_list_error() {
         decode::<Vec<String>>("test");
     }
@@ -639,9 +1052,24 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Expected sequence, got string")]
+    #[should_panic(expected = "sequence expected, got Scalar")]
     fn test_struct_items_tag() {
         decode::<TestStruct2>("items:\n  'hello'");
     }
 
+    #[derive(PartialEq, Eq, Deserialize, Debug)]
+    struct NewType(u8);
+
+    #[test]
+    fn test_newtype() {
+        assert_eq!(decode::<NewType>("12"), NewType(12));
+    }
+
+    #[test]
+    fn test_map_with_non_string_keys() {
+        assert_eq!(decode::<HashMap<u32, u32>>("1: 2\n3: 4"), vec![
+            (1, 2),
+            (3, 4),
+            ].into_iter().collect::<HashMap<u32, u32>>());
+    }
 }

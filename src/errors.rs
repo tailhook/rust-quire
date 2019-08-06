@@ -1,8 +1,9 @@
 use std::io;
 use std::fmt;
 use std::rc::Rc;
+use std::error::Error as StdError;
 use std::slice::Iter;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::cell::RefCell;
 
 use super::tokenizer::{self, Pos};
@@ -10,13 +11,17 @@ use super::tokenizer::{self, Pos};
 #[derive(Clone, Debug)]
 pub struct ErrorPos(String, usize, usize);
 
+pub trait AssertSendSync: Send + Sync {}
+impl AssertSendSync for Error {}
+impl AssertSendSync for ErrorList {}
+
 quick_error! {
     /// Single error when of parsing configuration file
     ///
     /// Usually you use `ErrorList` which embeds multiple errors encountered
     /// during configuration file parsing
     #[derive(Debug)]
-    pub enum Error {
+    pub enum Error wraps pub ErrorEnum {
         OpenError(filename: PathBuf, err: io::Error) {
             display("{}: Error reading file: {}", filename.display(), err)
         }
@@ -42,45 +47,82 @@ quick_error! {
                     filename=pos.0, line=pos.1, offset=pos.2,
                     path=path, text=msg)
         }
-        Custom(message: String) {
-            display("{}", message)
-            description(message)
+        SerdeError(msg: String) {
+            display("{}", msg)
+        }
+        CustomError(pos: Option<ErrorPos>, err: Box<StdError+Send+Sync>) {
+            display(x) -> ("{loc}{err}",
+                loc=if let &Some(ref p) = pos {
+                    format!("{filename}:{line}:{offset}: ",
+                        filename=p.0, line=p.1, offset=p.2)
+                } else {
+                    "".to_string()
+                },
+                err=err)
+            cause(&**err)
         }
     }
 }
 
 impl ::serde::de::Error for Error {
-    fn custom<T: ::std::fmt::Display>(msg: T) -> Self {
-        return Error::Custom(format!("{}", msg));
+    fn custom<T: fmt::Display>(msg: T) -> Self {
+        ErrorEnum::SerdeError(format!("{}", msg)).into()
     }
 }
 
 impl Error {
+    pub fn open_error(path: &Path, err: io::Error) -> Error {
+        ErrorEnum::OpenError(path.to_path_buf(), err).into()
+    }
     pub fn parse_error(pos: &Pos, message: String) -> Error {
-        return Error::ParseError(
+        ErrorEnum::ParseError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
-            message);
+            message).into()
     }
     pub fn tokenizer_error((pos, err): (Pos, tokenizer::Error)) -> Error {
-        return Error::TokenizerError(
+        ErrorEnum::TokenizerError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
-            err);
+            err).into()
     }
     pub fn validation_error(pos: &Pos, message: String) -> Error {
-        return Error::ValidationError(
+        ErrorEnum::ValidationError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
-            message);
+            message).into()
     }
     pub fn decode_error(pos: &Pos, path: &String, message: String) -> Error {
-        return Error::DecodeError(
+        ErrorEnum::DecodeError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
             path.clone(),
-            message);
+            message).into()
     }
     pub fn preprocess_error(pos: &Pos, message: String) -> Error {
-        return Error::PreprocessError(
+        ErrorEnum::PreprocessError(
             ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset),
-            message);
+            message).into()
+    }
+
+    pub fn custom<T: StdError + Send + Sync + 'static>(err: T)
+        -> Error
+    {
+        ErrorEnum::CustomError(None, Box::new(err)).into()
+    }
+
+    pub fn custom_at<T: StdError + Send + Sync + 'static>(pos: &Pos, err: T)
+        -> Error
+    {
+        ErrorEnum::CustomError(
+            Some(ErrorPos((*pos.filename).clone(), pos.line, pos.line_offset)),
+            Box::new(err)).into()
+    }
+
+    pub fn downcast_ref<T: StdError + 'static>(&self) -> Option<&T> {
+        match self.0 {
+            ErrorEnum::OpenError(_, ref e) => {
+                (e as &StdError).downcast_ref::<T>()
+            },
+            ErrorEnum::CustomError(_, ref e) => e.downcast_ref::<T>(),
+            _ => None,
+        }
     }
 }
 
@@ -122,7 +164,7 @@ impl fmt::Debug for ErrorList {
 ///
 /// It's exposed only to handler of include file. Use `ErrorCollector`
 /// to submit your errors from include file handler.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ErrorCollector(Rc<RefCell<Option<ErrorList>>>);
 
 impl ErrorCollector {
@@ -160,5 +202,16 @@ impl ErrorCollector {
     /// Unwraps ErrorList from the collector
     pub fn unwrap(&self) -> ErrorList {
         self.0.borrow_mut().take().unwrap()
+    }
+}
+
+pub fn add_info<T>(pos: &Pos, path: &String, result: Result<T, Error>)
+    -> Result<T, Error>
+{
+    match result {
+        Err(Error(ErrorEnum::SerdeError(e))) => {
+            Err(Error::decode_error(pos, path, format!("{}", e)))
+        }
+        result => result,
     }
 }

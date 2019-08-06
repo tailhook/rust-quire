@@ -88,6 +88,7 @@ impl Display for Pos {
     }
 }
 
+#[derive(Debug)]
 pub struct Token<'tok> {
     pub kind: TokenType,
     pub start: Pos,
