@@ -209,7 +209,7 @@ fn plain_value<'a>(tok: &Token<'a>) -> Result<String, Error> {
                 let mut indent = 0;
                 for line in lines {
                     if indent == 0 {
-                        let trimmed = line.trim_left_matches(' ');
+                        let trimmed = line.trim_start_matches(' ');
                         indent = line.len() - trimmed.len();
                     }
                     if line.len() < indent {
